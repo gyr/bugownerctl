@@ -12,5 +12,6 @@ else
         echo "Package '$PACKAGE' is present in the $WHITELIST_FILE."
     else
         echo "Package '$PACKAGE' is NOT present in the $WHITELIST_FILE."
+        exit 1
     fi
 fi
