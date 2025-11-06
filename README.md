@@ -1,0 +1,136 @@
+# Bug Ownership Utility Scripts
+
+This repository contains a collection of utility scripts designed to validate and check package maintainership information stored in JSON files.
+
+## Scripts
+
+### `validate_json_file.py`
+
+#### Purpose
+
+This script validates a given JSON file to ensure it is well-formed and, most importantly, that it **does not contain any duplicate keys**. Standard JSON parsers often silently overwrite duplicate keys, which can lead to data loss or incorrect configurations. This script prevents that issue by explicitly checking for duplicates.
+
+#### How to Use
+
+Run the script from your terminal, passing the path to the JSON file you want to validate as an argument.
+
+```bash
+python3 validate_json_file.py <path_to_json_file>
+```
+
+**Example:**
+
+```bash
+# Validate the maintainership file
+python3 validate_json_file.py _maintainership.json
+```
+
+#### Behavior
+
+-   **On Success:** The script will print a success message indicating that the JSON is valid and contains no duplicate keys. It will exit with a status code of `0`.
+-   **On Failure:** If the file is not found, has a syntax error, or contains duplicate keys, it will print a detailed error message to `stderr` and exit with a status code of `1`.
+
+---
+
+### `create_whitelist_maintainership.py`
+
+#### Purpose
+
+This script acts as a synchronization tool between the git submodules in the repository and the `_maintainership.json` file. It identifies discrepancies and automatically generates a whitelist file for any submodules that are not officially listed in the maintainership file.
+
+Its primary functions are:
+-   To identify which git submodules are missing from `_maintainership.json`.
+-   To identify which packages in `_maintainership.json` no longer exist as git submodules.
+-   To automatically create `whitelist_maintainership.json` containing the list of missing submodules.
+
+#### How to Use
+
+Run the script from the root of the git repository.
+
+```bash
+python3 create_whitelist_maintainership.py
+```
+
+#### Dependencies
+
+-   The script must be run in a git repository.
+-   The `git` command-line tool must be installed and accessible in your `PATH`.
+
+#### Behavior
+
+-   **On Success:** If all git submodules are correctly listed in `_maintainership.json`, the script will print a success message and exit with a status code of `0`.
+-   **On Failure (Discrepancies Found):**
+    -   It will print the list of submodules that are missing from the maintainership file.
+    -   It will create or overwrite the `whitelist_maintainership.json` file with this list.
+    -   It will print the list of any packages in the maintainership file that are no longer active submodules.
+    -   It will exit with a status code of `1`.
+
+---
+
+### `check_package_maintainer.py`
+
+#### Purpose
+
+This script checks whether a given package is officially maintained. It does this by looking up the package name in two files:
+1.  `_maintainership.json`: The primary source of truth for maintained packages.
+2.  `whitelist_maintainership.json`: A list of packages that are explicitly allowed even if they are not in the primary file.
+
+#### How to Use
+
+Execute the script with the name of the package you want to check.
+
+```bash
+python3 check_package_maintainer.py <package_name>
+```
+
+**Example:**
+
+```bash
+python3 check_package_maintainer.py my-cool-package
+```
+
+#### Input Files
+
+-   `_maintainership.json`: Must be a JSON object where the keys are the package names.
+-   `whitelist_maintainership.json`: Must be a JSON array of package names. This file can be generated automatically by the `create_whitelist_maintainership.py` script to capture git submodules that are not yet in the primary maintainership file.
+
+#### Behavior
+
+-   The script will print whether the package was found in `_maintainership.json` or `whitelist_maintainership.json`.
+-   It exits with a status code of `0` if the package is found in either file (success).
+-   It exits with a status code of `1` if the package is not found in either file (failure), making it suitable for use in CI/CD pipelines.
+
+---
+
+### `check_package_maintainer.sh`
+
+#### Purpose
+
+This is a shell script alternative to the Python version, performing the same check for package maintainership against the `_maintainership.json` and `whitelist_maintainership.json` files.
+
+#### Dependencies
+
+This script requires `jq` to be installed and available in your `PATH`. `jq` is a command-line JSON processor.
+
+#### How to Use
+
+Make sure the script is executable (`chmod +x check_package_maintainer.sh`) and then run it with the package name.
+
+```bash
+./check_package_maintainer.sh <package_name>
+```
+
+**Example:**
+
+```bash
+./check_package_maintainer.sh another-package
+```
+
+#### Input Files
+-   `_maintainership.json`: A JSON object of maintained packages.
+-   `whitelist_maintainership.json`: A JSON array of whitelisted packages. Can be auto-generated by `create_whitelist_maintainership.py`.
+
+#### Behavior
+
+-   The script provides output on whether the package is present in the files.
+-   It will exit with a status code of `1` if the package is not found in either file, suitable for scripting and automation.
