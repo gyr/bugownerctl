@@ -1,0 +1,28 @@
+zst_file_paths:
+  - "SLES-16.0-aarch64-primary.xml.zst"
+  - "SLES-16.0-ppc64le-primary.xml.zst"
+  - "SLES-16.0-s390x-primary.xml.zst"
+  - "SLES-16.0-x86_64-primary.xml.zst"
+  - "SLES-HA-16.0-ppc64le-primary.xml.zst"
+  - "SLES-HA-16.0-s390x-primary.xml.zst"
+  - "SLES-HA-16.0-x86_64-primary.xml.zst"
+  - "SLES-SAP-16.0-ppc64le-primary.xml.zst"
+  - "SLES-SAP-16.0-x86_64-primary.xml.zst"
+
+
+false_positives_file: "false_positives.json"
+
+nsmap:
+  common: 'http://linux.duke.edu/metadata/common'
+  rpm: 'http://linux.duke.edu/metadata/rpm'
+
+output_files:
+  binary_data_from_repo: "binary_data_from_repo.json"
+  missing_binaries_in_repo: "missing_binaries_in_repo.json"
+  missing_packages_in_maintainership: "missing_packages_in_maintainership.json"
+  invalid_packages: "invalid_packages.json"
+  orphan_packages: "orphan_packages.json"
+
+file_template:
+  maintainership_file: "{SLFO_GIT_REPOSITORY_DIRECTORY}/_maintainership.json"
+  productcompose_file: "{SLES_GIT_REPOSITORY_DIRECTORY}/000productcompose/default.productcompose"
