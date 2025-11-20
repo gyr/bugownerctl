@@ -263,22 +263,22 @@ def get_binaries_from_productcompose() -> Optional[Set[str]]:
     print(f"Found {len(binaries)} unique binaries in the productcompose file.")
     return binaries
 
-def check_missing_binaries_in_repo(binary_data_list: List[Tuple[str, str, Optional[str]]], binary_set_from_compose: Set[str]) -> None:
+def check_binaries_not_shipped(binary_data_list: List[Tuple[str, str, Optional[str]]], binary_set_from_compose: Set[str]) -> None:
     """
     This function compares the binaries from the productcompose file with the binaries
-    from the repository metadata and writes any missing binaries to a file.
+    from the repository metadata and writes any not shipped binaries to a file.
     """
-    print("--- Checking for missing binaries ---")
+    print("--- Checking for binaries not shipped ---")
     binaries_from_repo: Set[str] = {item[0] for item in binary_data_list}
-    missing_binaries: List[str] = sorted(list(binary_set_from_compose - binaries_from_repo))
+    binaries_not_shipped: List[str] = sorted(list(binary_set_from_compose - binaries_from_repo))
 
-    if missing_binaries:
-        print(f"Found {len(missing_binaries)} missing binaries in repo.")
-        with open(OUTPUT_FILES['missing_binaries_in_repo'], 'w', encoding='utf-8') as f:
-            json.dump(missing_binaries, f, indent=4, sort_keys=True)
-        print(f"Saved missing binaries in repo to {OUTPUT_FILES['missing_binaries_in_repo']}")
+    if binaries_not_shipped:
+        print(f"Found {len(binaries_not_shipped)} binaries not shipped.")
+        with open(OUTPUT_FILES['binaries_not_shipped'], 'w', encoding='utf-8') as f:
+            json.dump(binaries_not_shipped, f, indent=4, sort_keys=True)
+        print(f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}")
     else:
-        print("No missing binaries found in repo.")
+        print("No binaries not shipped found.")
 
 def check_invalid_packages(binary_data_list: List[Tuple[str, str, Optional[str]]], submodule_list: List[str]) -> Optional[Set[str]]:
     """
@@ -364,8 +364,8 @@ def check_orphan_packages(valid_packages: Set[str]) -> Optional[List[str]]:
     except FileNotFoundError:
         print(f"Error: Maintainership file not found at '{MAINTAINERSHIP_FILE}'", file=sys.stderr)
         return None
-    except json.JSONDecodeError:
-        print(f"Error: Invalid JSON format in '{MAINTAINERSHIP_FILE}'", file=sys.stderr)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON format in '{MAINTAINERSHIP_FILE}': {e}", file=sys.stderr)
         return None
 
     orphan_packages: List[str] = sorted([pkg for pkg in valid_packages if not maintainer_data.get(pkg)])
@@ -429,8 +429,8 @@ def main() -> None:
         print("Could not gather any package data from git submodules. Aborting.", file=sys.stderr)
         return
 
-    # 4. Check for missing binaries
-    check_missing_binaries_in_repo(binary_data_list, binary_set_from_compose)
+    # 4. Check for binaries not shipped
+    check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
 
     # 5. Check for maintainership packages without submodules
     check_packages_without_submodule(submodule_list)

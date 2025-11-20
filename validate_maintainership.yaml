@@ -18,7 +18,7 @@ nsmap:
 
 output_files:
   binary_data_from_repo: "binary_data_from_repo.json"
-  missing_binaries_in_repo: "missing_binaries_in_repo.json"
+  binaries_not_shipped: "binaries_not_shipped.json"
   missing_packages_in_maintainership: "missing_packages_in_maintainership.json"
   invalid_packages: "invalid_packages.json"
   orphan_packages: "orphan_packages.json"

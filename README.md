@@ -147,7 +147,7 @@ Its primary functions are:
 -   To parse package metadata from compressed repository files (`.zst`).
 -   To extract a list of expected binaries from a `productcompose` file.
 -   To get the official list of source packages from git submodules.
--   To identify binaries that are expected but missing from the repository.
+-   To identify binaries that are expected but not shipped (i.e. not available in the repository of any product or extension).
 -   To identify packages that are not recognized as valid git submodules, using `osc` to resolve potential false positives.
 -   To identify packages listed in `_maintainership.json` that do not have an equivalent git submodule, indicating potential removals.
 -   To find valid packages that are missing a maintainer in the `_maintainership.json` file.
@@ -197,7 +197,7 @@ The script's behavior is controlled by `validate_maintainership.yaml`:
 
 The script generates several JSON files to report its findings:
 -   `binary_data_from_repo.json`: A complete dump of all package metadata extracted from the `.zst` files.
--   `missing_binaries_in_repo.json`: A list of binaries that are present in the `productcompose` file but could not be found in the repository metadata.
+-   `binaries_not_shipped.json`: A list of binaries that are present in the `productcompose` file but are not shipped (i.e. not available in the repository of any product or extension).
 -   `invalid_packages.json`: A list of packages that could not be resolved to a valid git submodule or an OBS source package.
 -   `orphan_packages.json`: A list of valid packages that do not have an entry in the `_maintainership.json` file.
 -   `packages_without_submodule.json`: A list of packages found in `_maintainership.json` that do not correspond to an active git submodule, which should be checked for potential removal.
