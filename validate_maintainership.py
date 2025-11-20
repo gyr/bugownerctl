@@ -29,7 +29,6 @@ config = load_config('validate_maintainership.yaml')
 ZST_FILE_PATHS: List[str] = config['zst_file_paths']
 SLFO_GIT_REPOSITORY_DIRECTORY: str = os.getenv("SLFO_GIT_REPOSITORY_DIRECTORY")
 SLES_GIT_REPOSITORY_DIRECTORY: str = os.getenv("SLES_GIT_REPOSITORY_DIRECTORY")
-print(SLES_GIT_REPOSITORY_DIRECTORY)
 FILE_TEMPLATE: Dict[str, str] = config['file_template']
 MAINTAINERSHIP_FILE: str = FILE_TEMPLATE['maintainership_file'].format(SLFO_GIT_REPOSITORY_DIRECTORY=SLFO_GIT_REPOSITORY_DIRECTORY)
 PRODUCTCOMPOSE_FILE: str = FILE_TEMPLATE['productcompose_file'].format(SLES_GIT_REPOSITORY_DIRECTORY=SLES_GIT_REPOSITORY_DIRECTORY)
@@ -373,6 +372,41 @@ def check_orphan_packages(valid_packages: Set[str]) -> Optional[List[str]]:
 
     return orphan_packages
 
+def check_packages_without_submodule(submodule_list: List[str]) -> None:
+    """
+    Checks for packages listed in the MAINTAINERSHIP_FILE that do not have an equivalent git submodule.
+    This helps identify packages that might have been removed from submodules but not from maintainership.
+    """
+    print("--- Checking for packages in maintainership file without equivalent git submodule ---")
+    packages_in_maintainership: Set[str] = set()
+    try:
+        with open(MAINTAINERSHIP_FILE, 'r') as f:
+            maintainer_data: Dict[str, Any] = json.load(f)
+            # Collect all keys from the maintainer_data as packages in maintainership
+            packages_in_maintainership = set(maintainer_data.keys())
+    except FileNotFoundError:
+        print(f"Error: Maintainership file not found at '{MAINTAINERSHIP_FILE}'", file=sys.stderr)
+        return
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON format in '{MAINTAINERSHIP_FILE}': {e}", file=sys.stderr)
+        return
+
+    submodule_set: Set[str] = set(submodule_list)
+
+    # Find packages in maintainership file that are not in the submodule list
+    mismatched_packages: List[str] = sorted(list(packages_in_maintainership - submodule_set))
+
+    if mismatched_packages:
+        print(f"Found {len(mismatched_packages)} packages in maintainership file "
+              f"without an equivalent git submodule.")
+        output_file = OUTPUT_FILES['packages_without_submodule']
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(mismatched_packages, f, indent=4, sort_keys=True)
+        print(f"Saved packages without submodule to {output_file}")
+    else:
+        print("No packages found in maintainership file without an equivalent git submodule.")
+
+
 def main() -> None:
     """
     Main function to run the bugownership checker.
@@ -398,7 +432,10 @@ def main() -> None:
     # 4. Check for missing binaries
     check_missing_binaries_in_repo(binary_data_list, binary_set_from_compose)
 
-    # 5. Check for invalid packages
+    # 5. Check for maintainership packages without submodules
+    check_packages_without_submodule(submodule_list)
+
+    # 6. Check for invalid packages
     valid_packages: Optional[Set[str]] = check_invalid_packages(binary_data_list, submodule_list)
     if valid_packages is None:
         print("No valid packages found. Aborting.", file=sys.stderr)

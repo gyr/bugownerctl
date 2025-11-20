@@ -149,6 +149,7 @@ Its primary functions are:
 -   To get the official list of source packages from git submodules.
 -   To identify binaries that are expected but missing from the repository.
 -   To identify packages that are not recognized as valid git submodules, using `osc` to resolve potential false positives.
+-   To identify packages listed in `_maintainership.json` that do not have an equivalent git submodule, indicating potential removals.
 -   To find valid packages that are missing a maintainer in the `_maintainership.json` file.
 
 #### How to Use
@@ -199,4 +200,5 @@ The script generates several JSON files to report its findings:
 -   `missing_binaries_in_repo.json`: A list of binaries that are present in the `productcompose` file but could not be found in the repository metadata.
 -   `invalid_packages.json`: A list of packages that could not be resolved to a valid git submodule or an OBS source package.
 -   `orphan_packages.json`: A list of valid packages that do not have an entry in the `_maintainership.json` file.
+-   `packages_without_submodule.json`: A list of packages found in `_maintainership.json` that do not correspond to an active git submodule, which should be checked for potential removal.
 -   The script may also update `false_positives.json` with newly discovered mappings.

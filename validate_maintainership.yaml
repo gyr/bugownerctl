@@ -22,6 +22,7 @@ output_files:
   missing_packages_in_maintainership: "missing_packages_in_maintainership.json"
   invalid_packages: "invalid_packages.json"
   orphan_packages: "orphan_packages.json"
+  packages_without_submodule: "packages_without_submodule.json"
 
 file_template:
   maintainership_file: "{SLFO_GIT_REPOSITORY_DIRECTORY}/_maintainership.json"
