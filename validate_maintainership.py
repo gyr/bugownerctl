@@ -39,6 +39,7 @@ config = load_config("validate_maintainership.yaml")
 ZST_FILE_PATHS: List[str] = config["zst_file_paths"]
 GIT_REPOSITORIES: Dict[str, Dict[str, str]] = config["git_repositories"]
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
+CHECK_BINARIES_NOT_SHIPPED: bool = config.get("check_binaries_not_shipped", False)
 
 # Namespaces for XML parsing
 NSMAP: Dict[str, str] = {
@@ -577,11 +578,13 @@ def main() -> None:
             )
             return
 
-        binary_set_from_compose: Optional[Set[str]] = get_binaries_from_productcompose(
-            productcompose_file
-        )
-        if binary_set_from_compose is None:
-            return
+        if CHECK_BINARIES_NOT_SHIPPED:
+            print("--- Running optional check for binaries not shipped ---")
+            binary_set_from_compose: Optional[
+                Set[str]
+            ] = get_binaries_from_productcompose(productcompose_file)
+            if binary_set_from_compose is not None:
+                check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
 
         submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
         if not submodule_list:
@@ -590,8 +593,6 @@ def main() -> None:
                 file=sys.stderr,
             )
             return
-
-        check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
 
         maintainer_data: Optional[Dict[str, Any]] = get_maintainer_data(
             maintainership_file

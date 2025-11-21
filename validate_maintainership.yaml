@@ -1,22 +1,18 @@
 zst_file_paths:
-  - "SLES-16.0-aarch64-primary.xml.zst"
-  - "SLES-16.0-ppc64le-primary.xml.zst"
-  - "SLES-16.0-s390x-primary.xml.zst"
-  - "SLES-16.0-x86_64-primary.xml.zst"
-  - "SLES-HA-16.0-ppc64le-primary.xml.zst"
-  - "SLES-HA-16.0-s390x-primary.xml.zst"
-  - "SLES-HA-16.0-x86_64-primary.xml.zst"
-  - "SLES-SAP-16.0-ppc64le-primary.xml.zst"
-  - "SLES-SAP-16.0-x86_64-primary.xml.zst"
-
-
-false_positives_file: "false_positives.json"
-
-
+  - 16.1/SLES-16.1-aarch64-primary.xml.zst
+  - 16.1/SLES-16.1-ppc64le-primary.xml.zst
+  - 16.1/SLES-16.1-s390x-primary.xml.zst
+  - 16.1/SLES-16.1-x86_64-primary.xml.zst
+  - 16.1/SLES-HA-16.1-ppc64le-primary.xml.zst
+  - 16.1/SLES-HA-16.1-s390x-primary.xml.zst
+  - 16.1/SLES-HA-16.1-x86_64-primary.xml.zst
+  - 16.1/SLES-SAP-16.1-ppc64le-primary.xml.zst
+  - 16.1/SLES-SAP-16.1-x86_64-primary.xml.zst
 git_repositories:
   SLFO:
-    url: "gitea@src.suse.de:products/SLFO.git"
-    branch: "slfo-main"
+    url: gitea@src.suse.de:products/SLFO.git
+    branch: slfo-main
   SLES:
-    url: "gitea@src.suse.de:products/SLES.git"
+    url: gitea@src.suse.de:products/SLES.git
     branch: "16.1"
+false_positives_file: 16.1/false_positives.json

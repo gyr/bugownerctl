@@ -148,7 +148,7 @@ Its primary functions are:
 -   To infer a source package name from each source RPM filename using regular expressions.
 -   To extract a list of expected packages from a `productcompose` file.
 -   To get the official list of source packages from git submodules within a cloned repository.
--   To identify binaries that are expected in a product but not shipped in any repository.
+-   To optionally identify binaries that are expected in a product but not shipped in any repository (controlled by `check_binaries_not_shipped` flag).
 -   To identify packages whose inferred names do not match the official list of git submodules. It then attempts to resolve these discrepancies (potential 'false positives') by querying the Open Build Service (OBS) for the correct source package.
 -   To identify packages listed in `_maintainership.json` that do not have an equivalent git submodule, indicating potential removals.
 -   To find valid packages that are missing a maintainer in the `_maintainership.json` file.
@@ -186,6 +186,7 @@ The script's behavior is primarily controlled by `validate_maintainership.yaml`:
         branch: "stable"
     ```
 -   `false_positives_file`: (Optional) Path to a JSON file for managing packages that are known to be valid despite not being direct submodules. Defaults to `false_positives.json`.
+-   `check_binaries_not_shipped`: (Optional) A boolean flag to enable or disable the check for binaries that are present in the `productcompose` file but not shipped in any repository. Defaults to `false`. When `false`, the check is skipped to improve performance for general validation tasks.
 
 #### Input Files
 
@@ -201,7 +202,7 @@ The following files are accessed automatically from the cloned repositories:
 
 The script generates several JSON files to report its findings. Output filenames are hardcoded in the script:
 -   `binary_data_from_repo.json`: A complete dump of all package metadata extracted from the `.zst` files
--   `binaries_not_shipped.json`: A list of packages that are present in the `productcompose` file but are not shipped in any of the analyzed repositories.
+-   `binaries_not_shipped.json`: A list of packages that are present in the `productcompose` file but are not shipped in any of the analyzed repositories. This file is only generated if `check_binaries_not_shipped` is set to `true` in the configuration.
 -   `invalid_packages.json`: A list of packages that could not be resolved to a valid git submodule, even after attempting to correct the name via the `false_positives.json` cache and by querying OBS. These packages require manual investigation.
 -   `orphan_packages.json`: A list of valid packages that do not have an entry in the `_maintainership.json` file.
 -   `packages_without_submodule.json`: A list of packages found in `_maintainership.json` that do not correspond to an active git submodule, which should be checked for potential removal.
