@@ -38,11 +38,24 @@ config = load_config("validate_maintainership.yaml")
 
 ZST_FILE_PATHS: List[str] = config["zst_file_paths"]
 GIT_REPOSITORIES: Dict[str, Dict[str, str]] = config["git_repositories"]
-FALSEPOSITIVES_FILE: str = config["false_positives_file"]
-NSMAP: Dict[str, str] = config["nsmap"]
-OUTPUT_FILES: Dict[str, str] = config["output_files"]
+FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
 
+# Namespaces for XML parsing
+NSMAP: Dict[str, str] = {
+    "common": "http://linux.duke.edu/metadata/common",
+    "rpm": "http://linux.duke.edu/metadata/rpm",
+}
 COMMON_NS_URI: str = NSMAP["common"]
+
+# Hardcoded output filenames
+OUTPUT_FILES: Dict[str, str] = {
+    "binary_data_from_repo": "binary_data_from_repo.json",
+    "binaries_not_shipped": "binaries_not_shipped.json",
+    "missing_packages_in_maintainership": "missing_packages_in_maintainership.json",
+    "invalid_packages": "invalid_packages.json",
+    "orphan_packages": "orphan_packages.json",
+    "packages_without_submodule": "packages_without_submodule.json",
+}
 
 
 @contextmanager
