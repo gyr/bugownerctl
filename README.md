@@ -141,30 +141,25 @@ Make sure the script is executable (`chmod +x check_package_maintainer.sh`) and 
 
 #### Purpose
 
-This script performs a comprehensive validation of package maintainership and consistency within the repository. It cross-references information from multiple sources to identify discrepancies, such as missing binaries, invalid packages, and packages without an assigned maintainer.
+This script performs a comprehensive validation of package maintainership and consistency across multiple projects. It automatically clones the required Git repositories, cross-references information from multiple sources, and identifies discrepancies such as missing binaries, invalid packages, and packages without an assigned maintainer.
 
 Its primary functions are:
--   To parse package metadata from compressed repository files (`.zst`).
--   To extract a list of expected binaries from a `productcompose` file.
--   To get the official list of source packages from git submodules.
--   To identify binaries that are expected but not shipped (i.e. not available in the repository of any product or extension).
--   To identify packages that are not recognized as valid git submodules, using `osc` to resolve potential false positives.
+-   To parse package metadata from compressed repository files (`.zst`), which contains binary packages and their corresponding source RPM filename.
+-   To infer a source package name from each source RPM filename using regular expressions.
+-   To extract a list of expected packages from a `productcompose` file.
+-   To get the official list of source packages from git submodules within a cloned repository.
+-   To identify binaries that are expected in a product but not shipped in any repository.
+-   To identify packages whose inferred names do not match the official list of git submodules. It then attempts to resolve these discrepancies (potential 'false positives') by querying the Open Build Service (OBS) for the correct source package.
 -   To identify packages listed in `_maintainership.json` that do not have an equivalent git submodule, indicating potential removals.
 -   To find valid packages that are missing a maintainer in the `_maintainership.json` file.
 
 #### How to Use
 
-The script is configured via `validate_maintainership.yaml` and a `.env` file.
+The script is configured via `validate_maintainership.yaml`. It no longer requires local checkouts of the git repositories, as it will clone them automatically.
 
-1.  **Create a `.env` file** in the root directory to specify the paths to the required git repositories:
-    ```
-    SLFO_GIT_REPOSITORY_DIRECTORY=/path/to/your/slfo/git/repo
-    SLES_GIT_REPOSITORY_DIRECTORY=/path/to/your/sles/git/repo
-    ```
+1.  **Configure `validate_maintainership.yaml`** to define the git repositories to analyze and the paths to repository metadata.
 
-2.  **Configure `validate_maintainership.yaml`** to point to the correct input files and define output paths.
-
-3.  **Run the script** from the root of the repository:
+2.  **Run the script** from the root of this repository:
     ```bash
     python3 validate_maintainership.py
     ```
@@ -174,31 +169,40 @@ The script is configured via `validate_maintainership.yaml` and a `.env` file.
 -   Python 3
 -   Python libraries: `zstandard`, `lxml`, `PyYAML`, `python-dotenv`
 -   External command-line tools: `git` and `osc` must be installed and in your `PATH`.
--   An active `osc` session (logged into `https://api.suse.de`).
+-   An active `osc` session (logged into `https://api.suse.de`) is required for resolving unknown packages.
 
 #### Configuration (`validate_maintainership.yaml`)
 
-The script's behavior is controlled by `validate_maintainership.yaml`:
+The script's behavior is primarily controlled by `validate_maintainership.yaml`:
 -   `zst_file_paths`: A list of paths to the compressed repository metadata files (`primary.xml.zst`).
--   `file_template`: Defines path templates for key files like `_maintainership.json` and the `productcompose` file. It uses environment variables for repository paths.
--   `false_positives_file`: Path to the JSON file for managing false positives.
--   `output_files`: A dictionary specifying the filenames for all generated reports.
+-   `git_repositories`: A dictionary defining the Git repositories to be cloned. Each entry should specify the `url` and `branch`. The script uses these to fetch the `_maintainership.json` and `productcompose` files.
+    ```yaml
+    git_repositories:
+      SLFO:
+        url: "https://github.com/your-org/slfo.git"
+        branch: "main"
+      SLES:
+        url: "https://github.com/your-org/sles.git"
+        branch: "stable"
+    ```
+-   `false_positives_file`: (Optional) Path to a JSON file for managing packages that are known to be valid despite not being direct submodules. Defaults to `false_positives.json`.
 
 #### Input Files
 
--   `.env`: Contains environment variables for repository paths.
 -   `validate_maintainership.yaml`: The main configuration file.
 -   `*.zst` files: As defined in the configuration, these are the source of truth for repository package data.
+-   `false_positives.json`: (Optional) A file that contains a mapping to correct package names that are initially inferred incorrectly from source RPM filenames. Due to complex naming conventions, the script's initial guess for a package name might not match the official git submodule name. This file acts as a cache of corrections, mapping the incorrect name to the proper name found in OBS. The script automatically adds new corrections to this file when it successfully resolves a package via `osc`.
+
+The following files are accessed automatically from the cloned repositories:
 -   `_maintainership.json`: The primary JSON file listing packages and their maintainers.
--   `productcompose` file: As defined in the configuration, used to get a list of expected binaries.
--   `false_positives.json`: (Optional) A file containing a mapping of packages that are known to be valid despite not being direct submodules. The script can also update this file.
+-   `productcompose` file: Used to get a list of expected packages for a product.
 
 #### Output Files
 
-The script generates several JSON files to report its findings:
--   `binary_data_from_repo.json`: A complete dump of all package metadata extracted from the `.zst` files.
--   `binaries_not_shipped.json`: A list of binaries that are present in the `productcompose` file but are not shipped (i.e. not available in the repository of any product or extension).
--   `invalid_packages.json`: A list of packages that could not be resolved to a valid git submodule or an OBS source package.
+The script generates several JSON files to report its findings. Output filenames are hardcoded in the script:
+-   `binary_data_from_repo.json`: A complete dump of all package metadata extracted from the `.zst` files
+-   `binaries_not_shipped.json`: A list of packages that are present in the `productcompose` file but are not shipped in any of the analyzed repositories.
+-   `invalid_packages.json`: A list of packages that could not be resolved to a valid git submodule, even after attempting to correct the name via the `false_positives.json` cache and by querying OBS. These packages require manual investigation.
 -   `orphan_packages.json`: A list of valid packages that do not have an entry in the `_maintainership.json` file.
 -   `packages_without_submodule.json`: A list of packages found in `_maintainership.json` that do not correspond to an active git submodule, which should be checked for potential removal.
--   The script may also update `false_positives.json` with newly discovered mappings.
+-   The script will also create or update `false_positives.json` with newly discovered mappings.
