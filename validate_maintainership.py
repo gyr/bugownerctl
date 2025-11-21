@@ -9,6 +9,8 @@ from typing import List, Set, Dict, Tuple, Optional, Any
 import os
 from dotenv import load_dotenv
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import tempfile
+from contextlib import contextmanager
 
 # --- Configuration ---
 load_dotenv()
@@ -35,20 +37,45 @@ def load_config(config_file_path: str) -> Dict[str, Any]:
 config = load_config("validate_maintainership.yaml")
 
 ZST_FILE_PATHS: List[str] = config["zst_file_paths"]
-SLFO_GIT_REPOSITORY_DIRECTORY: str = os.getenv("SLFO_GIT_REPOSITORY_DIRECTORY")
-SLES_GIT_REPOSITORY_DIRECTORY: str = os.getenv("SLES_GIT_REPOSITORY_DIRECTORY")
-FILE_TEMPLATE: Dict[str, str] = config["file_template"]
-MAINTAINERSHIP_FILE: str = FILE_TEMPLATE["maintainership_file"].format(
-    SLFO_GIT_REPOSITORY_DIRECTORY=SLFO_GIT_REPOSITORY_DIRECTORY
-)
-PRODUCTCOMPOSE_FILE: str = FILE_TEMPLATE["productcompose_file"].format(
-    SLES_GIT_REPOSITORY_DIRECTORY=SLES_GIT_REPOSITORY_DIRECTORY
-)
+GIT_REPOSITORIES: Dict[str, Dict[str, str]] = config["git_repositories"]
 FALSEPOSITIVES_FILE: str = config["false_positives_file"]
 NSMAP: Dict[str, str] = config["nsmap"]
 OUTPUT_FILES: Dict[str, str] = config["output_files"]
 
 COMMON_NS_URI: str = NSMAP["common"]
+
+
+@contextmanager
+def clone_repository(repo_url: str, branch: str) -> Optional[str]:
+    """
+    Clones a Git repository into a temporary directory and provides the path.
+    The temporary directory is automatically cleaned up upon exiting the context.
+    """
+    temp_dir = tempfile.TemporaryDirectory()
+    try:
+        print(f"--- Cloning {repo_url} (branch: {branch}) into {temp_dir.name} ---")
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--branch",
+                branch,
+                "--depth",
+                "1",
+                "--no-remote-submodules",
+                repo_url,
+                temp_dir.name,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        yield temp_dir.name
+    except subprocess.CalledProcessError as e:
+        print(f"Error cloning repository {repo_url}: {e.stderr}", file=sys.stderr)
+        yield None
+    finally:
+        temp_dir.cleanup()
 
 
 def get_source_package_from_obs(package: str) -> Optional[str]:
@@ -93,9 +120,9 @@ def get_source_package_from_obs(package: str) -> Optional[str]:
     return str(next(iter(source_package)))
 
 
-def run_git_submodule() -> str:
+def run_git_submodule(slfo_git_repo_path: str) -> str:
     """
-    Execute `git submodule status` in the directory defined by SLFO_GIT_REPOSITORY_DIRECTORY.
+    Execute `git submodule status` in the given directory.
     Returns the command's stdout.
     """
     try:
@@ -104,7 +131,7 @@ def run_git_submodule() -> str:
             capture_output=True,
             text=True,
             check=False,
-            cwd=SLFO_GIT_REPOSITORY_DIRECTORY,
+            cwd=slfo_git_repo_path,
         )
         if result.returncode != 0:
             raise RuntimeError(
@@ -113,7 +140,6 @@ def run_git_submodule() -> str:
             )
         return result.stdout
     except subprocess.CalledProcessError as e:
-        # This handles errors if the git command itself fails (e.g., not a git repo)
         print(f" Error running git command: {e}", file=sys.stderr)
         print(" Ensure you are in the root of a Git repository.", file=sys.stderr)
         sys.exit(1)
@@ -138,17 +164,16 @@ def parse_git_submodules(git_output: str) -> List[str]:
     return names
 
 
-def get_packages_from_git_submodules() -> List[str]:
+def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
     """
     Retrieves a sorted list of submodule names from the Git repository.
     """
-    print(f"--- Getting submodule names from {SLFO_GIT_REPOSITORY_DIRECTORY} ---")
+    print(f"--- Getting submodule names from {slfo_git_repo_path} ---")
     submodule_names: List[str] = []
     try:
-        raw: str = run_git_submodule()
+        raw: str = run_git_submodule(slfo_git_repo_path)
     except RuntimeError as err:
         print(f"{err}", file=sys.stderr)
-        # Return an empty list if there's an error, to allow the rest of the script to proceed
         return []
 
     submodule_names = parse_git_submodules(raw)
@@ -263,8 +288,6 @@ def get_binary_data_from_repo_metadata() -> List[Tuple[str, str, Optional[str]]]
 
 def find_binaries_in_productcompose(data: Any, packages_set: Set[str]) -> None:
     """Recursively search for 'binaries' keys in YAML data."""
-    # This function recursively searches for 'packages' keys in the given YAML data
-    # and adds the package names to the provided set.
     if isinstance(data, dict):
         for key, value in data.items():
             if key == "packages" and isinstance(value, list):
@@ -280,14 +303,16 @@ def find_binaries_in_productcompose(data: Any, packages_set: Set[str]) -> None:
             find_binaries_in_productcompose(item, packages_set)
 
 
-def get_binaries_from_productcompose() -> Optional[Set[str]]:
+def get_binaries_from_productcompose(
+    productcompose_file: str,
+) -> Optional[Set[str]]:
     """
-    Parses the default.productcompose file and returns a unique set of binary names.
+    Parses the productcompose file and returns a unique set of binary names.
     """
     binaries: Set[str] = set()
-    print(f"--- Parsing binaries from {PRODUCTCOMPOSE_FILE} ---")
+    print(f"--- Parsing binaries from {productcompose_file} ---")
     try:
-        with open(PRODUCTCOMPOSE_FILE, "r") as f:
+        with open(productcompose_file, "r") as f:
             content: str = f.read()
 
         marker: str = "#  ### AUTOMATICALLY GENERATED, DO NOT EDIT ###"
@@ -306,12 +331,10 @@ def get_binaries_from_productcompose() -> Optional[Set[str]]:
                 find_binaries_in_productcompose(doc, binaries)
 
     except FileNotFoundError:
-        print(
-            f"Error: The file '{PRODUCTCOMPOSE_FILE}' was not found.", file=sys.stderr
-        )
+        print(f"Error: The file '{productcompose_file}' was not found.", file=sys.stderr)
         return None
     except yaml.YAMLError as e:
-        print(f"Error parsing YAML in '{PRODUCTCOMPOSE_FILE}': {e}", file=sys.stderr)
+        print(f"Error parsing YAML in '{productcompose_file}': {e}", file=sys.stderr)
         return None
 
     print(f"Found {len(binaries)} unique binaries in the productcompose file.")
@@ -355,7 +378,6 @@ def check_invalid_packages(
         item[2] for item in binary_data_list if item[2] is not None
     }
 
-    # load false-positives packages
     remapping: Dict[str, Optional[str]] = {}
     try:
         with open(FALSEPOSITIVES_FILE, "r") as f:
@@ -374,17 +396,15 @@ def check_invalid_packages(
         )
 
     if remapping:
-        # Apply remapping and removal
         print(
             f"--- Updating {len(remapping)} false-positive packages from {FALSEPOSITIVES_FILE} ---"
         )
         processed_package_names: List[str] = []
         for pkg in packages_from_repo:
             remapped_name = remapping.get(pkg, pkg)
-            if remapped_name is not None:  # Only add if not marked for removal
+            if remapped_name is not None:
                 processed_package_names.append(remapped_name)
 
-        # Ensure uniqueness after processing and sort
         packages_from_repo = set(processed_package_names)
 
     unknown_packages: Set[str] = packages_from_repo - set(submodule_list)
@@ -397,7 +417,6 @@ def check_invalid_packages(
         f"Found {len(unknown_packages)} unknown packages. Querying OBS in parallel..."
     )
     with ThreadPoolExecutor(max_workers=10) as executor:
-        # Using a dictionary to map futures to package names
         future_to_package = {
             executor.submit(get_source_package_from_obs, pkg): pkg
             for pkg in unknown_packages
@@ -420,7 +439,6 @@ def check_invalid_packages(
 
     if false_positive_packages:
         print(f"Found {len(false_positive_packages)} false-positives packages.")
-        # Update false-positives file
         remapping.update(false_positive_packages)
         with open(FALSEPOSITIVES_FILE, "w", encoding="utf-8") as f:
             json.dump(remapping, f, indent=4, sort_keys=True)
@@ -439,24 +457,24 @@ def check_invalid_packages(
     return valid_packages
 
 
-def get_maintainer_data() -> Optional[Dict[str, Any]]:
+def get_maintainer_data(maintainership_file: str) -> Optional[Dict[str, Any]]:
     """
     Parses the maintainership file and returns its content.
     """
-    print(f"--- Parsing maintainership from {MAINTAINERSHIP_FILE} ---")
+    print(f"--- Parsing maintainership from {maintainership_file} ---")
     try:
-        with open(MAINTAINERSHIP_FILE, "r") as f:
+        with open(maintainership_file, "r") as f:
             maintainer_data: Dict[str, Any] = json.load(f)
         return maintainer_data
     except FileNotFoundError:
         print(
-            f"Error: Maintainership file not found at '{MAINTAINERSHIP_FILE}'",
+            f"Error: Maintainership file not found at '{maintainership_file}'",
             file=sys.stderr,
         )
         return None
     except json.JSONDecodeError as e:
         print(
-            f"Error: Invalid JSON format in '{MAINTAINERSHIP_FILE}': {e}",
+            f"Error: Invalid JSON format in '{maintainership_file}': {e}",
             file=sys.stderr,
         )
         return None
@@ -467,8 +485,6 @@ def check_orphan_packages(
 ) -> Optional[List[str]]:
     """
     Checks for packages without a listed maintainer.
-    This function checks for packages that do not have a maintainer listed in the
-    maintainership file and returns a list of these orphan packages.
     """
     print("--- Checking for orphan packages ---")
 
@@ -483,8 +499,7 @@ def check_packages_without_submodule(
     submodule_list: List[str], maintainer_data: Dict[str, Any]
 ) -> None:
     """
-    Checks for packages listed in the MAINTAINERSHIP_FILE that do not have an equivalent git submodule.
-    This helps identify packages that might have been removed from submodules but not from maintainership.
+    Checks for packages in maintainership that do not have a git submodule.
     """
     print(
         "--- Checking for packages in maintainership file without equivalent git submodule ---"
@@ -492,7 +507,6 @@ def check_packages_without_submodule(
     packages_in_maintainership: Set[str] = set(maintainer_data.keys())
     submodule_set: Set[str] = set(submodule_list)
 
-    # Find packages in maintainership file that are not in the submodule list
     mismatched_packages: List[str] = sorted(
         list(packages_in_maintainership - submodule_set)
     )
@@ -516,63 +530,84 @@ def main() -> None:
     """
     Main function to run the bugownership checker.
     """
-    # This is the main function that orchestrates the entire bug ownership checking process.
-    # 1. Parse repo metadata
-    binary_data_list: List[Tuple[str, str, Optional[str]]] = (
-        get_binary_data_from_repo_metadata()
-    )
-    if not binary_data_list:
+    slfo_repo_info = GIT_REPOSITORIES.get("SLFO", {})
+    sles_repo_info = GIT_REPOSITORIES.get("SLES", {})
+
+    if not slfo_repo_info.get("url") or not sles_repo_info.get("url"):
         print(
-            "Could not gather any package data from XML files. Aborting.",
+            "Error: Git repository URL for SLFO or SLES not found in the configuration file.",
             file=sys.stderr,
         )
         return
 
-    # 2. Parse productcompose
-    binary_set_from_compose: Optional[Set[str]] = get_binaries_from_productcompose()
-    if binary_set_from_compose is None:
-        return
+    with clone_repository(
+        slfo_repo_info["url"], slfo_repo_info.get("branch", "main")
+    ) as slfo_repo_path, clone_repository(
+        sles_repo_info["url"], sles_repo_info.get("branch", "main")
+    ) as sles_repo_path:
+        if not slfo_repo_path or not sles_repo_path:
+            print("Failed to clone one or more repositories. Aborting.", file=sys.stderr)
+            return
 
-    # 3. Parse git submodule
-    submodule_list: List[str] = get_packages_from_git_submodules()
-    if not submodule_list:
-        print(
-            "Could not gather any package data from git submodules. Aborting.",
-            file=sys.stderr,
+        maintainership_file = os.path.join(slfo_repo_path, "_maintainership.json")
+        productcompose_file = os.path.join(
+            sles_repo_path, "000productcompose/default.productcompose"
         )
-        return
 
-    # 4. Check for binaries not shipped
-    check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
+        binary_data_list: List[Tuple[str, str, Optional[str]]] = (
+            get_binary_data_from_repo_metadata()
+        )
+        if not binary_data_list:
+            print(
+                "Could not gather any package data from XML files. Aborting.",
+                file=sys.stderr,
+            )
+            return
 
-    # 5. Parse maintainership data
-    maintainer_data: Optional[Dict[str, Any]] = get_maintainer_data()
-    if maintainer_data is None:
-        return
+        binary_set_from_compose: Optional[Set[str]] = get_binaries_from_productcompose(
+            productcompose_file
+        )
+        if binary_set_from_compose is None:
+            return
 
-    # 6. Check for maintainership packages without submodules
-    check_packages_without_submodule(submodule_list, maintainer_data)
+        submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
+        if not submodule_list:
+            print(
+                "Could not gather any package data from git submodules. Aborting.",
+                file=sys.stderr,
+            )
+            return
 
-    # 7. Check for invalid packages
-    valid_packages: Optional[Set[str]] = check_invalid_packages(
-        binary_data_list, submodule_list
-    )
-    if valid_packages is None:
-        print("No valid packages found. Aborting.", file=sys.stderr)
-        return
+        check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
 
-    # 8. Check for orphan packages
-    orphan_packages: Optional[List[str]] = check_orphan_packages(
-        valid_packages, maintainer_data
-    )
-    if orphan_packages is not None:
-        if orphan_packages:
-            print(f"Found {len(orphan_packages)} orphan packages.")
-            with open(OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8") as f:
-                json.dump(orphan_packages, f, indent=4, sort_keys=True)
-            print(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
-        else:
-            print("No orphan packages found.")
+        maintainer_data: Optional[Dict[str, Any]] = get_maintainer_data(
+            maintainership_file
+        )
+        if maintainer_data is None:
+            return
+
+        check_packages_without_submodule(submodule_list, maintainer_data)
+
+        valid_packages: Optional[Set[str]] = check_invalid_packages(
+            binary_data_list, submodule_list
+        )
+        if valid_packages is None:
+            print("No valid packages found. Aborting.", file=sys.stderr)
+            return
+
+        orphan_packages: Optional[List[str]] = check_orphan_packages(
+            valid_packages, maintainer_data
+        )
+        if orphan_packages is not None:
+            if orphan_packages:
+                print(f"Found {len(orphan_packages)} orphan packages.")
+                with open(
+                    OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8"
+                ) as f:
+                    json.dump(orphan_packages, f, indent=4, sort_keys=True)
+                print(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
+            else:
+                print("No orphan packages found.")
 
 
 if __name__ == "__main__":

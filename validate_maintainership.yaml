@@ -24,6 +24,10 @@ output_files:
   orphan_packages: "orphan_packages.json"
   packages_without_submodule: "packages_without_submodule.json"
 
-file_template:
-  maintainership_file: "{SLFO_GIT_REPOSITORY_DIRECTORY}/_maintainership.json"
-  productcompose_file: "{SLES_GIT_REPOSITORY_DIRECTORY}/000productcompose/default.productcompose"
+git_repositories:
+  SLFO:
+    url: "gitea@src.suse.de:products/SLFO.git"
+    branch: "slfo-main"
+  SLES:
+    url: "gitea@src.suse.de:products/SLES.git"
+    branch: "16.1"
