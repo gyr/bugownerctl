@@ -439,16 +439,15 @@ def check_invalid_packages(
     return valid_packages
 
 
-def check_orphan_packages(valid_packages: Set[str]) -> Optional[List[str]]:
+def get_maintainer_data() -> Optional[Dict[str, Any]]:
     """
-    Checks for packages without a listed maintainer.
-    This function checks for packages that do not have a maintainer listed in the
-    maintainership file and returns a list of these orphan packages.
+    Parses the maintainership file and returns its content.
     """
-    print("--- Checking for orphan packages ---")
+    print(f"--- Parsing maintainership from {MAINTAINERSHIP_FILE} ---")
     try:
         with open(MAINTAINERSHIP_FILE, "r") as f:
             maintainer_data: Dict[str, Any] = json.load(f)
+        return maintainer_data
     except FileNotFoundError:
         print(
             f"Error: Maintainership file not found at '{MAINTAINERSHIP_FILE}'",
@@ -461,6 +460,17 @@ def check_orphan_packages(valid_packages: Set[str]) -> Optional[List[str]]:
             file=sys.stderr,
         )
         return None
+
+
+def check_orphan_packages(
+    valid_packages: Set[str], maintainer_data: Dict[str, Any]
+) -> Optional[List[str]]:
+    """
+    Checks for packages without a listed maintainer.
+    This function checks for packages that do not have a maintainer listed in the
+    maintainership file and returns a list of these orphan packages.
+    """
+    print("--- Checking for orphan packages ---")
 
     orphan_packages: List[str] = sorted(
         [pkg for pkg in valid_packages if not maintainer_data.get(pkg)]
@@ -469,7 +479,9 @@ def check_orphan_packages(valid_packages: Set[str]) -> Optional[List[str]]:
     return orphan_packages
 
 
-def check_packages_without_submodule(submodule_list: List[str]) -> None:
+def check_packages_without_submodule(
+    submodule_list: List[str], maintainer_data: Dict[str, Any]
+) -> None:
     """
     Checks for packages listed in the MAINTAINERSHIP_FILE that do not have an equivalent git submodule.
     This helps identify packages that might have been removed from submodules but not from maintainership.
@@ -477,25 +489,7 @@ def check_packages_without_submodule(submodule_list: List[str]) -> None:
     print(
         "--- Checking for packages in maintainership file without equivalent git submodule ---"
     )
-    packages_in_maintainership: Set[str] = set()
-    try:
-        with open(MAINTAINERSHIP_FILE, "r") as f:
-            maintainer_data: Dict[str, Any] = json.load(f)
-            # Collect all keys from the maintainer_data as packages in maintainership
-            packages_in_maintainership = set(maintainer_data.keys())
-    except FileNotFoundError:
-        print(
-            f"Error: Maintainership file not found at '{MAINTAINERSHIP_FILE}'",
-            file=sys.stderr,
-        )
-        return
-    except json.JSONDecodeError as e:
-        print(
-            f"Error: Invalid JSON format in '{MAINTAINERSHIP_FILE}': {e}",
-            file=sys.stderr,
-        )
-        return
-
+    packages_in_maintainership: Set[str] = set(maintainer_data.keys())
     submodule_set: Set[str] = set(submodule_list)
 
     # Find packages in maintainership file that are not in the submodule list
@@ -551,10 +545,15 @@ def main() -> None:
     # 4. Check for binaries not shipped
     check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
 
-    # 5. Check for maintainership packages without submodules
-    check_packages_without_submodule(submodule_list)
+    # 5. Parse maintainership data
+    maintainer_data: Optional[Dict[str, Any]] = get_maintainer_data()
+    if maintainer_data is None:
+        return
 
-    # 6. Check for invalid packages
+    # 6. Check for maintainership packages without submodules
+    check_packages_without_submodule(submodule_list, maintainer_data)
+
+    # 7. Check for invalid packages
     valid_packages: Optional[Set[str]] = check_invalid_packages(
         binary_data_list, submodule_list
     )
@@ -562,8 +561,10 @@ def main() -> None:
         print("No valid packages found. Aborting.", file=sys.stderr)
         return
 
-    # 6. Check for orphan packages
-    orphan_packages: Optional[List[str]] = check_orphan_packages(valid_packages)
+    # 8. Check for orphan packages
+    orphan_packages: Optional[List[str]] = check_orphan_packages(
+        valid_packages, maintainer_data
+    )
     if orphan_packages is not None:
         if orphan_packages:
             print(f"Found {len(orphan_packages)} orphan packages.")
