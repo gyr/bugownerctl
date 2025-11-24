@@ -13,11 +13,10 @@ from typing import List, Set, Dict, Tuple, Optional, Any
 import os
 from dotenv import load_dotenv
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-import tempfile
-from contextlib import contextmanager
 
 # --- Configuration ---
 load_dotenv()
+
 
 def load_config(config_file_path: str) -> Dict[str, Any]:
     try:
@@ -34,7 +33,10 @@ def load_config(config_file_path: str) -> Dict[str, Any]:
 
 config = load_config("validate_maintainership.yaml")
 
-BASE_URL = "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{}:/PUBLISH/product/"
+CACHE_DIR = os.path.expanduser(config.get("cache_dir", "~/.cache/bugownership"))
+BASE_URL = (
+    "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{}:/PUBLISH/product/"
+)
 REPOMD_PATH = "repodata/repomd.xml"
 ZST_FILE_PATHS: List[str] = config["zst_file_paths"]
 GIT_REPOSITORIES: Dict[str, Dict[str, str]] = config["git_repositories"]
@@ -82,11 +84,13 @@ def download_file(
 
     try:
         logging.info(f"Downloading {url} to {destination_path}...")
-        requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+        requests.packages.urllib3.disable_warnings(
+            requests.packages.urllib3.exceptions.InsecureRequestWarning
+        )
         response = requests.get(url, stream=True, verify=False)
         response.raise_for_status()  # Raise an exception for bad status codes
 
-        with open(destination_path, 'wb') as f:
+        with open(destination_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
@@ -98,9 +102,8 @@ def download_file(
         logging.error(f"An unexpected error occurred: {e}")
     return None
 
-def get_file_checksum(
-    file_path: str, checksum_type: str = "sha256"
-) -> Optional[str]:
+
+def get_file_checksum(file_path: str, checksum_type: str = "sha256") -> Optional[str]:
     """
     Calculates the checksum of a file.
 
@@ -115,11 +118,12 @@ def get_file_checksum(
         return None
 
     hash_func = hashlib.new(checksum_type)
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         # Read and update hash in chunks of 4K
         for byte_block in iter(lambda: f.read(4096), b""):
             hash_func.update(byte_block)
     return hash_func.hexdigest()
+
 
 def parse_repomd(file_path: str) -> Optional[Dict[str, Any]]:
     """
@@ -135,16 +139,16 @@ def parse_repomd(file_path: str) -> Optional[Dict[str, Any]]:
         tree = etree.parse(file_path)
         root = tree.getroot()
         # The namespace is required to find the elements
-        namespace = {'repo': 'http://linux.duke.edu/metadata/repo'}
+        namespace = {"repo": "http://linux.duke.edu/metadata/repo"}
         data_element = root.find("repo:data[@type='primary']", namespace)
         if data_element is not None:
-            location_element = data_element.find('repo:location', namespace)
-            checksum_element = data_element.find('repo:checksum', namespace)
+            location_element = data_element.find("repo:location", namespace)
+            checksum_element = data_element.find("repo:checksum", namespace)
             if location_element is not None and checksum_element is not None:
                 return {
-                    'href': location_element.get('href'),
-                    'checksum': checksum_element.text,
-                    'checksum_type': checksum_element.get('type')
+                    "href": location_element.get("href"),
+                    "checksum": checksum_element.text,
+                    "checksum_type": checksum_element.get("type"),
                 }
     except etree.ParseError as e:
         logging.error(f"Error parsing XML file: {e}")
@@ -152,40 +156,58 @@ def parse_repomd(file_path: str) -> Optional[Dict[str, Any]]:
         logging.error(f"An unexpected error occurred during parsing: {e}")
     return None
 
-def download_repo_metadata(version: str) -> Optional[str]:
+
+def download_repo_metadata(version: str, cache_dir: str) -> Optional[str]:
     base_url = BASE_URL.format(version)
     repomd_url = os.path.join(base_url, REPOMD_PATH)
-    downloaded_repomd_path = download_file(repomd_url, filename="repomd.xml")
+
+    metadata_cache_dir = os.path.join(cache_dir, "repodata", version)
+
+    downloaded_repomd_path = download_file(
+        repomd_url, destination_folder=metadata_cache_dir, filename="repomd.xml"
+    )
     if downloaded_repomd_path:
         primary_info = parse_repomd(downloaded_repomd_path)
         if primary_info:
-            primary_location_href = primary_info['href']
-            expected_checksum = primary_info['checksum']
-            checksum_type = primary_info['checksum_type']
+            primary_location_href = primary_info["href"]
+            expected_checksum = primary_info["checksum"]
+            checksum_type = primary_info["checksum_type"]
 
-            logging.info(f"Primary data location from repomd.xml: {primary_location_href}")
+            logging.info(
+                f"Primary data location from repomd.xml: {primary_location_href}"
+            )
             logging.info(f"Expected {checksum_type} checksum: {expected_checksum}")
 
             primary_filename = os.path.basename(primary_location_href)
-            downloaded_primary_path = primary_filename
+            primary_file_path_in_cache = os.path.join(
+                metadata_cache_dir, primary_filename
+            )
 
-            existing_checksum = get_file_checksum(downloaded_primary_path, checksum_type)
+            existing_checksum = get_file_checksum(
+                primary_file_path_in_cache, checksum_type
+            )
 
             if existing_checksum == expected_checksum:
-                logging.info(f"File {primary_filename} already exists and checksum matches. Skipping download.")
+                logging.info(
+                    f"File {primary_filename} already exists in cache and checksum matches. Skipping download."
+                )
+                return primary_file_path_in_cache
             else:
                 if existing_checksum is not None:
-                    logging.warning(f"Checksum mismatch for {primary_filename}. Deleting and re-downloading.")
-                    os.remove(downloaded_primary_path)
+                    logging.warning(
+                        f"Checksum mismatch for {primary_filename} in cache. Deleting and re-downloading."
+                    )
+                    os.remove(primary_file_path_in_cache)
 
-                # Construct the full URL for the primary metadata file
                 primary_file_url = os.path.join(base_url, primary_location_href)
                 logging.info(f"Full URL for primary file: {primary_file_url}")
 
-                # Download the primary metadata file
-                downloaded_primary_path = download_file(primary_file_url)
-            return downloaded_primary_path
+                downloaded_primary_path = download_file(
+                    primary_file_url, destination_folder=metadata_cache_dir
+                )
+                return downloaded_primary_path
     return None
+
 
 def parse_primary_xml(file_path: str) -> None:
     """
@@ -197,65 +219,115 @@ def parse_primary_xml(file_path: str) -> None:
     logging.info(f"Parsing {file_path}...")
     package_names = set()
     try:
-        with gzip.open(file_path, 'rb') as f:
+        with gzip.open(file_path, "rb") as f:
             # Use iterparse for memory-efficient parsing of large files
             # The namespace is required to find the elements
-            namespace = {'common': 'http://linux.duke.edu/metadata/common', 'rpm': 'http://linux.duke.edu/metadata/rpm'}
+            namespace = {
+                "common": "http://linux.duke.edu/metadata/common",
+                "rpm": "http://linux.duke.edu/metadata/rpm",
+            }
 
-            for event, elem in etree.iterparse(f, events=('end',)):
-                if event == 'end' and elem.tag == '{http://linux.duke.edu/metadata/common}package':
-                    if elem.get('type') == 'rpm':
-                        arch = elem.find('common:arch', namespace)
-                        if arch is not None and arch.text == 'src':
-                            name = elem.find('common:name', namespace)
+            for event, elem in etree.iterparse(f, events=("end",)):
+                if (
+                    event == "end"
+                    and elem.tag == "{http://linux.duke.edu/metadata/common}package"
+                ):
+                    if elem.get("type") == "rpm":
+                        arch = elem.find("common:arch", namespace)
+                        if arch is not None and arch.text == "src":
+                            name = elem.find("common:name", namespace)
                             if name is not None:
                                 package_names.add(name.text)
                     # Clear the element to free memory
                     elem.clear()
 
         unique_packages = sorted(list(package_names))
-        output_filename = 'src_packages.json'
-        with open(output_filename, 'w') as f_out:
+        output_filename = "src_packages.json"
+        with open(output_filename, "w") as f_out:
             json.dump(unique_packages, f_out, indent=4)
 
-        logging.info(f"Successfully extracted {len(unique_packages)} unique 'src' package names to {output_filename}")
+        logging.info(
+            f"Successfully extracted {len(unique_packages)} unique 'src' package names to {output_filename}"
+        )
 
     except (etree.ParseError, gzip.BadGzipFile) as e:
         logging.error(f"Error parsing or decompressing file: {e}")
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
 
-@contextmanager
-def clone_repository(repo_url: str, branch: str) -> Optional[str]:
+
+def manage_git_repository(repo_url: str, branch: str, cache_dir: str) -> Optional[str]:
     """
-    Clones a Git repository into a temporary directory and provides the path.
-    The temporary directory is automatically cleaned up upon exiting the context.
+    Clones or updates a Git repository in the cache directory.
     """
-    temp_dir = tempfile.TemporaryDirectory()
+    repo_name = os.path.splitext(os.path.basename(repo_url))[0]
+    repo_path = os.path.join(cache_dir, repo_name)
+
     try:
-        logging.info(f"--- Cloning {repo_url} (branch: {branch}) into {temp_dir.name} ---")
-        subprocess.run(
-            [
-                "git",
-                "clone",
-                "--branch",
-                branch,
-                "--depth",
-                "1",
-                "--no-remote-submodules",
-                repo_url,
-                temp_dir.name,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        yield temp_dir.name
+        if not os.path.exists(repo_path):
+            logging.info(
+                f"--- Cloning {repo_url} (branch: {branch}) with --depth 1 and --no-remote-submodules into {repo_path} ---"
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--branch",
+                    branch,
+                    "--depth",
+                    "1",
+                    "--no-remote-submodules",
+                    repo_url,
+                    repo_path,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            logging.info(f"--- Updating repository {repo_path} ---")
+            # Fetch only the latest commit for the specified branch
+            subprocess.run(
+                ["git", "fetch", "--depth=1", "origin", branch],
+                cwd=repo_path,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            # Check current branch
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=repo_path,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            current_branch = result.stdout.strip()
+            if current_branch != branch:
+                logging.info(f"Switching branch from {current_branch} to {branch}")
+                subprocess.run(
+                    ["git", "checkout", branch],
+                    cwd=repo_path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+            # Reset to remote branch state
+            logging.info(f"Updating {repo_path} to latest version of branch {branch}")
+            subprocess.run(
+                ["git", "reset", "--hard", f"origin/{branch}"],
+                cwd=repo_path,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        return repo_path
     except subprocess.CalledProcessError as e:
-        logging.error(f"Error cloning repository {repo_url}: {e.stderr}")
-        yield None
-    finally:
-        temp_dir.cleanup()
+        logging.error(f"Error managing repository {repo_url}: {e.stderr}")
+        return None
 
 
 def get_source_package_from_obs(package: str) -> Optional[str]:
@@ -499,9 +571,7 @@ def get_binaries_from_productcompose(
         if marker in content:
             content_to_parse = content[content.find(marker) :]
         else:
-            logging.warning(
-                f"Marker '{marker}' not found. Parsing the whole file."
-            )
+            logging.warning(f"Marker '{marker}' not found. Parsing the whole file.")
 
         yaml_docs = yaml.safe_load_all(content_to_parse)
         for doc in yaml_docs:
@@ -537,7 +607,9 @@ def check_binaries_not_shipped(
         logging.info(f"Found {len(binaries_not_shipped)} binaries not shipped.")
         with open(OUTPUT_FILES["binaries_not_shipped"], "w", encoding="utf-8") as f:
             json.dump(binaries_not_shipped, f, indent=4, sort_keys=True)
-        logging.info(f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}")
+        logging.info(
+            f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}"
+        )
     else:
         logging.info("No binaries not shipped found.")
 
@@ -608,9 +680,7 @@ def check_invalid_packages(
                 else:
                     invalid_packages.append(package_name)
             except Exception as exc:
-                logging.error(
-                    f"Package '{package_name}' generated an exception: {exc}"
-                )
+                logging.error(f"Package '{package_name}' generated an exception: {exc}")
 
     if false_positive_packages:
         logging.info(f"Found {len(false_positive_packages)} false-positives packages.")
@@ -642,14 +712,10 @@ def get_maintainer_data(maintainership_file: str) -> Optional[Dict[str, Any]]:
             maintainer_data: Dict[str, Any] = json.load(f)
         return maintainer_data
     except FileNotFoundError:
-        logging.error(
-            f"Maintainership file not found at '{maintainership_file}'"
-        )
+        logging.error(f"Maintainership file not found at '{maintainership_file}'")
         return None
     except json.JSONDecodeError as e:
-        logging.error(
-            f"Invalid JSON format in '{maintainership_file}': {e}"
-        )
+        logging.error(f"Invalid JSON format in '{maintainership_file}': {e}")
         return None
 
 
@@ -703,7 +769,9 @@ def main() -> None:
     """
     Main function to run the bugownership checker.
     """
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    logging.info(f"Using cache directory: {CACHE_DIR}")
     slfo_repo_info = GIT_REPOSITORIES.get("SLFO", {})
     sles_repo_info = GIT_REPOSITORIES.get("SLES", {})
 
@@ -713,80 +781,75 @@ def main() -> None:
         )
         return
 
-    with clone_repository(
-        slfo_repo_info["url"], slfo_repo_info.get("branch", "main")
-    ) as slfo_repo_path, clone_repository(
-        sles_repo_info["url"], sles_repo_info.get("branch", "main")
-    ) as sles_repo_path:
-        if not slfo_repo_path or not sles_repo_path:
-            logging.error("Failed to clone one or more repositories. Aborting.")
-            return
+    slfo_repo_path = manage_git_repository(
+        slfo_repo_info["url"], slfo_repo_info.get("branch", "main"), CACHE_DIR
+    )
+    sles_repo_path = manage_git_repository(
+        sles_repo_info["url"], sles_repo_info.get("branch", "main"), CACHE_DIR
+    )
+    if not slfo_repo_path or not sles_repo_path:
+        logging.error("Failed to clone or update one or more repositories. Aborting.")
+        return
 
-        primary_xml_file = download_repo_metadata(sles_repo_info.get("branch"))
-        if not primary_xml_file:
-            logging.error("Failed to download repo metadata. Aborting.")
-            return
+    primary_xml_file = download_repo_metadata(sles_repo_info.get("branch"), CACHE_DIR)
+    if not primary_xml_file:
+        logging.error("Failed to download repo metadata. Aborting.")
+        return
 
-        maintainership_file = os.path.join(slfo_repo_path, "_maintainership.json")
-        productcompose_file = os.path.join(
-            sles_repo_path, "000productcompose/default.productcompose"
+    maintainership_file = os.path.join(slfo_repo_path, "_maintainership.json")
+    productcompose_file = os.path.join(
+        sles_repo_path, "000productcompose/default.productcompose"
+    )
+
+    # src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
+    parse_primary_xml(primary_xml_file)
+
+    binary_data_list: List[Tuple[str, str, Optional[str]]] = (
+        get_binary_data_from_repo_metadata()
+    )
+    if not binary_data_list:
+        logging.error("Could not gather any package data from XML files. Aborting.")
+        return
+
+    if CHECK_BINARIES_NOT_SHIPPED:
+        logging.info("--- Running optional check for binaries not shipped ---")
+        binary_set_from_compose: Optional[Set[str]] = get_binaries_from_productcompose(
+            productcompose_file
         )
+        if binary_set_from_compose is not None:
+            check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
 
-        # src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
-        parse_primary_xml(primary_xml_file)
-
-        binary_data_list: List[Tuple[str, str, Optional[str]]] = (
-            get_binary_data_from_repo_metadata()
+    submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
+    if not submodule_list:
+        logging.error(
+            "Could not gather any package data from git submodules. Aborting."
         )
-        if not binary_data_list:
-            logging.error(
-                "Could not gather any package data from XML files. Aborting."
-            )
-            return
+        return
 
-        if CHECK_BINARIES_NOT_SHIPPED:
-            logging.info("--- Running optional check for binaries not shipped ---")
-            binary_set_from_compose: Optional[
-                Set[str]
-            ] = get_binaries_from_productcompose(productcompose_file)
-            if binary_set_from_compose is not None:
-                check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
+    maintainer_data: Optional[Dict[str, Any]] = get_maintainer_data(maintainership_file)
+    if maintainer_data is None:
+        return
 
-        submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
-        if not submodule_list:
-            logging.error(
-                "Could not gather any package data from git submodules. Aborting."
-            )
-            return
+    check_packages_without_submodule(submodule_list, maintainer_data)
 
-        maintainer_data: Optional[Dict[str, Any]] = get_maintainer_data(
-            maintainership_file
-        )
-        if maintainer_data is None:
-            return
+    valid_packages: Optional[Set[str]] = check_invalid_packages(
+        binary_data_list, submodule_list
+    )
+    if valid_packages is None:
+        logging.error("No valid packages found. Aborting.")
+        return
 
-        check_packages_without_submodule(submodule_list, maintainer_data)
-
-        valid_packages: Optional[Set[str]] = check_invalid_packages(
-            binary_data_list, submodule_list
-        )
-        if valid_packages is None:
-            logging.error("No valid packages found. Aborting.")
-            return
-
-        orphan_packages: Optional[List[str]] = check_orphan_packages(
-            valid_packages, maintainer_data
-        )
-        if orphan_packages is not None:
-            if orphan_packages:
-                logging.info(f"Found {len(orphan_packages)} orphan packages.")
-                with open(
-                    OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8"
-                ) as f:
-                    json.dump(orphan_packages, f, indent=4, sort_keys=True)
-                logging.info(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
-            else:
-                logging.info("No orphan packages found.")
+    orphan_packages: Optional[List[str]] = check_orphan_packages(
+        valid_packages, maintainer_data
+    )
+    if orphan_packages is not None:
+        if orphan_packages:
+            logging.info(f"Found {len(orphan_packages)} orphan packages.")
+            with open(OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8") as f:
+                json.dump(orphan_packages, f, indent=4, sort_keys=True)
+            logging.info(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
+        else:
+            logging.info("No orphan packages found.")
 
 
 if __name__ == "__main__":
