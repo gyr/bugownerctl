@@ -1,9 +1,13 @@
+import logging
+import gzip
 import zstandard as zstd
 from lxml import etree
 import yaml
 import re
+import requests
 import sys
 import json
+import hashlib
 import subprocess
 from typing import List, Set, Dict, Tuple, Optional, Any
 import os
@@ -15,27 +19,23 @@ from contextlib import contextmanager
 # --- Configuration ---
 load_dotenv()
 
-
 def load_config(config_file_path: str) -> Dict[str, Any]:
     try:
         with open(config_file_path, "r") as f:
             config = yaml.safe_load(f)
         return config
     except FileNotFoundError:
-        print(
-            f"Error: Configuration file '{config_file_path}' not found.",
-            file=sys.stderr,
-        )
+        logging.error(f"Configuration file '{config_file_path}' not found.")
         sys.exit(1)
     except yaml.YAMLError as e:
-        print(
-            f"Error: Invalid YAML format in '{config_file_path}': {e}", file=sys.stderr
-        )
+        logging.error(f"Invalid YAML format in '{config_file_path}': {e}")
         sys.exit(1)
 
 
 config = load_config("validate_maintainership.yaml")
 
+BASE_URL = "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{}:/PUBLISH/product/"
+REPOMD_PATH = "repodata/repomd.xml"
 ZST_FILE_PATHS: List[str] = config["zst_file_paths"]
 GIT_REPOSITORIES: Dict[str, Dict[str, str]] = config["git_repositories"]
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
@@ -59,6 +59,172 @@ OUTPUT_FILES: Dict[str, str] = {
 }
 
 
+def download_file(
+    url: str, destination_folder: str = ".", filename: Optional[str] = None
+) -> Optional[str]:
+    """
+    Downloads a file from a given URL to a specified destination folder.
+
+    Args:
+        url (str): The URL of the file to download.
+        destination_folder (str): The folder where the file will be saved.
+                                 Defaults to the current directory.
+        filename (str, optional): The name to save the file as. If None,
+                                  the filename is extracted from the URL.
+    """
+    if not os.path.exists(destination_folder):
+        os.makedirs(destination_folder)
+
+    if filename is None:
+        filename = os.path.basename(url)
+
+    destination_path = os.path.join(destination_folder, filename)
+
+    try:
+        logging.info(f"Downloading {url} to {destination_path}...")
+        requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+        response = requests.get(url, stream=True, verify=False)
+        response.raise_for_status()  # Raise an exception for bad status codes
+
+        with open(destination_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        logging.info(f"Successfully downloaded {filename}")
+        return destination_path
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error downloading the file: {e}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}")
+    return None
+
+def get_file_checksum(
+    file_path: str, checksum_type: str = "sha256"
+) -> Optional[str]:
+    """
+    Calculates the checksum of a file.
+
+    Args:
+        file_path (str): The path to the file.
+        checksum_type (str): The checksum algorithm to use (e.g., 'sha256').
+
+    Returns:
+        str: The hexadecimal checksum of the file, or None if the file doesn't exist.
+    """
+    if not os.path.exists(file_path):
+        return None
+
+    hash_func = hashlib.new(checksum_type)
+    with open(file_path, 'rb') as f:
+        # Read and update hash in chunks of 4K
+        for byte_block in iter(lambda: f.read(4096), b""):
+            hash_func.update(byte_block)
+    return hash_func.hexdigest()
+
+def parse_repomd(file_path: str) -> Optional[Dict[str, Any]]:
+    """
+    Parses a repomd.xml file to find the location and checksum of the primary data.
+
+    Args:
+        file_path (str): The path to the repomd.xml file.
+
+    Returns:
+        dict: A dictionary with 'href', 'checksum', and 'checksum_type', or None if not found.
+    """
+    try:
+        tree = etree.parse(file_path)
+        root = tree.getroot()
+        # The namespace is required to find the elements
+        namespace = {'repo': 'http://linux.duke.edu/metadata/repo'}
+        data_element = root.find("repo:data[@type='primary']", namespace)
+        if data_element is not None:
+            location_element = data_element.find('repo:location', namespace)
+            checksum_element = data_element.find('repo:checksum', namespace)
+            if location_element is not None and checksum_element is not None:
+                return {
+                    'href': location_element.get('href'),
+                    'checksum': checksum_element.text,
+                    'checksum_type': checksum_element.get('type')
+                }
+    except etree.ParseError as e:
+        logging.error(f"Error parsing XML file: {e}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during parsing: {e}")
+    return None
+
+def download_repo_metadata(version: str) -> Optional[str]:
+    base_url = BASE_URL.format(version)
+    repomd_url = os.path.join(base_url, REPOMD_PATH)
+    downloaded_repomd_path = download_file(repomd_url, filename="repomd.xml")
+    if downloaded_repomd_path:
+        primary_info = parse_repomd(downloaded_repomd_path)
+        if primary_info:
+            primary_location_href = primary_info['href']
+            expected_checksum = primary_info['checksum']
+            checksum_type = primary_info['checksum_type']
+
+            logging.info(f"Primary data location from repomd.xml: {primary_location_href}")
+            logging.info(f"Expected {checksum_type} checksum: {expected_checksum}")
+
+            primary_filename = os.path.basename(primary_location_href)
+            downloaded_primary_path = primary_filename
+
+            existing_checksum = get_file_checksum(downloaded_primary_path, checksum_type)
+
+            if existing_checksum == expected_checksum:
+                logging.info(f"File {primary_filename} already exists and checksum matches. Skipping download.")
+            else:
+                if existing_checksum is not None:
+                    logging.warning(f"Checksum mismatch for {primary_filename}. Deleting and re-downloading.")
+                    os.remove(downloaded_primary_path)
+
+                # Construct the full URL for the primary metadata file
+                primary_file_url = os.path.join(base_url, primary_location_href)
+                logging.info(f"Full URL for primary file: {primary_file_url}")
+
+                # Download the primary metadata file
+                downloaded_primary_path = download_file(primary_file_url)
+            return downloaded_primary_path
+    return None
+
+def parse_primary_xml(file_path: str) -> None:
+    """
+    Parses a gzipped primary XML file to extract package names with 'src' architecture.
+
+    Args:
+        file_path (str): The path to the gzipped primary XML file.
+    """
+    logging.info(f"Parsing {file_path}...")
+    package_names = set()
+    try:
+        with gzip.open(file_path, 'rb') as f:
+            # Use iterparse for memory-efficient parsing of large files
+            # The namespace is required to find the elements
+            namespace = {'common': 'http://linux.duke.edu/metadata/common', 'rpm': 'http://linux.duke.edu/metadata/rpm'}
+
+            for event, elem in etree.iterparse(f, events=('end',)):
+                if event == 'end' and elem.tag == '{http://linux.duke.edu/metadata/common}package':
+                    if elem.get('type') == 'rpm':
+                        arch = elem.find('common:arch', namespace)
+                        if arch is not None and arch.text == 'src':
+                            name = elem.find('common:name', namespace)
+                            if name is not None:
+                                package_names.add(name.text)
+                    # Clear the element to free memory
+                    elem.clear()
+
+        unique_packages = sorted(list(package_names))
+        output_filename = 'src_packages.json'
+        with open(output_filename, 'w') as f_out:
+            json.dump(unique_packages, f_out, indent=4)
+
+        logging.info(f"Successfully extracted {len(unique_packages)} unique 'src' package names to {output_filename}")
+
+    except (etree.ParseError, gzip.BadGzipFile) as e:
+        logging.error(f"Error parsing or decompressing file: {e}")
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}")
+
 @contextmanager
 def clone_repository(repo_url: str, branch: str) -> Optional[str]:
     """
@@ -67,7 +233,7 @@ def clone_repository(repo_url: str, branch: str) -> Optional[str]:
     """
     temp_dir = tempfile.TemporaryDirectory()
     try:
-        print(f"--- Cloning {repo_url} (branch: {branch}) into {temp_dir.name} ---")
+        logging.info(f"--- Cloning {repo_url} (branch: {branch}) into {temp_dir.name} ---")
         subprocess.run(
             [
                 "git",
@@ -86,7 +252,7 @@ def clone_repository(repo_url: str, branch: str) -> Optional[str]:
         )
         yield temp_dir.name
     except subprocess.CalledProcessError as e:
-        print(f"Error cloning repository {repo_url}: {e.stderr}", file=sys.stderr)
+        logging.error(f"Error cloning repository {repo_url}: {e.stderr}")
         yield None
     finally:
         temp_dir.cleanup()
@@ -115,7 +281,7 @@ def get_source_package_from_obs(package: str) -> Optional[str]:
         line for line in output.stdout.splitlines() if line.startswith(f"{project} ")
     ]
     if len(filtered_output) == 0:
-        print(f"No source package found for {package} in {project}.")
+        logging.info(f"No source package found for {package} in {project}.")
         return None
     packages: List[str] = []
     for line in filtered_output:
@@ -125,7 +291,7 @@ def get_source_package_from_obs(package: str) -> Optional[str]:
             packages.append(item[0])
     source_package: Set[str] = set(packages)
     if len(source_package) != 1:
-        print(
+        logging.warning(
             "More than 1 source package found for %s in %s: %s",
             package,
             project,
@@ -154,13 +320,12 @@ def run_git_submodule(slfo_git_repo_path: str) -> str:
             )
         return result.stdout
     except subprocess.CalledProcessError as e:
-        print(f" Error running git command: {e}", file=sys.stderr)
-        print(" Ensure you are in the root of a Git repository.", file=sys.stderr)
+        logging.error(f" Error running git command: {e}")
+        logging.error(" Ensure you are in the root of a Git repository.")
         sys.exit(1)
     except FileNotFoundError:
-        print(
-            " Error: 'git' command not found. Ensure Git is installed and in your PATH.",
-            file=sys.stderr,
+        logging.error(
+            " Error: 'git' command not found. Ensure Git is installed and in your PATH."
         )
         sys.exit(1)
 
@@ -182,12 +347,12 @@ def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
     """
     Retrieves a sorted list of submodule names from the Git repository.
     """
-    print(f"--- Getting submodule names from {slfo_git_repo_path} ---")
+    logging.info(f"--- Getting submodule names from {slfo_git_repo_path} ---")
     submodule_names: List[str] = []
     try:
         raw: str = run_git_submodule(slfo_git_repo_path)
     except RuntimeError as err:
-        print(f"{err}", file=sys.stderr)
+        logging.error(f"{err}")
         return []
 
     submodule_names = parse_git_submodules(raw)
@@ -231,7 +396,7 @@ def _parse_zst_file(zst_file: str) -> Set[Tuple[str, str, Optional[str]]]:
     """
     Parses a single .zst file and returns a set of binary data tuples.
     """
-    print(f"--- Parsing binary packages from {zst_file} ---")
+    logging.info(f"--- Parsing binary packages from {zst_file} ---")
     binary_data_set: Set[Tuple[str, str, Optional[str]]] = set()
     try:
         dctx = zstd.ZstdDecompressor()
@@ -261,9 +426,9 @@ def _parse_zst_file(zst_file: str) -> Set[Tuple[str, str, Optional[str]]]:
                         )
                     element.clear()
     except FileNotFoundError:
-        print(f"Error: The file '{zst_file}' was not found.", file=sys.stderr)
+        logging.error(f"Error: The file '{zst_file}' was not found.")
     except Exception as e:
-        print(f"An error occurred while parsing '{zst_file}': {e}", file=sys.stderr)
+        logging.error(f"An error occurred while parsing '{zst_file}': {e}")
     return binary_data_set
 
 
@@ -272,7 +437,7 @@ def get_binary_data_from_repo_metadata() -> List[Tuple[str, str, Optional[str]]]
     Parses repository metadata from .zst files in parallel.
     Returns a sorted list of unique tuples: (binary_name, sourcerpm_filename, package_name)
     """
-    print("--- Parsing repository metadata ---")
+    logging.info("--- Parsing repository metadata ---")
     binary_data_set: Set[Tuple[str, str, Optional[str]]] = set()
 
     with ProcessPoolExecutor() as executor:
@@ -285,7 +450,7 @@ def get_binary_data_from_repo_metadata() -> List[Tuple[str, str, Optional[str]]]
     )
 
     output_json_file: str = OUTPUT_FILES["binary_data_from_repo"]
-    print(f"--- Saving repository metadata to {output_json_file} ---")
+    logging.info(f"--- Saving repository metadata to {output_json_file} ---")
     try:
         binary_data_as_dict_list = [
             {"binary_name": row[0], "source_rpm": row[1], "package_name": row[2]}
@@ -293,9 +458,9 @@ def get_binary_data_from_repo_metadata() -> List[Tuple[str, str, Optional[str]]]
         ]
         with open(output_json_file, "w", encoding="utf-8") as f:
             json.dump(binary_data_as_dict_list, f, indent=4, sort_keys=True)
-        print(f"Successfully saved data to {output_json_file}")
+        logging.info(f"Successfully saved data to {output_json_file}")
     except IOError as e:
-        print(f"Error writing to JSON file: {e}", file=sys.stderr)
+        logging.error(f"Error writing to JSON file: {e}")
 
     return sorted_binary_data
 
@@ -324,7 +489,7 @@ def get_binaries_from_productcompose(
     Parses the productcompose file and returns a unique set of binary names.
     """
     binaries: Set[str] = set()
-    print(f"--- Parsing binaries from {productcompose_file} ---")
+    logging.info(f"--- Parsing binaries from {productcompose_file} ---")
     try:
         with open(productcompose_file, "r") as f:
             content: str = f.read()
@@ -334,9 +499,8 @@ def get_binaries_from_productcompose(
         if marker in content:
             content_to_parse = content[content.find(marker) :]
         else:
-            print(
-                f"Warning: Marker '{marker}' not found. Parsing the whole file.",
-                file=sys.stderr,
+            logging.warning(
+                f"Marker '{marker}' not found. Parsing the whole file."
             )
 
         yaml_docs = yaml.safe_load_all(content_to_parse)
@@ -345,13 +509,13 @@ def get_binaries_from_productcompose(
                 find_binaries_in_productcompose(doc, binaries)
 
     except FileNotFoundError:
-        print(f"Error: The file '{productcompose_file}' was not found.", file=sys.stderr)
+        logging.error(f"Error: The file '{productcompose_file}' was not found.")
         return None
     except yaml.YAMLError as e:
-        print(f"Error parsing YAML in '{productcompose_file}': {e}", file=sys.stderr)
+        logging.error(f"Error parsing YAML in '{productcompose_file}': {e}")
         return None
 
-    print(f"Found {len(binaries)} unique binaries in the productcompose file.")
+    logging.info(f"Found {len(binaries)} unique binaries in the productcompose file.")
     return binaries
 
 
@@ -363,19 +527,19 @@ def check_binaries_not_shipped(
     This function compares the binaries from the productcompose file with the binaries
     from the repository metadata and writes any not shipped binaries to a file.
     """
-    print("--- Checking for binaries not shipped ---")
+    logging.info("--- Checking for binaries not shipped ---")
     binaries_from_repo: Set[str] = {item[0] for item in binary_data_list}
     binaries_not_shipped: List[str] = sorted(
         list(binary_set_from_compose - binaries_from_repo)
     )
 
     if binaries_not_shipped:
-        print(f"Found {len(binaries_not_shipped)} binaries not shipped.")
+        logging.info(f"Found {len(binaries_not_shipped)} binaries not shipped.")
         with open(OUTPUT_FILES["binaries_not_shipped"], "w", encoding="utf-8") as f:
             json.dump(binaries_not_shipped, f, indent=4, sort_keys=True)
-        print(f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}")
+        logging.info(f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}")
     else:
-        print("No binaries not shipped found.")
+        logging.info("No binaries not shipped found.")
 
 
 def check_invalid_packages(
@@ -387,7 +551,7 @@ def check_invalid_packages(
     checks them against a list of false positives, and queries OBS for the source package in parallel.
     Invalid packages are written to a file.
     """
-    print("--- Checking for invalid packages ---")
+    logging.info("--- Checking for invalid packages ---")
     packages_from_repo: Set[str] = {
         item[2] for item in binary_data_list if item[2] is not None
     }
@@ -399,18 +563,16 @@ def check_invalid_packages(
             if file_remapping:
                 remapping.update(file_remapping)
     except FileNotFoundError:
-        print(
-            f"Warning: False positives file not found at '{FALSEPOSITIVES_FILE}'. Using empty remapping.",
-            file=sys.stderr,
+        logging.warning(
+            f"False positives file not found at '{FALSEPOSITIVES_FILE}'. Using empty remapping."
         )
     except json.JSONDecodeError:
-        print(
-            f"Error: Invalid JSON format in '{FALSEPOSITIVES_FILE}'. Using empty remapping.",
-            file=sys.stderr,
+        logging.error(
+            f"Invalid JSON format in '{FALSEPOSITIVES_FILE}'. Using empty remapping."
         )
 
     if remapping:
-        print(
+        logging.info(
             f"--- Updating {len(remapping)} false-positive packages from {FALSEPOSITIVES_FILE} ---"
         )
         processed_package_names: List[str] = []
@@ -427,7 +589,7 @@ def check_invalid_packages(
     invalid_packages: List[str] = []
     false_positive_packages: Dict[str, str] = {}
 
-    print(
+    logging.info(
         f"Found {len(unknown_packages)} unknown packages. Querying OBS in parallel..."
     )
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -446,27 +608,26 @@ def check_invalid_packages(
                 else:
                     invalid_packages.append(package_name)
             except Exception as exc:
-                print(
-                    f"Package '{package_name}' generated an exception: {exc}",
-                    file=sys.stderr,
+                logging.error(
+                    f"Package '{package_name}' generated an exception: {exc}"
                 )
 
     if false_positive_packages:
-        print(f"Found {len(false_positive_packages)} false-positives packages.")
+        logging.info(f"Found {len(false_positive_packages)} false-positives packages.")
         remapping.update(false_positive_packages)
         with open(FALSEPOSITIVES_FILE, "w", encoding="utf-8") as f:
             json.dump(remapping, f, indent=4, sort_keys=True)
-        print(f"Added false-positives packages to {FALSEPOSITIVES_FILE}.")
+        logging.info(f"Added false-positives packages to {FALSEPOSITIVES_FILE}.")
     else:
-        print("No false-positives packages found.")
+        logging.info("No false-positives packages found.")
 
     if invalid_packages:
-        print(f"Found {len(invalid_packages)} invalid packages.")
+        logging.info(f"Found {len(invalid_packages)} invalid packages.")
         with open(OUTPUT_FILES["invalid_packages"], "w", encoding="utf-8") as f:
             json.dump(sorted(invalid_packages), f, indent=4, sort_keys=True)
-        print(f"Saved invalid packages to {OUTPUT_FILES['invalid_packages']}")
+        logging.info(f"Saved invalid packages to {OUTPUT_FILES['invalid_packages']}")
     else:
-        print("No invalid packages found.")
+        logging.info("No invalid packages found.")
 
     return valid_packages
 
@@ -475,21 +636,19 @@ def get_maintainer_data(maintainership_file: str) -> Optional[Dict[str, Any]]:
     """
     Parses the maintainership file and returns its content.
     """
-    print(f"--- Parsing maintainership from {maintainership_file} ---")
+    logging.info(f"--- Parsing maintainership from {maintainership_file} ---")
     try:
         with open(maintainership_file, "r") as f:
             maintainer_data: Dict[str, Any] = json.load(f)
         return maintainer_data
     except FileNotFoundError:
-        print(
-            f"Error: Maintainership file not found at '{maintainership_file}'",
-            file=sys.stderr,
+        logging.error(
+            f"Maintainership file not found at '{maintainership_file}'"
         )
         return None
     except json.JSONDecodeError as e:
-        print(
-            f"Error: Invalid JSON format in '{maintainership_file}': {e}",
-            file=sys.stderr,
+        logging.error(
+            f"Invalid JSON format in '{maintainership_file}': {e}"
         )
         return None
 
@@ -500,7 +659,7 @@ def check_orphan_packages(
     """
     Checks for packages without a listed maintainer.
     """
-    print("--- Checking for orphan packages ---")
+    logging.info("--- Checking for orphan packages ---")
 
     orphan_packages: List[str] = sorted(
         [pkg for pkg in valid_packages if not maintainer_data.get(pkg)]
@@ -515,7 +674,7 @@ def check_packages_without_submodule(
     """
     Checks for packages in maintainership that do not have a git submodule.
     """
-    print(
+    logging.info(
         "--- Checking for packages in maintainership file without equivalent git submodule ---"
     )
     packages_in_maintainership: Set[str] = set(maintainer_data.keys())
@@ -526,16 +685,16 @@ def check_packages_without_submodule(
     )
 
     if mismatched_packages:
-        print(
+        logging.info(
             f"Found {len(mismatched_packages)} packages in maintainership file "
             f"without an equivalent git submodule."
         )
         output_file = OUTPUT_FILES["packages_without_submodule"]
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(mismatched_packages, f, indent=4, sort_keys=True)
-        print(f"Saved packages without submodule to {output_file}")
+        logging.info(f"Saved packages without submodule to {output_file}")
     else:
-        print(
+        logging.info(
             "No packages found in maintainership file without an equivalent git submodule."
         )
 
@@ -544,13 +703,13 @@ def main() -> None:
     """
     Main function to run the bugownership checker.
     """
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     slfo_repo_info = GIT_REPOSITORIES.get("SLFO", {})
     sles_repo_info = GIT_REPOSITORIES.get("SLES", {})
 
     if not slfo_repo_info.get("url") or not sles_repo_info.get("url"):
-        print(
-            "Error: Git repository URL for SLFO or SLES not found in the configuration file.",
-            file=sys.stderr,
+        logging.error(
+            "Git repository URL for SLFO or SLES not found in the configuration file."
         )
         return
 
@@ -560,7 +719,12 @@ def main() -> None:
         sles_repo_info["url"], sles_repo_info.get("branch", "main")
     ) as sles_repo_path:
         if not slfo_repo_path or not sles_repo_path:
-            print("Failed to clone one or more repositories. Aborting.", file=sys.stderr)
+            logging.error("Failed to clone one or more repositories. Aborting.")
+            return
+
+        primary_xml_file = download_repo_metadata(sles_repo_info.get("branch"))
+        if not primary_xml_file:
+            logging.error("Failed to download repo metadata. Aborting.")
             return
 
         maintainership_file = os.path.join(slfo_repo_path, "_maintainership.json")
@@ -568,18 +732,20 @@ def main() -> None:
             sles_repo_path, "000productcompose/default.productcompose"
         )
 
+        # src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
+        parse_primary_xml(primary_xml_file)
+
         binary_data_list: List[Tuple[str, str, Optional[str]]] = (
             get_binary_data_from_repo_metadata()
         )
         if not binary_data_list:
-            print(
-                "Could not gather any package data from XML files. Aborting.",
-                file=sys.stderr,
+            logging.error(
+                "Could not gather any package data from XML files. Aborting."
             )
             return
 
         if CHECK_BINARIES_NOT_SHIPPED:
-            print("--- Running optional check for binaries not shipped ---")
+            logging.info("--- Running optional check for binaries not shipped ---")
             binary_set_from_compose: Optional[
                 Set[str]
             ] = get_binaries_from_productcompose(productcompose_file)
@@ -588,9 +754,8 @@ def main() -> None:
 
         submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
         if not submodule_list:
-            print(
-                "Could not gather any package data from git submodules. Aborting.",
-                file=sys.stderr,
+            logging.error(
+                "Could not gather any package data from git submodules. Aborting."
             )
             return
 
@@ -606,7 +771,7 @@ def main() -> None:
             binary_data_list, submodule_list
         )
         if valid_packages is None:
-            print("No valid packages found. Aborting.", file=sys.stderr)
+            logging.error("No valid packages found. Aborting.")
             return
 
         orphan_packages: Optional[List[str]] = check_orphan_packages(
@@ -614,14 +779,14 @@ def main() -> None:
         )
         if orphan_packages is not None:
             if orphan_packages:
-                print(f"Found {len(orphan_packages)} orphan packages.")
+                logging.info(f"Found {len(orphan_packages)} orphan packages.")
                 with open(
                     OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8"
                 ) as f:
                     json.dump(orphan_packages, f, indent=4, sort_keys=True)
-                print(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
+                logging.info(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
             else:
-                print("No orphan packages found.")
+                logging.info("No orphan packages found.")
 
 
 if __name__ == "__main__":
