@@ -209,7 +209,7 @@ def download_repo_metadata(version: str, cache_dir: str) -> Optional[str]:
     return None
 
 
-def parse_primary_xml(file_path: str) -> None:
+def parse_primary_xml(file_path: str) -> Set[str]:
     """
     Parses a gzipped primary XML file to extract package names with 'src' architecture.
 
@@ -249,11 +249,11 @@ def parse_primary_xml(file_path: str) -> None:
         logging.info(
             f"Successfully extracted {len(unique_packages)} unique 'src' package names to {output_filename}"
         )
-
     except (etree.ParseError, gzip.BadGzipFile) as e:
         logging.error(f"Error parsing or decompressing file: {e}")
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
+    return package_names
 
 
 def manage_git_repository(repo_url: str, branch: str, cache_dir: str) -> Optional[str]:
@@ -615,7 +615,7 @@ def check_binaries_not_shipped(
 
 
 def check_invalid_packages(
-    binary_data_list: List[Tuple[str, str, Optional[str]]], submodule_list: List[str]
+    packages_from_repo: Set[str], submodule_list: List[str]
 ) -> Optional[Set[str]]:
     """
     Checks for packages that are not in the git submodules and not in the false positives file.
@@ -624,9 +624,6 @@ def check_invalid_packages(
     Invalid packages are written to a file.
     """
     logging.info("--- Checking for invalid packages ---")
-    packages_from_repo: Set[str] = {
-        item[2] for item in binary_data_list if item[2] is not None
-    }
 
     remapping: Dict[str, Optional[str]] = {}
     try:
@@ -802,7 +799,10 @@ def main() -> None:
     )
 
     # src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
-    parse_primary_xml(primary_xml_file)
+    src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
+    if not src_package_list:
+        logging.error("Could not gather any source package data from XML files. Aborting.")
+        return
 
     binary_data_list: List[Tuple[str, str, Optional[str]]] = (
         get_binary_data_from_repo_metadata()
@@ -833,7 +833,7 @@ def main() -> None:
     check_packages_without_submodule(submodule_list, maintainer_data)
 
     valid_packages: Optional[Set[str]] = check_invalid_packages(
-        binary_data_list, submodule_list
+        src_package_list, submodule_list
     )
     if valid_packages is None:
         logging.error("No valid packages found. Aborting.")
