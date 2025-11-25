@@ -1,22 +1,17 @@
 import logging
 import gzip
-import zstandard as zstd
 from lxml import etree
 import yaml
-import re
 import requests
 import sys
 import json
 import hashlib
 import subprocess
-from typing import List, Set, Dict, Tuple, Optional, Any
+from typing import List, Set, Dict, Optional, Any
 import os
-from dotenv import load_dotenv
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- Configuration ---
-load_dotenv()
-
 
 def load_config(config_file_path: str) -> Dict[str, Any]:
     try:
@@ -38,10 +33,7 @@ BASE_URL = (
     "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{}:/PUBLISH/product/"
 )
 REPOMD_PATH = "repodata/repomd.xml"
-ZST_FILE_PATHS: List[str] = config["zst_file_paths"]
-GIT_REPOSITORIES: Dict[str, Dict[str, str]] = config["git_repositories"]
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
-CHECK_BINARIES_NOT_SHIPPED: bool = config.get("check_binaries_not_shipped", False)
 DEBUG: bool = config.get("debug", False)
 
 # Namespaces for XML parsing
@@ -53,8 +45,6 @@ COMMON_NS_URI: str = NSMAP["common"]
 
 # Hardcoded output filenames
 OUTPUT_FILES: Dict[str, str] = {
-    "binary_data_from_repo": "binary_data_from_repo.json",
-    "binaries_not_shipped": "binaries_not_shipped.json",
     "missing_packages_in_maintainership": "missing_packages_in_maintainership.json",
     "invalid_packages": "invalid_packages.json",
     "orphan_packages": "orphan_packages.json",
@@ -438,189 +428,6 @@ def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
     return submodule_names
 
 
-def get_package_name_from_repo_metadata(filename: str) -> Optional[str]:
-    """
-    Parses the package name from a source rpm filename.
-    """
-    # 1. Strip extensions first to simplify the pattern matching
-    name_no_suffix: str = re.sub(r"\.(src|nosrc)\.rpm$", "", filename)
-    name_no_suffix = re.sub(r"\.[a-zA-Z0-9_]+$", "", name_no_suffix)
-
-    # 2. Primary Pattern Explanation (Targets the start of the version):
-    # (.*?)  -> Capture group 1 (Package Name). Non-greedy.
-    # -      -> Matches the hyphen that separates Name from Version.
-    # \d+    -> Captures the start of the version (e.g., 2, 6, 31, 20240927, or 17).
-    # [\.+-] -> Requires the number to be immediately followed by a dot, plus sign, or hyphen.
-
-    # We add '+' to the required following characters to handle the '17+359' pattern.
-    match: Optional[re.Match[str]] = re.match(r"(.*?)-\d+[.+-].*", name_no_suffix)
-
-    if match:
-        # Group 1 is the package name.
-        return match.group(1)
-
-    # Fallback: For versions that start with a number but lack a dot or plus/minus (e.g., package-1-release)
-    match_fallback: Optional[re.Match[str]] = re.match(
-        r"(.*?)-\d+(-.*)?$", name_no_suffix
-    )
-    if match_fallback:
-        return match_fallback.group(1)
-
-    return None
-
-
-def _parse_zst_file(zst_file: str) -> Set[Tuple[str, str, Optional[str]]]:
-    """
-    Parses a single .zst file and returns a set of binary data tuples.
-    """
-    logging.info(f"--- Parsing binary packages from {zst_file} ---")
-    binary_data_set: Set[Tuple[str, str, Optional[str]]] = set()
-    try:
-        dctx = zstd.ZstdDecompressor()
-        with open(zst_file, "rb") as compressed_file:
-            with dctx.stream_reader(compressed_file) as xml_stream:
-                context = etree.iterparse(
-                    xml_stream, events=("end",), tag=f"{{{COMMON_NS_URI}}}package"
-                )
-                for _, element in context:
-                    name_element = element.find(f"{{{COMMON_NS_URI}}}name")
-                    sourcerpm_element = element.find(
-                        "common:format/rpm:sourcerpm", namespaces=NSMAP
-                    )
-
-                    if name_element is not None and name_element.text:
-                        binary_name: str = name_element.text
-                        sourcerpm_filename: str = (
-                            sourcerpm_element.text
-                            if sourcerpm_element is not None and sourcerpm_element.text
-                            else "N/A"
-                        )
-                        package_name: Optional[str] = (
-                            get_package_name_from_repo_metadata(sourcerpm_filename)
-                        )
-                        binary_data_set.add(
-                            (binary_name, sourcerpm_filename, package_name)
-                        )
-                    element.clear()
-    except FileNotFoundError:
-        logging.error(f"Error: The file '{zst_file}' was not found.")
-    except Exception as e:
-        logging.error(f"An error occurred while parsing '{zst_file}': {e}")
-    return binary_data_set
-
-
-def get_binary_data_from_repo_metadata() -> List[Tuple[str, str, Optional[str]]]:
-    """
-    Parses repository metadata from .zst files in parallel.
-    Returns a sorted list of unique tuples: (binary_name, sourcerpm_filename, package_name)
-    """
-    logging.info("--- Parsing repository metadata ---")
-    binary_data_set: Set[Tuple[str, str, Optional[str]]] = set()
-
-    with ProcessPoolExecutor() as executor:
-        results = executor.map(_parse_zst_file, ZST_FILE_PATHS)
-        for result in results:
-            binary_data_set.update(result)
-
-    sorted_binary_data: List[Tuple[str, str, Optional[str]]] = sorted(
-        list(binary_data_set)
-    )
-
-    if DEBUG:
-        output_json_file: str = OUTPUT_FILES["binary_data_from_repo"]
-        logging.info(f"--- Saving repository metadata to {output_json_file} ---")
-        try:
-            binary_data_as_dict_list = [
-                {"binary_name": row[0], "source_rpm": row[1], "package_name": row[2]}
-                for row in sorted_binary_data
-            ]
-            with open(output_json_file, "w", encoding="utf-8") as f:
-                json.dump(binary_data_as_dict_list, f, indent=4, sort_keys=True)
-            logging.info(f"Successfully saved data to {output_json_file}")
-        except IOError as e:
-            logging.error(f"Error writing to JSON file: {e}")
-
-    return sorted_binary_data
-
-
-def find_binaries_in_productcompose(data: Any, packages_set: Set[str]) -> None:
-    """Recursively search for 'binaries' keys in YAML data."""
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if key == "packages" and isinstance(value, list):
-                for item in value:
-                    if isinstance(item, str):
-                        match = re.match(r"^\s*([^\s#]+)", item)
-                        if match:
-                            packages_set.add(match.group(1))
-            else:
-                find_binaries_in_productcompose(value, packages_set)
-    elif isinstance(data, list):
-        for item in data:
-            find_binaries_in_productcompose(item, packages_set)
-
-
-def get_binaries_from_productcompose(
-    productcompose_file: str,
-) -> Optional[Set[str]]:
-    """
-    Parses the productcompose file and returns a unique set of binary names.
-    """
-    binaries: Set[str] = set()
-    logging.info(f"--- Parsing binaries from {productcompose_file} ---")
-    try:
-        with open(productcompose_file, "r") as f:
-            content: str = f.read()
-
-        marker: str = "#  ### AUTOMATICALLY GENERATED, DO NOT EDIT ###"
-        content_to_parse: str = content
-        if marker in content:
-            content_to_parse = content[content.find(marker) :]
-        else:
-            logging.warning(f"Marker '{marker}' not found. Parsing the whole file.")
-
-        yaml_docs = yaml.safe_load_all(content_to_parse)
-        for doc in yaml_docs:
-            if doc:
-                find_binaries_in_productcompose(doc, binaries)
-
-    except FileNotFoundError:
-        logging.error(f"Error: The file '{productcompose_file}' was not found.")
-        return None
-    except yaml.YAMLError as e:
-        logging.error(f"Error parsing YAML in '{productcompose_file}': {e}")
-        return None
-
-    logging.info(f"Found {len(binaries)} unique binaries in the productcompose file.")
-    return binaries
-
-
-def check_binaries_not_shipped(
-    binary_data_list: List[Tuple[str, str, Optional[str]]],
-    binary_set_from_compose: Set[str],
-) -> None:
-    """
-    This function compares the binaries from the productcompose file with the binaries
-    from the repository metadata and writes any not shipped binaries to a file.
-    """
-    logging.info("--- Checking for binaries not shipped ---")
-    binaries_from_repo: Set[str] = {item[0] for item in binary_data_list}
-    binaries_not_shipped: List[str] = sorted(
-        list(binary_set_from_compose - binaries_from_repo)
-    )
-
-    if binaries_not_shipped:
-        logging.info(f"Found {len(binaries_not_shipped)} binaries not shipped.")
-        if DEBUG:
-            with open(OUTPUT_FILES["binaries_not_shipped"], "w", encoding="utf-8") as f:
-                json.dump(binaries_not_shipped, f, indent=4, sort_keys=True)
-            logging.info(
-                f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}"
-            )
-    else:
-        logging.info("No binaries not shipped found.")
-
-
 def check_invalid_packages(
     packages_from_repo: Set[str], submodule_list: List[str]
 ) -> Optional[Set[str]]:
@@ -778,54 +585,33 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     os.makedirs(CACHE_DIR, exist_ok=True)
     logging.info(f"Using cache directory: {CACHE_DIR}")
-    slfo_repo_info = GIT_REPOSITORIES.get("SLFO", {})
-    sles_repo_info = GIT_REPOSITORIES.get("SLES", {})
+    slfo_repo_info = config.get("slfo_git_repository", {})
+    sles_version = config.get("sles_version")
 
-    if not slfo_repo_info.get("url") or not sles_repo_info.get("url"):
+    if not slfo_repo_info.get("url") or not sles_version:
         logging.error(
-            "Git repository URL for SLFO or SLES not found in the configuration file."
+            "slfo_git_repository URL not found or sles_version is not set in the configuration file."
         )
         return
 
     slfo_repo_path = manage_git_repository(
         slfo_repo_info["url"], slfo_repo_info.get("branch", "main"), CACHE_DIR
     )
-    sles_repo_path = manage_git_repository(
-        sles_repo_info["url"], sles_repo_info.get("branch", "main"), CACHE_DIR
-    )
-    if not slfo_repo_path or not sles_repo_path:
-        logging.error("Failed to clone or update one or more repositories. Aborting.")
+    if not slfo_repo_path:
+        logging.error("Failed to clone or update SLFO repository. Aborting.")
         return
 
-    primary_xml_file = download_repo_metadata(sles_repo_info.get("branch"), CACHE_DIR)
+    primary_xml_file = download_repo_metadata(sles_version, CACHE_DIR)
     if not primary_xml_file:
         logging.error("Failed to download repo metadata. Aborting.")
         return
 
     maintainership_file = os.path.join(slfo_repo_path, "_maintainership.json")
-    productcompose_file = os.path.join(
-        sles_repo_path, "000productcompose/default.productcompose"
-    )
 
     src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
     if not src_package_list:
         logging.error("Could not gather any source package data from XML files. Aborting.")
         return
-
-    binary_data_list: List[Tuple[str, str, Optional[str]]] = (
-        get_binary_data_from_repo_metadata()
-    )
-    if not binary_data_list:
-        logging.error("Could not gather any package data from XML files. Aborting.")
-        return
-
-    if CHECK_BINARIES_NOT_SHIPPED:
-        logging.info("--- Running optional check for binaries not shipped ---")
-        binary_set_from_compose: Optional[Set[str]] = get_binaries_from_productcompose(
-            productcompose_file
-        )
-        if binary_set_from_compose is not None:
-            check_binaries_not_shipped(binary_data_list, binary_set_from_compose)
 
     submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
     if not submodule_list:
