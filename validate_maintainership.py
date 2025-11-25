@@ -15,6 +15,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def load_config(config_file_path: str) -> Dict[str, Any]:
+    """Loads a YAML configuration file.
+
+    :param config_file_path: The path to the configuration file.
+    :type config_file_path: str
+    :raises FileNotFoundError: If the configuration file is not found.
+    :raises yaml.YAMLError: If the configuration file is not valid YAML.
+    :return: The loaded configuration as a dictionary.
+    :rtype: Dict[str, Any]
+    """
     try:
         with open(config_file_path, "r") as f:
             config = yaml.safe_load(f)
@@ -55,16 +64,20 @@ OUTPUT_FILES: Dict[str, str] = {
 
 def download_file(
     url: str, destination_folder: Union[str, Path] = ".", filename: Optional[str] = None
-) -> Optional[str]:
-    """
-    Downloads a file from a given URL to a specified destination folder.
+) -> str:
+    """Downloads a file from a given URL to a specified destination folder.
 
-    Args:
-        url (str): The URL of the file to download.
-        destination_folder (Union[str, Path]): The folder where the file will be saved.
-                                 Defaults to the current directory.
-        filename (str, optional): The name to save the file as. If None,
-                                  the filename is extracted from the URL.
+    :param url: The URL of the file to download.
+    :type url: str
+    :param destination_folder: The folder where the file will be saved.
+        Defaults to the current directory.
+    :type destination_folder: Union[str, Path]
+    :param filename: The name to save the file as. If None, the filename is
+        extracted from the URL.
+    :type filename: Optional[str]
+    :return: The path to the downloaded file.
+    :rtype: str
+    :raises requests.exceptions.RequestException: If a download error occurs.
     """
     dest_dir = Path(destination_folder)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -99,15 +112,14 @@ def download_file(
 def get_file_checksum(
     file_path: Union[str, Path], checksum_type: str = "sha256"
 ) -> Optional[str]:
-    """
-    Calculates the checksum of a file.
+    """Calculates the checksum of a file.
 
-    Args:
-        file_path (Union[str, Path]): The path to the file.
-        checksum_type (str): The checksum algorithm to use (e.g., 'sha256').
-
-    Returns:
-        str: The hexadecimal checksum of the file, or None if the file doesn't exist.
+    :param file_path: The path to the file.
+    :type file_path: Union[str, Path]
+    :param checksum_type: The checksum algorithm to use (e.g., 'sha256').
+    :type checksum_type: str
+    :return: The hexadecimal checksum of the file, or None if the file doesn't exist.
+    :rtype: Optional[str]
     """
     path = Path(file_path)
     if not path.exists():
@@ -121,15 +133,15 @@ def get_file_checksum(
     return hash_func.hexdigest()
 
 
-def parse_repomd(file_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
-    """
-    Parses a repomd.xml file to find the location and checksum of the primary data.
+def parse_repomd(file_path: Union[str, Path]) -> Optional[Dict[str, str]]:
+    """Parses a repomd.xml file to find the location and checksum of the primary data.
 
-    Args:
-        file_path (Union[str, Path]): The path to the repomd.xml file.
-
-    Returns:
-        dict: A dictionary with 'href', 'checksum', and 'checksum_type', or None if not found.
+    :param file_path: The path to the repomd.xml file.
+    :type file_path: Union[str, Path]
+    :return: A dictionary with 'href', 'checksum', and 'checksum_type',
+        or None if the 'primary' data element is not found.
+    :rtype: Optional[Dict[str, str]]
+    :raises etree.ParseError: If the XML file is malformed.
     """
     try:
         tree = etree.parse(file_path)
@@ -155,6 +167,21 @@ def parse_repomd(file_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
 
 
 def download_repo_metadata(version: str, cache_dir: Path) -> str:
+    """Downloads and verifies the primary repository metadata.
+
+    This function handles downloading the `repomd.xml` file, parsing it to
+    find the primary XML data, and then downloading the primary XML file itself.
+    It uses a cache to avoid re-downloading and verifies file integrity using
+    checksums.
+
+    :param version: The SLES version string (e.g., "16.0").
+    :type version: str
+    :param cache_dir: The root directory for caching downloaded files.
+    :type cache_dir: Path
+    :return: The local path to the downloaded primary XML file.
+    :rtype: str
+    :raises RuntimeError: If downloading or parsing metadata fails.
+    """
     base_url = BASE_URL.format(version)
     repomd_url = urljoin(base_url, REPOMD_PATH)
 
@@ -212,11 +239,13 @@ def download_repo_metadata(version: str, cache_dir: Path) -> str:
 
 
 def parse_primary_xml(file_path: Union[str, Path]) -> Set[str]:
-    """
-    Parses a gzipped primary XML file to extract package names with 'src' architecture.
+    """Parses a gzipped primary XML file to extract 'src' package names.
 
-    Args:
-        file_path (Union[str, Path]): The path to the gzipped primary XML file.
+    :param file_path: The path to the gzipped primary XML file.
+    :type file_path: Union[str, Path]
+    :return: A set of package names with 'src' architecture. Returns an
+        empty set if the file cannot be parsed.
+    :rtype: Set[str]
     """
     logging.info(f"Parsing {file_path}...")
     package_names = set()
@@ -261,8 +290,21 @@ def parse_primary_xml(file_path: Union[str, Path]) -> Set[str]:
 
 
 def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
-    """
-    Clones or updates a Git repository in the cache directory.
+    """Clones or updates a Git repository in the cache directory.
+
+    If the repository does not exist, it's cloned with --depth 1. If it
+    exists, it's fetched and reset to the latest commit of the specified
+    branch.
+
+    :param repo_url: The URL of the Git repository.
+    :type repo_url: str
+    :param branch: The branch to checkout.
+    :type branch: str
+    :param cache_dir: The root directory for caching the repository.
+    :type cache_dir: Path
+    :return: The local path to the managed repository.
+    :rtype: str
+    :raises RuntimeError: If any Git command fails.
     """
     repo_name = Path(repo_url).stem
     repo_path = cache_dir / repo_name
@@ -337,15 +379,16 @@ def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
 
 
 def get_source_package_from_obs(package: str) -> Optional[str]:
-    """
-    Get the source package from OBS.
-    This function takes a package name, queries OBS to find its source package,
-    and returns the source package name.
+    """Gets the source package from OBS for a given binary package.
 
-    :param api_url: OBS instance
-    :param project: OBS project
-    :param package: binary name
-    :return: source package
+    This function queries the SUSE OBS instance to find the corresponding
+    source package for a given binary package name within the
+    'SUSE:SLFO:Main' project.
+
+    :param package: The name of the binary package.
+    :type package: str
+    :return: The name of the source package, or None if not found.
+    :rtype: Optional[str]
     """
     project: str = "SUSE:SLFO:Main"
     command: str = f"osc -A https://api.suse.de bse {package}"
@@ -379,9 +422,13 @@ def get_source_package_from_obs(package: str) -> Optional[str]:
 
 
 def run_git_submodule(slfo_git_repo_path: str) -> str:
-    """
-    Execute `git submodule status` in the given directory.
-    Returns the command's stdout.
+    """Executes `git submodule status` in the given directory.
+
+    :param slfo_git_repo_path: The local path to the git repository.
+    :type slfo_git_repo_path: str
+    :return: The standard output of the `git submodule status` command.
+    :rtype: str
+    :raises RuntimeError: If the git command fails or 'git' is not found.
     """
     try:
         result: subprocess.CompletedProcess = subprocess.run(
@@ -411,9 +458,12 @@ def run_git_submodule(slfo_git_repo_path: str) -> str:
 
 
 def parse_git_submodules(git_output: str) -> List[str]:
-    """
-    This function parses the output of `git submodule status` and extracts the
-    submodule names.
+    """Parses the output of `git submodule status` to extract submodule names.
+
+    :param git_output: The raw string output from the git command.
+    :type git_output: str
+    :return: A list of submodule names.
+    :rtype: List[str]
     """
     names: List[str] = []
     for line in git_output.splitlines():
@@ -424,8 +474,15 @@ def parse_git_submodules(git_output: str) -> List[str]:
 
 
 def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
-    """
-    Retrieves a sorted list of submodule names from the Git repository.
+    """Retrieves a sorted list of submodule names from the Git repository.
+
+    This function orchestrates running `git submodule status` and parsing
+    the output to get a clean, sorted list of submodule names.
+
+    :param slfo_git_repo_path: The local path to the git repository.
+    :type slfo_git_repo_path: str
+    :return: A sorted list of submodule names.
+    :rtype: List[str]
     """
     logging.info(f"--- Getting submodule names from {slfo_git_repo_path} ---")
     raw: str = run_git_submodule(slfo_git_repo_path)
@@ -438,12 +495,21 @@ def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
 
 def check_invalid_packages(
     packages_from_repo: Set[str], submodule_list: List[str]
-) -> Optional[Set[str]]:
-    """
-    Checks for packages that are not in the git submodules and not in the false positives file.
-    This function identifies packages that are not part of the git submodules,
-    checks them against a list of false positives, and queries OBS for the source package in parallel.
-    Invalid packages are written to a file.
+) -> Set[str]:
+    """Checks for packages from the repo that are not in the git submodules.
+
+    This function identifies packages that are present in the repository
+    metadata but are not declared as git submodules. It consults and updates
+    a false positives file and queries OBS for packages that might be
+    valid but are just mapped differently.
+
+    :param packages_from_repo: A set of source package names from the repo.
+    :type packages_from_repo: Set[str]
+    :param submodule_list: A list of declared git submodule names.
+    :type submodule_list: List[str]
+    :return: A set of packages considered valid after checking. This includes
+        the original valid packages plus any newly validated ones.
+    :rtype: Set[str]
     """
     logging.info("--- Checking for invalid packages ---")
 
@@ -525,8 +591,14 @@ def check_invalid_packages(
 
 
 def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, Any]:
-    """
-    Parses the maintainership file and returns its content.
+    """Parses the JSON maintainership file and returns its content.
+
+    :param maintainership_file: The path to the _maintainership.json file.
+    :type maintainership_file: Union[str, Path]
+    :return: The content of the JSON file as a dictionary.
+    :rtype: Dict[str, Any]
+    :raises FileNotFoundError: If the maintainership file is not found.
+    :raises json.JSONDecodeError: If the file is not valid JSON.
     """
     logging.info(f"--- Parsing maintainership from {maintainership_file} ---")
     try:
@@ -543,9 +615,15 @@ def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, Any]
 
 def check_orphan_packages(
     valid_packages: Set[str], maintainer_data: Dict[str, Any]
-) -> Optional[List[str]]:
-    """
-    Checks for packages without a listed maintainer.
+) -> List[str]:
+    """Checks for valid packages that do not have a listed maintainer.
+
+    :param valid_packages: A set of package names considered valid.
+    :type valid_packages: Set[str]
+    :param maintainer_data: The maintainership data dictionary.
+    :type maintainer_data: Dict[str, Any]
+    :return: A sorted list of orphan packages.
+    :rtype: List[str]
     """
     logging.info("--- Checking for orphan packages ---")
 
@@ -559,8 +637,12 @@ def check_orphan_packages(
 def check_packages_without_submodule(
     submodule_list: List[str], maintainer_data: Dict[str, Any]
 ) -> None:
-    """
-    Checks for packages in maintainership that do not have a git submodule.
+    """Checks for packages in the maintainership file that are not git submodules.
+
+    :param submodule_list: A list of declared git submodule names.
+    :type submodule_list: List[str]
+    :param maintainer_data: The maintainership data dictionary.
+    :type maintainer_data: Dict[str, Any]
     """
     logging.info(
         "--- Checking for packages in maintainership file without equivalent git submodule ---"
@@ -589,8 +671,11 @@ def check_packages_without_submodule(
 
 
 def main() -> None:
-    """
-    Main function to run the bugownership checker.
+    """Main function to run the bugownership validation process.
+
+    This function orchestrates the entire validation process, from loading
+    configuration and downloading metadata to checking for invalid, orphan,
+    and mismatched packages.
     """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     CACHE_DIR.mkdir(exist_ok=True)
@@ -619,24 +704,23 @@ def main() -> None:
 
     check_packages_without_submodule(submodule_list, maintainer_data)
 
-    valid_packages: Optional[Set[str]] = check_invalid_packages(
+    valid_packages: Set[str] = check_invalid_packages(
         src_package_list, submodule_list
     )
-    if valid_packages is None:
+    if not valid_packages:
         logging.error("No valid packages found. Aborting.")
         return
 
-    orphan_packages: Optional[List[str]] = check_orphan_packages(
+    orphan_packages: List[str] = check_orphan_packages(
         valid_packages, maintainer_data
     )
-    if orphan_packages is not None:
-        if orphan_packages:
-            logging.info(f"Found {len(orphan_packages)} orphan packages.")
-            with open(OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8") as f:
-                json.dump(orphan_packages, f, indent=4, sort_keys=True)
-            logging.info(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
-        else:
-            logging.info("No orphan packages found.")
+    if orphan_packages:
+        logging.info(f"Found {len(orphan_packages)} orphan packages.")
+        with open(OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8") as f:
+            json.dump(orphan_packages, f, indent=4, sort_keys=True)
+        logging.info(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
+    else:
+        logging.info("No orphan packages found.")
 
 
 if __name__ == "__main__":
