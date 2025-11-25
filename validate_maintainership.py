@@ -46,16 +46,8 @@ REPOMD_PATH = "repodata/repomd.xml"
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
 DEBUG: bool = config.get("debug", False)
 
-# Namespaces for XML parsing
-NSMAP: Dict[str, str] = {
-    "common": "http://linux.duke.edu/metadata/common",
-    "rpm": "http://linux.duke.edu/metadata/rpm",
-}
-COMMON_NS_URI: str = NSMAP["common"]
-
 # Hardcoded output filenames
 OUTPUT_FILES: Dict[str, str] = {
-    "missing_packages_in_maintainership": "missing_packages_in_maintainership.json",
     "invalid_packages": "invalid_packages.json",
     "orphan_packages": "orphan_packages.json",
     "packages_without_submodule": "packages_without_submodule.json",
