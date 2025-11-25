@@ -42,6 +42,7 @@ ZST_FILE_PATHS: List[str] = config["zst_file_paths"]
 GIT_REPOSITORIES: Dict[str, Dict[str, str]] = config["git_repositories"]
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
 CHECK_BINARIES_NOT_SHIPPED: bool = config.get("check_binaries_not_shipped", False)
+DEBUG: bool = config.get("debug", False)
 
 # Namespaces for XML parsing
 NSMAP: Dict[str, str] = {
@@ -242,13 +243,17 @@ def parse_primary_xml(file_path: str) -> Set[str]:
                     elem.clear()
 
         unique_packages = sorted(list(package_names))
-        output_filename = "src_packages.json"
-        with open(output_filename, "w") as f_out:
-            json.dump(unique_packages, f_out, indent=4)
-
         logging.info(
-            f"Successfully extracted {len(unique_packages)} unique 'src' package names to {output_filename}"
+            f"Successfully extracted {len(unique_packages)} unique 'src' package names"
         )
+        if DEBUG:
+            output_filename = "src_packages.json"
+            with open(output_filename, "w") as f_out:
+                json.dump(unique_packages, f_out, indent=4)
+            logging.info(
+                f"Saved 'src' package names to {output_filename}"
+            )
+
     except (etree.ParseError, gzip.BadGzipFile) as e:
         logging.error(f"Error parsing or decompressing file: {e}")
     except Exception as e:
@@ -521,18 +526,19 @@ def get_binary_data_from_repo_metadata() -> List[Tuple[str, str, Optional[str]]]
         list(binary_data_set)
     )
 
-    output_json_file: str = OUTPUT_FILES["binary_data_from_repo"]
-    logging.info(f"--- Saving repository metadata to {output_json_file} ---")
-    try:
-        binary_data_as_dict_list = [
-            {"binary_name": row[0], "source_rpm": row[1], "package_name": row[2]}
-            for row in sorted_binary_data
-        ]
-        with open(output_json_file, "w", encoding="utf-8") as f:
-            json.dump(binary_data_as_dict_list, f, indent=4, sort_keys=True)
-        logging.info(f"Successfully saved data to {output_json_file}")
-    except IOError as e:
-        logging.error(f"Error writing to JSON file: {e}")
+    if DEBUG:
+        output_json_file: str = OUTPUT_FILES["binary_data_from_repo"]
+        logging.info(f"--- Saving repository metadata to {output_json_file} ---")
+        try:
+            binary_data_as_dict_list = [
+                {"binary_name": row[0], "source_rpm": row[1], "package_name": row[2]}
+                for row in sorted_binary_data
+            ]
+            with open(output_json_file, "w", encoding="utf-8") as f:
+                json.dump(binary_data_as_dict_list, f, indent=4, sort_keys=True)
+            logging.info(f"Successfully saved data to {output_json_file}")
+        except IOError as e:
+            logging.error(f"Error writing to JSON file: {e}")
 
     return sorted_binary_data
 
@@ -605,11 +611,12 @@ def check_binaries_not_shipped(
 
     if binaries_not_shipped:
         logging.info(f"Found {len(binaries_not_shipped)} binaries not shipped.")
-        with open(OUTPUT_FILES["binaries_not_shipped"], "w", encoding="utf-8") as f:
-            json.dump(binaries_not_shipped, f, indent=4, sort_keys=True)
-        logging.info(
-            f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}"
-        )
+        if DEBUG:
+            with open(OUTPUT_FILES["binaries_not_shipped"], "w", encoding="utf-8") as f:
+                json.dump(binaries_not_shipped, f, indent=4, sort_keys=True)
+            logging.info(
+                f"Saved binaries not shipped to {OUTPUT_FILES['binaries_not_shipped']}"
+            )
     else:
         logging.info("No binaries not shipped found.")
 
@@ -690,9 +697,10 @@ def check_invalid_packages(
 
     if invalid_packages:
         logging.info(f"Found {len(invalid_packages)} invalid packages.")
-        with open(OUTPUT_FILES["invalid_packages"], "w", encoding="utf-8") as f:
-            json.dump(sorted(invalid_packages), f, indent=4, sort_keys=True)
-        logging.info(f"Saved invalid packages to {OUTPUT_FILES['invalid_packages']}")
+        if DEBUG:
+            with open(OUTPUT_FILES["invalid_packages"], "w", encoding="utf-8") as f:
+                json.dump(sorted(invalid_packages), f, indent=4, sort_keys=True)
+            logging.info(f"Saved invalid packages to {OUTPUT_FILES['invalid_packages']}")
     else:
         logging.info("No invalid packages found.")
 
@@ -752,10 +760,11 @@ def check_packages_without_submodule(
             f"Found {len(mismatched_packages)} packages in maintainership file "
             f"without an equivalent git submodule."
         )
-        output_file = OUTPUT_FILES["packages_without_submodule"]
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(mismatched_packages, f, indent=4, sort_keys=True)
-        logging.info(f"Saved packages without submodule to {output_file}")
+        if DEBUG:
+            output_file = OUTPUT_FILES["packages_without_submodule"]
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(mismatched_packages, f, indent=4, sort_keys=True)
+            logging.info(f"Saved packages without submodule to {output_file}")
     else:
         logging.info(
             "No packages found in maintainership file without an equivalent git submodule."
@@ -798,7 +807,6 @@ def main() -> None:
         sles_repo_path, "000productcompose/default.productcompose"
     )
 
-    # src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
     src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
     if not src_package_list:
         logging.error("Could not gather any source package data from XML files. Aborting.")

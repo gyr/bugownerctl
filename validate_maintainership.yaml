@@ -16,3 +16,4 @@ git_repositories:
     url: gitea@src.suse.de:products/SLES.git
     branch: "16.1"
 false_positives_file: 16.1/false_positives.json
+debug: false
