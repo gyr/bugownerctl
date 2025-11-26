@@ -304,16 +304,15 @@ def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
     try:
         if not repo_path.exists():
             logging.info(
-                f"--- Cloning {repo_url} (branch: {branch}) with --depth 1 and --no-remote-submodules into {repo_path} ---"
+                f"--- Cloning {repo_url} with --depth 1 --no-single-branch and --no-remote-submodules into {repo_path} ---"
             )
             subprocess.run(
                 [
                     "git",
                     "clone",
-                    "--branch",
-                    branch,
                     "--depth",
                     "1",
+                    "--no-single-branch",
                     "--no-remote-submodules",
                     repo_url,
                     str(repo_path),
@@ -322,11 +321,21 @@ def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
                 capture_output=True,
                 text=True,
             )
+            # After cloning, checkout the specific branch required
+            logging.info(f"Checking out branch {branch}")
+            subprocess.run(
+                ["git", "checkout", branch],
+                cwd=str(repo_path),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
         else:
             logging.info(f"--- Updating repository {repo_path} ---")
-            # Fetch only the latest commit for the specified branch
+            # Fetch all branches from origin, but keep it a shallow clone.
+            # --prune removes remote-tracking refs that no longer exist.
             subprocess.run(
-                ["git", "fetch", "--depth=1", "origin", branch],
+                ["git", "fetch", "--depth=1", "--prune", "origin"],
                 cwd=str(repo_path),
                 check=True,
                 capture_output=True,
@@ -650,6 +659,8 @@ def find_maintained_packages_without_submodule(
         "--- Finding maintained packages without equivalent git submodule ---"
     )
     packages_in_maintainership: Set[str] = set(maintainer_data.keys())
+    # Filter out any empty strings that might have come from maintainer_data.keys()
+    packages_in_maintainership = {pkg for pkg in packages_in_maintainership if pkg}
     submodule_set: Set[str] = set(submodule_list)
 
     mismatched_packages: List[str] = sorted(
@@ -720,6 +731,9 @@ def main() -> None:
     orphan_packages: List[str] = check_orphan_packages(shipped_packages, maintainer_data)
     if orphan_packages:
         logging.info(f"Found {len(orphan_packages)} orphan packages.")
+        logging.info("Orphan packages:")
+        for package in sorted(orphan_packages):
+            logging.info(f"- {package}")
         with open(OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8") as f:
             json.dump(orphan_packages, f, indent=4, sort_keys=True)
         logging.info(f"Saved orphan packages to {OUTPUT_FILES['orphan_packages']}")
