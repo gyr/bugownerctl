@@ -10,6 +10,16 @@ from typing import List, Set, Dict, Optional, Any, Union
 from pathlib import Path
 from urllib.parse import urljoin
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from enum import Enum
+
+
+class RefType(Enum):
+    """Enum to represent the type of a git reference."""
+
+    BRANCH = "branch"
+    TAG = "tag"
+    COMMIT = "commit"
+
 
 # --- Configuration ---
 
@@ -281,19 +291,23 @@ def parse_primary_xml(file_path: Union[str, Path]) -> Set[str]:
     return package_names
 
 
-def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
+def manage_git_repository(
+    repo_url: str, git_ref: str, cache_dir: Path, ref_type: RefType
+) -> str:
     """Clones or updates a Git repository in the cache directory.
 
-    If the repository does not exist, it's cloned with --depth 1. If it
-    exists, it's fetched and reset to the latest commit of the specified
-    branch.
+    If the repository does not exist, it's cloned. It then checks out the
+    specified git reference. If the repository exists and the ref is a
+    branch, it's fetched and reset to the latest commit.
 
     :param repo_url: The URL of the Git repository.
     :type repo_url: str
-    :param branch: The branch to checkout.
-    :type branch: str
+    :param git_ref: The branch, tag, or commit to checkout.
+    :type git_ref: str
     :param cache_dir: The root directory for caching the repository.
     :type cache_dir: Path
+    :param ref_type: The type of the git reference.
+    :type ref_type: RefType
     :return: The local path to the managed repository.
     :rtype: str
     :raises RuntimeError: If any Git command fails.
@@ -304,15 +318,12 @@ def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
     try:
         if not repo_path.exists():
             logging.info(
-                f"--- Cloning {repo_url} with --depth 1 --no-single-branch and --no-remote-submodules into {repo_path} ---"
+                f"--- Cloning {repo_url} with --no-remote-submodules into {repo_path} ---"
             )
             subprocess.run(
                 [
                     "git",
                     "clone",
-                    "--depth",
-                    "1",
-                    "--no-single-branch",
                     "--no-remote-submodules",
                     repo_url,
                     str(repo_path),
@@ -321,10 +332,9 @@ def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
                 capture_output=True,
                 text=True,
             )
-            # After cloning, checkout the specific branch required
-            logging.info(f"Checking out branch {branch}")
+            logging.info(f"Checking out {ref_type.value} {git_ref}")
             subprocess.run(
-                ["git", "checkout", branch],
+                ["git", "checkout", git_ref],
                 cwd=str(repo_path),
                 check=True,
                 capture_output=True,
@@ -332,46 +342,56 @@ def manage_git_repository(repo_url: str, branch: str, cache_dir: Path) -> str:
             )
         else:
             logging.info(f"--- Updating repository {repo_path} ---")
-            # Fetch all branches from origin, but keep it a shallow clone.
-            # --prune removes remote-tracking refs that no longer exist.
-            subprocess.run(
-                ["git", "fetch", "--depth=1", "--prune", "origin"],
-                cwd=str(repo_path),
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-
-            # Check current branch
-            result = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                cwd=str(repo_path),
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            current_branch = result.stdout.strip()
-            if current_branch != branch:
-                logging.info(f"Switching branch from {current_branch} to {branch}")
+            if ref_type == RefType.BRANCH:
+                # --prune removes remote-tracking refs that no longer exist.
                 subprocess.run(
-                    ["git", "checkout", branch],
+                    ["git", "fetch", "--prune", "origin"],
                     cwd=str(repo_path),
                     check=True,
                     capture_output=True,
                     text=True,
                 )
 
-            # Reset to remote branch state
-            logging.info(f"Updating {repo_path} to latest version of branch {branch}")
-            subprocess.run(
-                ["git", "reset", "--hard", f"origin/{branch}"],
-                cwd=str(repo_path),
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+                # Check current branch
+                result = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=str(repo_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                current_ref = result.stdout.strip()
+                if current_ref != git_ref:
+                    logging.info(f"Switching from {current_ref} to {git_ref}")
+                    subprocess.run(
+                        ["git", "checkout", git_ref],
+                        cwd=str(repo_path),
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+
+                # Reset to remote branch state
+                logging.info(f"Updating {repo_path} to latest version of branch {git_ref}")
+                subprocess.run(
+                    ["git", "reset", "--hard", f"origin/{git_ref}"],
+                    cwd=str(repo_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            else:
+                logging.info(f"Checking out {ref_type.value} {git_ref}")
+                subprocess.run(
+                    ["git", "checkout", git_ref],
+                    cwd=str(repo_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
 
         return str(repo_path)
+
     except subprocess.CalledProcessError as e:
         logging.error(f"Error managing repository {repo_url}: {e.stderr}")
         raise RuntimeError(
@@ -697,16 +717,49 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     CACHE_DIR.mkdir(exist_ok=True)
     logging.info(f"Using cache directory: {CACHE_DIR}")
-    slfo_repo_info = config.get("slfo_git_repository", {})
+    slfo_git_url = config.get("slfo_git_url")
     sles_version = config.get("sles_version")
+    products = config.get("products", [])
 
-    if not slfo_repo_info.get("url") or not sles_version:
-        raise ValueError(
-            "slfo_git_repository URL not found or sles_version is not set in the configuration file."
+    if not slfo_git_url or not sles_version:
+        logging.error(
+            "slfo_git_url or sles_version is not set in the configuration file."
         )
+        return
+
+    # Find the product configuration for the specified SLES version
+    product_config = None
+    for p in products:
+        if p.get("version") == sles_version:
+            product_config = p
+            break
+
+    if not product_config:
+        logging.error(f"No product configuration found for SLES version: {sles_version}")
+        return
+
+    git_ref: str
+    ref_type: RefType
+    if product_config.get("branch"):
+        git_ref = product_config["branch"]
+        ref_type = RefType.BRANCH
+        logging.info(f"Using git branch: {git_ref}")
+    elif product_config.get("tag"):
+        git_ref = product_config["tag"]
+        ref_type = RefType.TAG
+        logging.info(f"Using git tag: {git_ref}")
+    elif product_config.get("commit"):
+        git_ref = product_config["commit"]
+        ref_type = RefType.COMMIT
+        logging.info(f"Using git commit: {git_ref}")
+    else:
+        logging.error(
+            f"Neither 'branch', 'tag', nor 'commit' is set for product version {sles_version} in the configuration file."
+        )
+        return
 
     slfo_repo_path: str = manage_git_repository(
-        slfo_repo_info["url"], slfo_repo_info.get("branch", "main"), CACHE_DIR
+        slfo_git_url, git_ref, CACHE_DIR, ref_type
     )
 
     primary_xml_file: str = download_repo_metadata(sles_version, CACHE_DIR)
