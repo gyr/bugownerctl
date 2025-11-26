@@ -230,5 +230,5 @@ The script generates and updates several JSON files to report its findings.
 ##### Debug-Only Files
 The following files are only generated if `debug` is set to `true` in `validate_maintainership.yaml`:
 -   `src_packages.json`: A complete list of all unique 'src' package names extracted from the product's repository metadata.
--   `invalid_packages.json`: A list of packages that could not be resolved to a valid git submodule. Created only if invalid packages are found.
--   `packages_without_submodule.json`: A list of packages found in `_maintainership.json` that do not correspond to an active git submodule. Created only if such packages are found.
+-   `shipped_packages_not_in_submodule.json`: A list of packages from the product repository that could not be resolved to a valid git submodule. Created only if such packages are found.
+-   `maintained_packages_without_submodule.json`: A list of maintained packages found in `_maintainership.json` that do not correspond to an active git submodule. Created only if such packages are found.

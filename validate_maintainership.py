@@ -48,9 +48,9 @@ DEBUG: bool = config.get("debug", False)
 
 # Hardcoded output filenames
 OUTPUT_FILES: Dict[str, str] = {
-    "invalid_packages": "invalid_packages.json",
+    "shipped_packages_not_in_submodule": "shipped_packages_not_in_submodule.json",
     "orphan_packages": "orphan_packages.json",
-    "packages_without_submodule": "packages_without_submodule.json",
+    "maintained_packages_without_submodule": "maintained_packages_without_submodule.json",
 }
 
 
@@ -485,10 +485,10 @@ def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
     return submodule_names
 
 
-def check_invalid_packages(
+def find_shipped_packages_without_submodule(
     packages_from_repo: Set[str], submodule_list: List[str]
 ) -> Set[str]:
-    """Checks for packages from the repo that are not in the git submodules.
+    """Checks for shipped packages that are not in the git submodules.
 
     This function identifies packages that are present in the repository
     metadata but are not declared as git submodules. It consults and updates
@@ -503,7 +503,7 @@ def check_invalid_packages(
         the original valid packages plus any newly validated ones.
     :rtype: Set[str]
     """
-    logging.info("--- Checking for invalid packages ---")
+    logging.info("--- Checking for shipped packages not found in git submodules ---")
 
     remapping: Dict[str, Optional[str]] = {}
     try:
@@ -535,7 +535,7 @@ def check_invalid_packages(
     unknown_packages: Set[str] = packages_from_repo - set(submodule_list)
     valid_packages: Set[str] = packages_from_repo - unknown_packages
 
-    invalid_packages: List[str] = []
+    shipped_not_in_submodule: List[str] = []
     false_positive_packages: Dict[str, str] = {}
 
     logging.info(
@@ -555,7 +555,7 @@ def check_invalid_packages(
                     valid_packages.add(obs_package)
                     false_positive_packages[package_name] = obs_package
                 else:
-                    invalid_packages.append(package_name)
+                    shipped_not_in_submodule.append(package_name)
             except Exception as exc:
                 logging.error(f"Package '{package_name}' generated an exception: {exc}")
 
@@ -568,16 +568,26 @@ def check_invalid_packages(
     else:
         logging.info("No false-positives packages found.")
 
-    if invalid_packages:
-        logging.info(f"Found {len(invalid_packages)} invalid packages.")
+    if shipped_not_in_submodule:
+        logging.info(
+            f"Found {len(shipped_not_in_submodule)} shipped packages not found in git submodule."
+        )
+        logging.info("Shipped packages not found in git submodule:")
+        for package in sorted(shipped_not_in_submodule):
+            logging.info(f"- {package}")
         if DEBUG:
-            with open(OUTPUT_FILES["invalid_packages"], "w", encoding="utf-8") as f:
-                json.dump(sorted(invalid_packages), f, indent=4, sort_keys=True)
+            with open(
+                OUTPUT_FILES["shipped_packages_not_in_submodule"], "w", encoding="utf-8"
+            ) as f:
+                json.dump(
+                    sorted(shipped_not_in_submodule), f, indent=4, sort_keys=True
+                )
             logging.info(
-                f"Saved invalid packages to {OUTPUT_FILES['invalid_packages']}"
+                "Saved shipped packages not in submodule to "
+                f"{OUTPUT_FILES['shipped_packages_not_in_submodule']}"
             )
     else:
-        logging.info("No invalid packages found.")
+        logging.info("No shipped packages not found in git submodule were found.")
 
     return valid_packages
 
@@ -606,12 +616,12 @@ def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, Any]
 
 
 def check_orphan_packages(
-    valid_packages: Set[str], maintainer_data: Dict[str, Any]
+    shipped_packages: Set[str], maintainer_data: Dict[str, Any]
 ) -> List[str]:
-    """Checks for valid packages that do not have a listed maintainer.
+    """Checks for shipped packages that do not have a listed maintainer.
 
-    :param valid_packages: A set of package names considered valid.
-    :type valid_packages: Set[str]
+    :param shipped_packages: A set of package names considered shipped.
+    :type shipped_packages: Set[str]
     :param maintainer_data: The maintainership data dictionary.
     :type maintainer_data: Dict[str, Any]
     :return: A sorted list of orphan packages.
@@ -620,16 +630,16 @@ def check_orphan_packages(
     logging.info("--- Checking for orphan packages ---")
 
     orphan_packages: List[str] = sorted(
-        [pkg for pkg in valid_packages if not maintainer_data.get(pkg)]
+        [pkg for pkg in shipped_packages if not maintainer_data.get(pkg)]
     )
 
     return orphan_packages
 
 
-def check_packages_without_submodule(
+def find_maintained_packages_without_submodule(
     submodule_list: List[str], maintainer_data: Dict[str, Any]
 ) -> None:
-    """Checks for packages in the maintainership file that are not git submodules.
+    """Finds maintained packages that are not git submodules.
 
     :param submodule_list: A list of declared git submodule names.
     :type submodule_list: List[str]
@@ -637,7 +647,7 @@ def check_packages_without_submodule(
     :type maintainer_data: Dict[str, Any]
     """
     logging.info(
-        "--- Checking for packages in maintainership file without equivalent git submodule ---"
+        "--- Finding maintained packages without equivalent git submodule ---"
     )
     packages_in_maintainership: Set[str] = set(maintainer_data.keys())
     submodule_set: Set[str] = set(submodule_list)
@@ -648,17 +658,21 @@ def check_packages_without_submodule(
 
     if mismatched_packages:
         logging.info(
-            f"Found {len(mismatched_packages)} packages in maintainership file "
-            f"without an equivalent git submodule."
+            f"Found {len(mismatched_packages)} maintained packages without an equivalent git submodule."
         )
+        logging.info(
+            "Maintained packages without an equivalent git submodule:"
+        )
+        for package in mismatched_packages:
+            logging.info(f"- {package}")
         if DEBUG:
-            output_file = OUTPUT_FILES["packages_without_submodule"]
+            output_file = OUTPUT_FILES["maintained_packages_without_submodule"]
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(mismatched_packages, f, indent=4, sort_keys=True)
-            logging.info(f"Saved packages without submodule to {output_file}")
+            logging.info(f"Saved maintained packages without submodule to {output_file}")
     else:
         logging.info(
-            "No packages found in maintainership file without an equivalent git submodule."
+            "No maintained packages without an equivalent git submodule were found."
         )
 
 
@@ -694,18 +708,16 @@ def main() -> None:
 
     maintainer_data: Dict[str, Any] = get_maintainer_data(maintainership_file)
 
-    check_packages_without_submodule(submodule_list, maintainer_data)
+    find_maintained_packages_without_submodule(submodule_list, maintainer_data)
 
-    valid_packages: Set[str] = check_invalid_packages(
+    shipped_packages: Set[str] = find_shipped_packages_without_submodule(
         src_package_list, submodule_list
     )
-    if not valid_packages:
-        logging.error("No valid packages found. Aborting.")
+    if not shipped_packages:
+        logging.error("No shipped packages found. Aborting.")
         return
 
-    orphan_packages: List[str] = check_orphan_packages(
-        valid_packages, maintainer_data
-    )
+    orphan_packages: List[str] = check_orphan_packages(shipped_packages, maintainer_data)
     if orphan_packages:
         logging.info(f"Found {len(orphan_packages)} orphan packages.")
         with open(OUTPUT_FILES["orphan_packages"], "w", encoding="utf-8") as f:
