@@ -1,4 +1,5 @@
 import logging
+import argparse
 import gzip
 from lxml import etree
 import yaml
@@ -54,7 +55,6 @@ BASE_URL = (
 )
 REPOMD_PATH = "repodata/repomd.xml"
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
-DEBUG: bool = config.get("debug", False)
 
 # Hardcoded output filenames
 OUTPUT_FILES: Dict[str, str] = {
@@ -240,11 +240,13 @@ def download_repo_metadata(version: str, cache_dir: Path) -> str:
         return downloaded_primary_path
 
 
-def parse_primary_xml(file_path: Union[str, Path]) -> Set[str]:
+def parse_primary_xml(file_path: Union[str, Path], debug: bool) -> Set[str]:
     """Parses a gzipped primary XML file to extract 'src' package names.
 
     :param file_path: The path to the gzipped primary XML file.
     :type file_path: Union[str, Path]
+    :param debug: If True, save the extracted package names to a JSON file.
+    :type debug: bool
     :return: A set of package names with 'src' architecture. Returns an
         empty set if the file cannot be parsed.
     :rtype: Set[str]
@@ -278,7 +280,7 @@ def parse_primary_xml(file_path: Union[str, Path]) -> Set[str]:
         logging.info(
             f"Successfully extracted {len(unique_packages)} unique 'src' package names"
         )
-        if DEBUG:
+        if debug:
             output_filename = "src_packages.json"
             with open(output_filename, "w") as f_out:
                 json.dump(unique_packages, f_out, indent=4)
@@ -515,7 +517,7 @@ def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
 
 
 def find_shipped_packages_without_submodule(
-    packages_from_repo: Set[str], submodule_list: List[str]
+    packages_from_repo: Set[str], submodule_list: List[str], debug: bool
 ) -> Set[str]:
     """Checks for shipped packages that are not in the git submodules.
 
@@ -528,6 +530,8 @@ def find_shipped_packages_without_submodule(
     :type packages_from_repo: Set[str]
     :param submodule_list: A list of declared git submodule names.
     :type submodule_list: List[str]
+    :param debug: If True, save the list of packages to a file.
+    :type debug: bool
     :return: A set of packages considered valid after checking. This includes
         the original valid packages plus any newly validated ones.
     :rtype: Set[str]
@@ -604,7 +608,7 @@ def find_shipped_packages_without_submodule(
         logging.info("Shipped packages not found in git submodule:")
         for package in sorted(shipped_not_in_submodule):
             logging.info(f"- {package}")
-        if DEBUG:
+        if debug:
             with open(
                 OUTPUT_FILES["shipped_packages_not_in_submodule"], "w", encoding="utf-8"
             ) as f:
@@ -666,7 +670,7 @@ def check_orphan_packages(
 
 
 def find_maintained_packages_without_submodule(
-    submodule_list: List[str], maintainer_data: Dict[str, Any]
+    submodule_list: List[str], maintainer_data: Dict[str, Any], debug: bool
 ) -> None:
     """Finds maintained packages that are not git submodules.
 
@@ -674,6 +678,8 @@ def find_maintained_packages_without_submodule(
     :type submodule_list: List[str]
     :param maintainer_data: The maintainership data dictionary.
     :type maintainer_data: Dict[str, Any]
+    :param debug: If True, save the list of packages to a file.
+    :type debug: bool
     """
     logging.info(
         "--- Finding maintained packages without equivalent git submodule ---"
@@ -696,7 +702,7 @@ def find_maintained_packages_without_submodule(
         )
         for package in mismatched_packages:
             logging.info(f"- {package}")
-        if DEBUG:
+        if debug:
             output_file = OUTPUT_FILES["maintained_packages_without_submodule"]
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(mismatched_packages, f, indent=4, sort_keys=True)
@@ -714,17 +720,32 @@ def main() -> None:
     configuration and downloading metadata to checking for invalid, orphan,
     and mismatched packages.
     """
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    parser = argparse.ArgumentParser(
+        description="Validate bug ownership and package maintainership."
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        type=str,
+        required=True,
+        help="SLES version to validate (e.g., '16.1').",
+    )
+    parser.add_argument(
+        "-d", "--debug", action="store_true", help="Enable debug logging and output."
+    )
+    args = parser.parse_args()
+
+    sles_version = args.version
+    debug = args.debug
+
+    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO, format="%(levelname)s: %(message)s")
     CACHE_DIR.mkdir(exist_ok=True)
     logging.info(f"Using cache directory: {CACHE_DIR}")
     slfo_git_url = config.get("slfo_git_url")
-    sles_version = config.get("sles_version")
     products = config.get("products", [])
 
-    if not slfo_git_url or not sles_version:
-        logging.error(
-            "slfo_git_url or sles_version is not set in the configuration file."
-        )
+    if not slfo_git_url:
+        logging.error("slfo_git_url is not set in the configuration file.")
         return
 
     # Find the product configuration for the specified SLES version
@@ -766,16 +787,16 @@ def main() -> None:
 
     maintainership_file = Path(slfo_repo_path) / "_maintainership.json"
 
-    src_package_list: Set[str] = parse_primary_xml(primary_xml_file)
+    src_package_list: Set[str] = parse_primary_xml(primary_xml_file, args.debug)
 
     submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
 
     maintainer_data: Dict[str, Any] = get_maintainer_data(maintainership_file)
 
-    find_maintained_packages_without_submodule(submodule_list, maintainer_data)
+    find_maintained_packages_without_submodule(submodule_list, maintainer_data, args.debug)
 
     shipped_packages: Set[str] = find_shipped_packages_without_submodule(
-        src_package_list, submodule_list
+        src_package_list, submodule_list, args.debug
     )
     if not shipped_packages:
         logging.error("No shipped packages found. Aborting.")

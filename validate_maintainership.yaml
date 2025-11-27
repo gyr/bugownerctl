@@ -1,7 +1,5 @@
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
-sles_version: "16.1"
 false_positives_file: false_positives.json
-debug: false
 products:
   - version: "16.0"
     commit: 9d679ed
