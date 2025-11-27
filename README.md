@@ -145,8 +145,9 @@ This script performs a comprehensive validation of package maintainership for a 
 
 Specifically, the script:
 -   Reads configuration from `validate_maintainership.yaml`.
--   Clones/updates the `slfo_git_repository` specified in the config into a cache directory.
--   Downloads SLE product repository metadata (`repomd.xml` and `primary.xml.gz`) for a given `sles_version`.
+-   Determines the correct git branch, tag, or commit to use based on the SLES version provided.
+-   Clones or updates the `slfo_git_url` repository into a cache directory, checking out the specific git reference.
+-   Downloads SLES product repository metadata (`repomd.xml` and `primary.xml.gz`).
 -   Parses the `primary.xml.gz` to get a list of all `src` packages.
 -   Gets the official list of source packages from the git submodules in the cloned SLFO repository.
 -   Compares the packages from the repo metadata against the git submodules.
@@ -157,14 +158,21 @@ Specifically, the script:
 
 #### How to Use
 
-The script is configured via `validate_maintainership.yaml`. It no longer requires local checkouts of the git repositories, as it will clone them automatically.
+The script is now run with command-line arguments to specify the SLES version and to enable debug mode.
 
-1.  **Configure `validate_maintainership.yaml`** to define the git repositories to analyze and the paths to repository metadata.
+```bash
+python3 validate_maintainership.py --version <sles_version> [--debug]
+```
 
-2.  **Run the script** from the root of this repository:
-    ```bash
-    python3 validate_maintainership.py
-    ```
+**Examples:**
+
+```bash
+# Validate version 16.1
+python3 validate_maintainership.py --version 16.1
+
+# Validate version 16.0 and enable debug output
+python3 validate_maintainership.py --version 16.0 --debug
+```
 
 #### Dependencies
 
@@ -196,20 +204,21 @@ The main Python dependencies are:
 
 #### Configuration (`validate_maintainership.yaml`)
 
-The script's behavior is primarily controlled by `validate_maintainership.yaml`. All paths are relative to the script's execution directory unless otherwise specified.
+The script's behavior is primarily controlled by `validate_maintainership.yaml`.
 -   `cache_dir`: (Optional) The base directory where cloned repositories and downloaded metadata will be cached. Defaults to `~/.cache/bugownership`.
--   `slfo_git_repository`: A dictionary defining the Git repository to be cloned.
-    -   `url`: The URL of the Git repository (e.g., `gitea@src.suse.de:products/SLFO.git`).
-    -   `branch`: The branch to checkout. Defaults to `main` if not specified.
-    ```yaml
-    slfo_git_repository:
-      url: gitea@src.suse.de:products/SLFO.git
-      branch: slfo-main
-    ```
--   `sles_version`: The string for the product version to validate (e.g., `"16.1"`). This field is mandatory.
+-   `slfo_git_url`: The URL of the Git repository (e.g., `gitea@src.suse.de:products/SLFO.git`).
 -   `false_positives_file`: (Optional) Path to a JSON file for managing packages that are known to be valid despite not being direct submodules. Defaults to `false_positives.json`.
--   `debug`: (Optional) A boolean flag. If `true`, the script will save extra debug files, such as `src_packages.json`. Defaults to `false`.
+-   `products`: A list that maps a product `version` to a specific git `branch`, `tag`, or `commit`. This is used to determine which state of the repository to check out for a given SLES version.
 
+    ```yaml
+    slfo_git_url: gitea@src.suse.de:products/SLFO.git
+    false_positives_file: false_positives.json
+    products:
+      - version: "16.0"
+        commit: 9d679ed
+      - version: "16.1"
+        branch: slfo-main
+    ```
 
 #### Input Files
 
@@ -228,7 +237,7 @@ The script generates and updates several JSON files to report its findings.
 -   `orphan_packages.json`: A list of valid packages that do not have an entry in `_maintainership.json`. This file is only created if orphan packages are found.
 
 ##### Debug-Only Files
-The following files are only generated if `debug` is set to `true` in `validate_maintainership.yaml`:
+The following files are only generated if the `--debug` or `-d` flag is used when running the script:
 -   `src_packages.json`: A complete list of all unique 'src' package names extracted from the product's repository metadata.
 -   `shipped_packages_not_in_submodule.json`: A list of packages from the product repository that could not be resolved to a valid git submodule. Created only if such packages are found.
 -   `maintained_packages_without_submodule.json`: A list of maintained packages found in `_maintainership.json` that do not correspond to an active git submodule. Created only if such packages are found.
