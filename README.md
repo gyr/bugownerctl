@@ -178,7 +178,7 @@ python3 validate_maintainership.py --version 16.0 --debug
 
 ##### Python Packages
 
-This project uses a `pyproject.toml` file to manage its dependencies. You can install the required Python libraries using `pip`.
+This project's Python dependencies are listed in `requirements.txt`. You can install them using `pip`.
 
 It is highly recommended to use a virtual environment:
 ```bash
@@ -186,8 +186,8 @@ It is highly recommended to use a virtual environment:
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Install the project and its dependencies
-pip install .
+# Install dependencies
+pip install -r requirements.txt
 ```
 The main Python dependencies are:
 -   `lxml`
