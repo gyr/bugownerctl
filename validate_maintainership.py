@@ -374,7 +374,9 @@ def manage_git_repository(
                     )
 
                 # Reset to remote branch state
-                logging.info(f"Updating {repo_path} to latest version of branch {git_ref}")
+                logging.info(
+                    f"Updating {repo_path} to latest version of branch {git_ref}"
+                )
                 subprocess.run(
                     ["git", "reset", "--hard", f"origin/{git_ref}"],
                     cwd=str(repo_path),
@@ -612,9 +614,7 @@ def find_shipped_packages_without_submodule(
             with open(
                 OUTPUT_FILES["shipped_packages_not_in_submodule"], "w", encoding="utf-8"
             ) as f:
-                json.dump(
-                    sorted(shipped_not_in_submodule), f, indent=4, sort_keys=True
-                )
+                json.dump(sorted(shipped_not_in_submodule), f, indent=4, sort_keys=True)
             logging.info(
                 "Saved shipped packages not in submodule to "
                 f"{OUTPUT_FILES['shipped_packages_not_in_submodule']}"
@@ -625,20 +625,35 @@ def find_shipped_packages_without_submodule(
     return valid_packages
 
 
-def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, Any]:
-    """Parses the JSON maintainership file and returns its content.
+def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, List[str]]:
+    """Parses the JSON maintainership file and returns normalized content.
+
+    Expects new format with "packages" key containing package objects.
+    Returns normalized format: {"package": ["maintainer1", "maintainer2"]}
 
     :param maintainership_file: The path to the _maintainership.json file.
     :type maintainership_file: Union[str, Path]
-    :return: The content of the JSON file as a dictionary.
-    :rtype: Dict[str, Any]
+    :return: The normalized maintainer data as a dictionary.
+    :rtype: Dict[str, List[str]]
     :raises FileNotFoundError: If the maintainership file is not found.
     :raises json.JSONDecodeError: If the file is not valid JSON.
+    :raises KeyError: If the file does not contain the expected 'packages' key.
     """
     logging.info(f"--- Parsing maintainership from {maintainership_file} ---")
     try:
         with open(maintainership_file, "r") as f:
-            maintainer_data: Dict[str, Any] = json.load(f)
+            raw_data: Dict[str, Any] = json.load(f)
+
+        # Extract packages from new format
+        packages_data = raw_data.get("packages", {})
+
+        # Normalize: merge users and groups into single list
+        maintainer_data: Dict[str, List[str]] = {}
+        for pkg, maintainers in packages_data.items():
+            users = maintainers.get("users", [])
+            groups = maintainers.get("groups", [])
+            maintainer_data[pkg] = users + groups
+
         return maintainer_data
     except FileNotFoundError:
         logging.error(f"Maintainership file not found at '{maintainership_file}'")
@@ -646,17 +661,20 @@ def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, Any]
     except json.JSONDecodeError as e:
         logging.error(f"Invalid JSON format in '{maintainership_file}': {e}")
         raise
+    except KeyError as e:
+        logging.error(f"Missing expected key in '{maintainership_file}': {e}")
+        raise
 
 
 def check_orphan_packages(
-    shipped_packages: Set[str], maintainer_data: Dict[str, Any]
+    shipped_packages: Set[str], maintainer_data: Dict[str, List[str]]
 ) -> List[str]:
     """Checks for shipped packages that do not have a listed maintainer.
 
     :param shipped_packages: A set of package names considered shipped.
     :type shipped_packages: Set[str]
     :param maintainer_data: The maintainership data dictionary.
-    :type maintainer_data: Dict[str, Any]
+    :type maintainer_data: Dict[str, List[str]]
     :return: A sorted list of orphan packages.
     :rtype: List[str]
     """
@@ -670,20 +688,18 @@ def check_orphan_packages(
 
 
 def find_maintained_packages_without_submodule(
-    submodule_list: List[str], maintainer_data: Dict[str, Any], debug: bool
+    submodule_list: List[str], maintainer_data: Dict[str, List[str]], debug: bool
 ) -> None:
     """Finds maintained packages that are not git submodules.
 
     :param submodule_list: A list of declared git submodule names.
     :type submodule_list: List[str]
     :param maintainer_data: The maintainership data dictionary.
-    :type maintainer_data: Dict[str, Any]
+    :type maintainer_data: Dict[str, List[str]]
     :param debug: If True, save the list of packages to a file.
     :type debug: bool
     """
-    logging.info(
-        "--- Finding maintained packages without equivalent git submodule ---"
-    )
+    logging.info("--- Finding maintained packages without equivalent git submodule ---")
     packages_in_maintainership: Set[str] = set(maintainer_data.keys())
     # Filter out any empty strings that might have come from maintainer_data.keys()
     packages_in_maintainership = {pkg for pkg in packages_in_maintainership if pkg}
@@ -697,16 +713,16 @@ def find_maintained_packages_without_submodule(
         logging.info(
             f"Found {len(mismatched_packages)} maintained packages without an equivalent git submodule."
         )
-        logging.info(
-            "Maintained packages without an equivalent git submodule:"
-        )
+        logging.info("Maintained packages without an equivalent git submodule:")
         for package in mismatched_packages:
             logging.info(f"- {package}")
         if debug:
             output_file = OUTPUT_FILES["maintained_packages_without_submodule"]
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(mismatched_packages, f, indent=4, sort_keys=True)
-            logging.info(f"Saved maintained packages without submodule to {output_file}")
+            logging.info(
+                f"Saved maintained packages without submodule to {output_file}"
+            )
     else:
         logging.info(
             "No maintained packages without an equivalent git submodule were found."
@@ -738,7 +754,10 @@ def main() -> None:
     sles_version = args.version
     debug = args.debug
 
-    logging.basicConfig(level=logging.DEBUG if debug else logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(
+        level=logging.DEBUG if debug else logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
     CACHE_DIR.mkdir(exist_ok=True)
     logging.info(f"Using cache directory: {CACHE_DIR}")
     slfo_git_url = config.get("slfo_git_url")
@@ -756,7 +775,9 @@ def main() -> None:
             break
 
     if not product_config:
-        logging.error(f"No product configuration found for SLES version: {sles_version}")
+        logging.error(
+            f"No product configuration found for SLES version: {sles_version}"
+        )
         return
 
     git_ref: str
@@ -791,9 +812,11 @@ def main() -> None:
 
     submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
 
-    maintainer_data: Dict[str, Any] = get_maintainer_data(maintainership_file)
+    maintainer_data: Dict[str, List[str]] = get_maintainer_data(maintainership_file)
 
-    find_maintained_packages_without_submodule(submodule_list, maintainer_data, args.debug)
+    find_maintained_packages_without_submodule(
+        submodule_list, maintainer_data, args.debug
+    )
 
     shipped_packages: Set[str] = find_shipped_packages_without_submodule(
         src_package_list, submodule_list, args.debug
@@ -802,7 +825,9 @@ def main() -> None:
         logging.error("No shipped packages found. Aborting.")
         return
 
-    orphan_packages: List[str] = check_orphan_packages(shipped_packages, maintainer_data)
+    orphan_packages: List[str] = check_orphan_packages(
+        shipped_packages, maintainer_data
+    )
     if orphan_packages:
         logging.info(f"Found {len(orphan_packages)} orphan packages.")
         logging.info("Orphan packages:")
