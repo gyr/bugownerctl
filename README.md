@@ -226,7 +226,22 @@ The script's behavior is primarily controlled by `validate_maintainership.yaml`.
 -   `false_positives.json`: A JSON file containing a mapping of known package name corrections. The script reads this file at startup to avoid re-querying OBS for known discrepancies.
 
 The following file is accessed automatically from the cloned `slfo_git_repository`:
--   `_maintainership.json`: The primary JSON file listing packages and their maintainers.
+-   `_maintainership.json`: The primary JSON file listing packages and their maintainers. Expected format:
+    ```json
+    {
+      "header": {
+        "document": "obs-maintainers",
+        "version": "1.0"
+      },
+      "packages": {
+        "package-name": {
+          "users": ["user1", "user2"],
+          "groups": ["group1"]
+        }
+      }
+    }
+    ```
+    The script processes both `users` and `groups` as maintainers for each package.
 
 #### Output Files
 
