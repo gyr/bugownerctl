@@ -71,16 +71,60 @@ class TestListSubmodules:
 class TestCloneOrUpdate:
     """Tests for GitRepository.clone_or_update()."""
 
+    def test_accepts_valid_ssh_urls(self) -> None:
+        """Should accept valid SSH URL formats."""
+        repo = GitRepositoryImpl()
+
+        valid_ssh_urls = [
+            "git@github.com:user/repo.git",
+            "git@src.suse.de:products/SLFO.git",
+            "user@host.com:path/to/repo.git",
+            "git@gitlab.com:group/subgroup/repo.git",
+        ]
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.mkdir"),
+        ):
+            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+            for ssh_url in valid_ssh_urls:
+                # Should not raise ValueError
+                result = repo.clone_or_update(ssh_url, "main", Path("/cache"), RefType.BRANCH)
+                assert isinstance(result, Path)
+
+    def test_rejects_ssh_url_with_port_syntax(self) -> None:
+        """Should reject SSH URLs with port between host and path."""
+        repo = GitRepositoryImpl()
+
+        # SCP-style SSH URLs (user@host:path) don't support port syntax
+        # Port between host and path is invalid: user@host:PORT:path
+        # Valid SSH with port requires ssh:// scheme: ssh://user@host:port/path
+        invalid_ssh_urls_with_port = [
+            "git@github.com:22:user/repo.git",
+            "git@gitlab.com:443:group/repo.git",
+            "user@host.com:8080:path/repo.git",
+        ]
+
+        # No mocks needed - validation should fail before filesystem/subprocess
+        for invalid_url in invalid_ssh_urls_with_port:
+            with pytest.raises(ValueError, match="Invalid repository URL format"):
+                repo.clone_or_update(invalid_url, "main", Path("/cache"), RefType.BRANCH)
+
     def test_rejects_invalid_url_format(self) -> None:
         """Should raise ValueError for invalid URL formats."""
         repo = GitRepositoryImpl()
 
         invalid_urls = [
             "not-a-url",
-            "git@github.com:user/repo.git",  # SSH not supported
             "https://github.com/repo",  # Missing .git
             "ftp://example.com/repo.git",  # Not HTTP/HTTPS
             "https://example.com/repo.git; rm -rf /",  # Command injection attempt
+            "git@github.com",  # SSH missing path
+            "git@:repo.git",  # SSH missing host
+            "@github.com:repo.git",  # SSH missing user
+            "user@host:",  # SSH missing path
         ]
 
         for invalid_url in invalid_urls:

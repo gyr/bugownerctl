@@ -36,6 +36,31 @@ class GitRepository(Protocol):
 class GitRepositoryImpl:
     """Concrete implementation of GitRepository."""
 
+    def _is_ssh_url(self, url: str) -> bool:
+        """Check if URL is SSH format.
+
+        Args:
+            url: Repository URL to check
+
+        Returns:
+            True if SSH format (user@host:path), False otherwise
+        """
+        # SSH format: user@host:path/to/repo.git
+        # SCP-style URLs don't support port syntax (use ssh:// scheme for that)
+        return bool(re.match(r"^[\w\-\.]+@[\w\-\.]+:[\w\-\./]+\.git$", url))
+
+    def _is_http_url(self, url: str) -> bool:
+        """Check if URL is HTTP/HTTPS format.
+
+        Args:
+            url: Repository URL to check
+
+        Returns:
+            True if HTTP/HTTPS format, False otherwise
+        """
+        # HTTP/HTTPS format: https://host.com/path/repo.git
+        return bool(re.match(r"^https?://[\w\-\.]+(:\d+)?/[\w\-\./]+\.git$", url))
+
     def _is_safe_url(self, url: str) -> bool:
         """Check if URL is safe (not internal network/metadata service).
 
@@ -176,7 +201,7 @@ class GitRepositoryImpl:
         branch, fetches and resets to latest. For tags/commits, just checks out.
 
         Args:
-            repo_url: Git repository URL (must be HTTP/HTTPS)
+            repo_url: Git repository URL (HTTP/HTTPS or SSH format)
             git_ref: Branch, tag, or commit hash
             cache_dir: Directory for caching repos
             ref_type: Type of git reference
@@ -188,12 +213,17 @@ class GitRepositoryImpl:
             ValueError: If inputs are invalid or path traversal detected
             RuntimeError: If git operations fail
         """
-        # Validate repo_url format (HTTP/HTTPS URLs only)
-        if not re.match(r"^https?://[\w\-\.]+(:\d+)?/[\w\-\./]+\.git$", repo_url):
+        # Detect URL type and validate format
+        is_ssh = self._is_ssh_url(repo_url)
+        is_http = self._is_http_url(repo_url)
+
+        if not is_ssh and not is_http:
             raise ValueError(f"Invalid repository URL format: {repo_url}")
 
-        # SSRF protection - block internal networks and metadata services
-        if not self._is_safe_url(repo_url):
+        # SSRF protection - only for HTTP/HTTPS
+        # SSH URLs can connect to internal hosts - this is expected for internal git servers
+        # (SSH protocol cannot access HTTP metadata services like 169.254.169.254)
+        if is_http and not self._is_safe_url(repo_url):
             raise ValueError(
                 f"Repository URL points to internal network or metadata service: {repo_url}"
             )
@@ -213,8 +243,9 @@ class GitRepositoryImpl:
         # Create cache_dir if doesn't exist
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # Extract repo name robustly
-        match = re.search(r"/([^/]+?)(\.git)?$", repo_url)
+        # Extract repo name robustly (works for HTTP/HTTPS and SSH)
+        # Matches last component before .git (after / or :)
+        match = re.search(r"[/:]([^/:]+?)(\.git)?$", repo_url)
         if not match:
             raise ValueError(f"Cannot extract repository name from URL: {repo_url}")
         repo_name = match.group(1)
