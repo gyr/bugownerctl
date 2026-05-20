@@ -84,6 +84,7 @@ class ValidationService:
         submodules: list[str],
         false_positives_file: Path,
         obs_project: str = "SUSE:SLFO:Main",
+        cache: dict[str, str | None] | None = None,
     ) -> tuple[set[str], dict[str, str]]:
         """Find shipped packages not in submodules (with OBS fallback).
 
@@ -92,12 +93,14 @@ class ValidationService:
             submodules: List of git submodule names
             false_positives_file: Path to cache file
             obs_project: OBS project to query
+            cache: Optional pre-loaded cache (avoids redundant I/O)
 
         Returns:
             Tuple of (valid_packages, new_false_positives)
         """
-        # Load cache
-        cache = self.false_positives_repo.load(false_positives_file)
+        # Load cache if not provided
+        if cache is None:
+            cache = self.false_positives_repo.load(false_positives_file)
 
         # Apply remapping (binary → source), filter out None values
         remapped_packages: set[str] = set()
@@ -129,3 +132,58 @@ class ValidationService:
                 self.false_positives_repo.save(false_positives_file, cache)
 
         return (valid_packages, new_false_positives)
+
+    def validate_all(
+        self,
+        maintainership_file: Path,
+        repo_metadata_file: Path,
+        false_positives_file: Path,
+        git_dir: Path,
+    ) -> ValidationResult:
+        """Orchestrate all validation checks.
+
+        Args:
+            maintainership_file: Path to _maintainership.json
+            repo_metadata_file: Path to primary.xml.gz (downloaded metadata)
+            false_positives_file: Path to false positives cache
+            git_dir: Path to git repository
+
+        Returns:
+            ValidationResult with all validation findings
+        """
+        # Load all data
+        maintainership_data = self.maintainership_repo.load(maintainership_file)
+        shipped_packages = self.metadata_repo.parse_source_packages(repo_metadata_file)
+        submodules = self.git_repo.list_submodules(git_dir)
+        cache = self.false_positives_repo.load(false_positives_file)
+
+        # Run all validation checks
+        orphan_packages = self.find_orphan_packages(shipped_packages, maintainership_data)
+        unmaintained_submodules = self.find_unmaintained_submodules(submodules, maintainership_data)
+        valid_packages, new_false_positives = self.find_shipped_without_submodule(
+            shipped_packages, submodules, false_positives_file, cache=cache
+        )
+
+        # Calculate shipped_not_in_submodule
+        # Map each ORIGINAL shipped package name (from metadata) through cache
+        # to check if its source package is valid. This preserves original
+        # package names in error reports (e.g., "binary-pkg" not "source-pkg").
+        cache.update(new_false_positives)  # Include discoveries from this run
+
+        # Check each shipped package
+        invalid_shipped: list[str] = []
+        for pkg in shipped_packages:
+            # Apply mapping (if exists)
+            remapped = cache.get(pkg, pkg)
+            # Check if remapped package is valid (or if it's None, it's invalid)
+            if remapped is None or remapped not in valid_packages:
+                invalid_shipped.append(pkg)
+
+        shipped_not_in_submodule = sorted(invalid_shipped)
+
+        return ValidationResult(
+            orphan_packages=orphan_packages,
+            unmaintained_submodules=unmaintained_submodules,
+            shipped_not_in_submodule=shipped_not_in_submodule,
+            new_false_positives=new_false_positives,
+        )

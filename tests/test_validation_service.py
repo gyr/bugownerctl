@@ -428,3 +428,336 @@ class TestFindShippedWithoutSubmodule:
 
         # Should NOT save cache
         false_positives_repo.save.assert_not_called()
+
+
+class TestValidateAll:
+    """Test ValidationService.validate_all method."""
+
+    def test_validate_all_happy_path_no_issues(self):
+        """Should orchestrate all validations when no issues found."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],
+                "pkg2": ["user2"],
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2"}
+
+        obs_repo = Mock()
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        maintainership_file = Path("/tmp/maintainership.json")
+        repo_metadata_file = Path("/tmp/primary.xml.gz")
+        false_positives_file = Path("/tmp/fp.json")
+        git_dir = Path("/tmp/repo")
+
+        result = service.validate_all(
+            maintainership_file,
+            repo_metadata_file,
+            false_positives_file,
+            git_dir,
+        )
+
+        # Should load all data
+        maintainership_repo.load.assert_called_once_with(maintainership_file)
+        metadata_repo.parse_source_packages.assert_called_once_with(repo_metadata_file)
+        git_repo.list_submodules.assert_called_once_with(git_dir)
+
+        # All packages have maintainers, all submodules maintained, all shipped in submodules
+        assert result.orphan_packages == []
+        assert result.unmaintained_submodules == []
+        assert result.shipped_not_in_submodule == []
+        assert result.new_false_positives == {}
+
+    def test_validate_all_finds_orphan_packages(self):
+        """Should identify shipped packages without maintainers."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],
+                # pkg2 missing - orphan (but IS in submodules, so not shipped_not_in_submodule)
+                "pkg2": [],  # Empty list also counts as orphan
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2"}
+
+        obs_repo = Mock()
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # Should find pkg2 as orphan (empty maintainer list)
+        assert result.orphan_packages == ["pkg2"]
+        assert result.unmaintained_submodules == []
+        assert result.shipped_not_in_submodule == []
+        assert result.new_false_positives == {}
+
+    def test_validate_all_finds_unmaintained_submodules(self):
+        """Should identify submodules not in maintainership file."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "submod1": ["user2"],
+                # submod2 missing - unmaintained
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["submod1", "submod2"]
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = set()  # No shipped packages
+
+        obs_repo = Mock()
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # Should find submod2 as unmaintained
+        assert result.orphan_packages == []
+        assert result.unmaintained_submodules == ["submod2"]
+        assert result.shipped_not_in_submodule == []
+        assert result.new_false_positives == {}
+
+    def test_validate_all_finds_shipped_not_in_submodule(self):
+        """Should identify shipped packages not in submodules."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],
+                "pkg2": ["user2"],
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1"]
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2"}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}  # Not found in OBS
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # Should find pkg2 not in submodules
+        assert result.orphan_packages == []
+        assert result.unmaintained_submodules == []
+        assert result.shipped_not_in_submodule == ["pkg2"]
+        assert result.new_false_positives == {}
+
+    def test_validate_all_with_new_false_positives_discovered(self):
+        """Should return new binary→source mappings discovered from OBS queries."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "src-pkg": ["user1"],
+                "bin-pkg": ["user1"],  # Binary package also in maintainership
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["src-pkg"]
+
+        metadata_repo = Mock()
+        # Metadata shows bin-pkg as shipped (even though unusual)
+        metadata_repo.parse_source_packages.return_value = {"bin-pkg"}
+
+        obs_repo = Mock()
+        # OBS maps bin-pkg → src-pkg
+        obs_repo.query_source_packages.return_value = {"bin-pkg": "src-pkg"}
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+        false_positives_repo.save = Mock()  # Mock save method
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # Should return new mapping, bin-pkg maps to src-pkg which IS in submodules
+        # So no shipped_not_in_submodule issue
+        assert result.orphan_packages == []
+        assert result.unmaintained_submodules == []
+        assert result.shipped_not_in_submodule == []
+        assert result.new_false_positives == {"bin-pkg": "src-pkg"}
+
+        # Should load cache only once (optimization from code review)
+        false_positives_repo.load.assert_called_once_with(Path("/tmp/fp.json"))
+
+    def test_validate_all_with_multiple_issues(self):
+        """Should find all types of issues in single run."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],
+                "pkg2": [],  # Empty list - orphan
+                "pkg3": ["user3"],  # Has maintainer but not in submodules
+                "submod1": ["user2"],
+                # submod2 missing - unmaintained submodule
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["submod1", "submod2"]
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}  # pkg2, pkg3 not found in OBS
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # Should find all types of issues:
+        # - pkg2 is orphan (empty maintainer list)
+        # - submod2 is unmaintained submodule
+        # - pkg1, pkg2, pkg3 are all shipped but not in submodules
+        assert result.orphan_packages == ["pkg2"]
+        assert result.unmaintained_submodules == ["submod2"]
+        assert result.shipped_not_in_submodule == ["pkg1", "pkg2", "pkg3"]
+        assert result.new_false_positives == {}
+
+    def test_validate_all_with_empty_inputs(self):
+        """Should handle completely empty inputs gracefully."""
+        # Mock repositories - all return empty data
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(packages={})
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = []
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = set()
+
+        obs_repo = Mock()
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # All results should be empty
+        assert result.orphan_packages == []
+        assert result.unmaintained_submodules == []
+        assert result.shipped_not_in_submodule == []
+        assert result.new_false_positives == {}
+
+        # Should still load all data sources
+        maintainership_repo.load.assert_called_once()
+        metadata_repo.parse_source_packages.assert_called_once()
+        git_repo.list_submodules.assert_called_once()
+        false_positives_repo.load.assert_called_once()
