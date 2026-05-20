@@ -76,6 +76,22 @@ class TestCreateParser:
         with pytest.raises(SystemExit):
             parser.parse_args(["query"])
 
+    def test_query_package_wires_correct_handler(self) -> None:
+        """Query package should wire query.run_package as handler."""
+        from src.bugowner.commands import query
+
+        parser = create_parser()
+        args = parser.parse_args(["query", "package", "test-pkg"])
+        assert args.func == query.run_package
+
+    def test_query_maintainer_wires_correct_handler(self) -> None:
+        """Query maintainer should wire query.run_maintainer as handler."""
+        from src.bugowner.commands import query
+
+        parser = create_parser()
+        args = parser.parse_args(["query", "maintainer", "testuser"])
+        assert args.func == query.run_maintainer
+
 
 class TestMain:
     """Tests for main entry point."""

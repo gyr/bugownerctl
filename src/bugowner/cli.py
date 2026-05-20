@@ -8,7 +8,7 @@ import argparse
 import logging
 import sys
 
-from src.bugowner.commands import validate, whitelist
+from src.bugowner.commands import query, validate, whitelist
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -50,15 +50,13 @@ def create_parser() -> argparse.ArgumentParser:
         "package", help="Check maintainership status of a package"
     )
     package_parser.add_argument("package_name", help="Package name to check")
-    # Placeholder func
-    package_parser.set_defaults(func=lambda args: 0)
+    package_parser.set_defaults(func=query.run_package)
 
     maintainer_parser = query_subparsers.add_parser(
         "maintainer", help="List packages maintained by a user/group"
     )
     maintainer_parser.add_argument("maintainer_name", help="User or group name")
-    # Placeholder func
-    maintainer_parser.set_defaults(func=lambda args: 0)
+    maintainer_parser.set_defaults(func=query.run_maintainer)
 
     return parser
 
