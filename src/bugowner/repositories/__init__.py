@@ -3,6 +3,7 @@
 from .git_repository import GitRepository, GitRepositoryImpl
 from .maintainership_repository import MaintainershipRepositoryImpl
 from .obs_repository import ObsRepository, ObsRepositoryImpl
+from .repo_metadata_repository import RepoMetadataRepository, RepoMetadataRepositoryImpl
 
 __all__ = [
     "GitRepository",
@@ -10,4 +11,6 @@ __all__ = [
     "MaintainershipRepositoryImpl",
     "ObsRepository",
     "ObsRepositoryImpl",
+    "RepoMetadataRepository",
+    "RepoMetadataRepositoryImpl",
 ]
