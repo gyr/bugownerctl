@@ -8,7 +8,7 @@ import argparse
 import logging
 import sys
 
-from src.bugowner.commands import validate
+from src.bugowner.commands import validate, whitelist
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -40,8 +40,7 @@ def create_parser() -> argparse.ArgumentParser:
     update_parser = whitelist_subparsers.add_parser(
         "update", help="Update whitelist with missing submodules"
     )
-    # Placeholder func
-    update_parser.set_defaults(func=lambda args: 0)
+    update_parser.set_defaults(func=whitelist.run_update)
 
     # bugowner query
     query_parser = subparsers.add_parser("query", help="Query package and maintainer information")
