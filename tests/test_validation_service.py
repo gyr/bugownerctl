@@ -104,3 +104,68 @@ class TestFindOrphanPackages:
         result = service.find_orphan_packages(shipped, maintainership)
 
         assert result == ["apple", "middle", "zebra"]
+
+
+class TestFindUnmaintainedSubmodules:
+    """Test ValidationService.find_unmaintained_submodules method."""
+
+    def test_finds_submodules_not_in_maintainership(self):
+        """Should identify submodules missing from maintainership data."""
+        service = ValidationService(None, None, None, None, None)
+        submodules = ["mod1", "mod2", "mod3"]
+        maintainership = MaintainershipData(
+            packages={
+                "mod1": ["user1"],
+                "mod2": ["user2"],
+                # mod3 missing - should be unmaintained
+            }
+        )
+
+        result = service.find_unmaintained_submodules(submodules, maintainership)
+
+        assert result == ["mod3"]
+
+    def test_all_submodules_maintained(self):
+        """Should return empty list when all submodules in maintainership."""
+        service = ValidationService(None, None, None, None, None)
+        submodules = ["mod1", "mod2"]
+        maintainership = MaintainershipData(
+            packages={
+                "mod1": ["user1"],
+                "mod2": ["user2"],
+            }
+        )
+
+        result = service.find_unmaintained_submodules(submodules, maintainership)
+
+        assert result == []
+
+    def test_all_submodules_unmaintained_returns_sorted(self):
+        """Should return sorted list when all submodules unmaintained."""
+        service = ValidationService(None, None, None, None, None)
+        submodules = ["zebra", "apple", "middle"]
+        maintainership = MaintainershipData(packages={})
+
+        result = service.find_unmaintained_submodules(submodules, maintainership)
+
+        assert result == ["apple", "middle", "zebra"]
+
+    def test_empty_submodules_list(self):
+        """Should return empty list when no submodules provided."""
+        service = ValidationService(None, None, None, None, None)
+        submodules = []
+        maintainership = MaintainershipData(packages={"mod1": ["user1"]})
+
+        result = service.find_unmaintained_submodules(submodules, maintainership)
+
+        assert result == []
+
+    def test_empty_maintainership_all_unmaintained(self):
+        """Should return all submodules when maintainership empty."""
+        service = ValidationService(None, None, None, None, None)
+        submodules = ["mod1", "mod2", "mod3"]
+        maintainership = MaintainershipData(packages={})
+
+        result = service.find_unmaintained_submodules(submodules, maintainership)
+
+        assert result == ["mod1", "mod2", "mod3"]

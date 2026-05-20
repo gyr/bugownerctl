@@ -62,3 +62,17 @@ class ValidationService:
         return sorted(
             [pkg for pkg in shipped_packages if not maintainership_data.packages.get(pkg)]
         )
+
+    def find_unmaintained_submodules(
+        self, submodules: list[str], maintainership_data: MaintainershipData
+    ) -> list[str]:
+        """Find submodules not listed in maintainership file.
+
+        Args:
+            submodules: List of git submodule names
+            maintainership_data: Maintainership data
+
+        Returns:
+            Sorted list of unmaintained submodule names
+        """
+        return sorted([sub for sub in submodules if sub not in maintainership_data.packages])
