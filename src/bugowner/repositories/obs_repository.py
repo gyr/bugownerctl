@@ -9,6 +9,7 @@ or
 
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Protocol
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,18 @@ class ObsRepository(Protocol):
 
         Returns:
             Source package name if found, None otherwise
+        """
+        ...
+
+    def query_source_packages(self, binary_packages: set[str], project: str) -> dict[str, str]:
+        """Query OBS for multiple packages in parallel.
+
+        Args:
+            binary_packages: Set of binary package names to query
+            project: OBS project (e.g., "SUSE:SLFO:Main")
+
+        Returns:
+            Dict mapping binary package → source package (only successful queries)
         """
         ...
 
@@ -105,3 +118,33 @@ class ObsRepositoryImpl:
         # Extract source package name (second column)
         source_package = parts[1].strip()
         return source_package if source_package else None
+
+    def query_source_packages(self, binary_packages: set[str], project: str) -> dict[str, str]:
+        """Query OBS for multiple packages in parallel.
+
+        Args:
+            binary_packages: Set of binary package names to query
+            project: OBS project (e.g., "SUSE:SLFO:Main")
+
+        Returns:
+            Dict mapping binary package → source package (only successful queries)
+        """
+        results: dict[str, str] = {}
+
+        # Query packages in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_pkg = {
+                executor.submit(self.get_source_package, pkg, project): pkg
+                for pkg in binary_packages
+            }
+
+            for future in as_completed(future_to_pkg):
+                pkg = future_to_pkg[future]
+                try:
+                    source_pkg = future.result()
+                    if source_pkg:
+                        results[pkg] = source_pkg
+                except Exception as exc:
+                    logger.error("Package '%s' query failed: %s", pkg, exc)
+
+        return results

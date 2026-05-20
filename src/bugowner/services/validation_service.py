@@ -7,6 +7,7 @@ Design Notes:
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from src.bugowner.domain.maintainer import MaintainershipData
 from src.bugowner.repositories.false_positives_repository import (
@@ -76,3 +77,55 @@ class ValidationService:
             Sorted list of unmaintained submodule names
         """
         return sorted([sub for sub in submodules if sub not in maintainership_data.packages])
+
+    def find_shipped_without_submodule(
+        self,
+        shipped_packages: set[str],
+        submodules: list[str],
+        false_positives_file: Path,
+        obs_project: str = "SUSE:SLFO:Main",
+    ) -> tuple[set[str], dict[str, str]]:
+        """Find shipped packages not in submodules (with OBS fallback).
+
+        Args:
+            shipped_packages: Set of package names from repo metadata
+            submodules: List of git submodule names
+            false_positives_file: Path to cache file
+            obs_project: OBS project to query
+
+        Returns:
+            Tuple of (valid_packages, new_false_positives)
+        """
+        # Load cache
+        cache = self.false_positives_repo.load(false_positives_file)
+
+        # Apply remapping (binary → source), filter out None values
+        remapped_packages: set[str] = set()
+        for pkg in shipped_packages:
+            remapped = cache.get(pkg, pkg)
+            if remapped is not None:
+                remapped_packages.add(remapped)
+
+        # Find packages in submodules
+        submodules_set = set(submodules)
+        valid_packages = remapped_packages & submodules_set
+
+        # Find unknowns (not in submodules after remapping)
+        unknowns = remapped_packages - submodules_set
+
+        # Query OBS for unknowns if any
+        new_false_positives: dict[str, str] = {}
+        if unknowns:
+            new_false_positives = self.obs_repo.query_source_packages(unknowns, obs_project)
+
+            # Check if OBS-resolved packages are in submodules
+            for source_pkg in new_false_positives.values():
+                if source_pkg in submodules_set:
+                    valid_packages.add(source_pkg)
+
+            # Merge and save cache if there are new discoveries
+            if new_false_positives:
+                cache.update(new_false_positives)
+                self.false_positives_repo.save(false_positives_file, cache)
+
+        return (valid_packages, new_false_positives)
