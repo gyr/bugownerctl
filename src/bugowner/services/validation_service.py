@@ -14,9 +14,7 @@ from src.bugowner.repositories.false_positives_repository import (
     FalsePositivesRepository,
 )
 from src.bugowner.repositories.git_repository import GitRepository
-from src.bugowner.repositories.maintainership_repository import (
-    MaintainershipRepositoryImpl,
-)
+from src.bugowner.repositories.maintainership_repository import MaintainershipRepository
 from src.bugowner.repositories.obs_repository import ObsRepository
 from src.bugowner.repositories.repo_metadata_repository import RepoMetadataRepository
 
@@ -36,7 +34,7 @@ class ValidationService:
 
     def __init__(
         self,
-        maintainership_repo: MaintainershipRepositoryImpl,
+        maintainership_repo: MaintainershipRepository,
         git_repo: GitRepository,
         metadata_repo: RepoMetadataRepository,
         obs_repo: ObsRepository,
