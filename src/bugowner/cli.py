@@ -8,6 +8,8 @@ import argparse
 import logging
 import sys
 
+from src.bugowner.commands import validate
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser with subcommands.
@@ -30,8 +32,7 @@ def create_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument(
         "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
     )
-    # Placeholder func - will be replaced by actual command handler
-    validate_parser.set_defaults(func=lambda args: 0)
+    validate_parser.set_defaults(func=validate.run)
 
     # bugowner whitelist
     whitelist_parser = subparsers.add_parser("whitelist", help="Manage whitelist file")
