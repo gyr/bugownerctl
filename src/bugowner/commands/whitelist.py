@@ -23,7 +23,7 @@ def run_update(args: argparse.Namespace) -> int:
         Exit code (0 = success)
     """
     # Load configuration
-    config = load_config()
+    config = load_config() or {}
 
     # Get paths from config
     maintainership_file_name = config.get("maintainership_file", "_maintainership.json")
