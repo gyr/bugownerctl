@@ -1,7 +1,9 @@
 import json
 import tempfile
 from pathlib import Path
+
 import pytest
+
 from validate_maintainership import get_maintainer_data
 
 
