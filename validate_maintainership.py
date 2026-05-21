@@ -841,4 +841,19 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # DEPRECATION WARNING
+    print("\n" + "=" * 80, file=sys.stderr)
+    print("WARNING: This script is DEPRECATED", file=sys.stderr)
+    print("=" * 80, file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Please use the new unified CLI instead:", file=sys.stderr)
+    print("  Old: python validate_maintainership.py -v 16.1", file=sys.stderr)
+    print("  New: bugowner validate -v 16.1", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("Installation: uv pip install -e .", file=sys.stderr)
+    print("Help:         bugowner --help", file=sys.stderr)
+    print("", file=sys.stderr)
+    print("This script will be removed in a future release.", file=sys.stderr)
+    print("=" * 80 + "\n", file=sys.stderr)
+
     main()
