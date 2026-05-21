@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  quality-and-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run ruff linter
+        run: uv run ruff check src/ tests/
+
+      - name: Run ruff formatter check
+        run: uv run ruff format --check src/ tests/
+
+      - name: Run mypy type checker
+        run: uv run mypy src/
+
+      - name: Run bandit security scanner
+        run: uv run bandit -c .bandit -r src/
+
+      - name: Run tests with coverage
+        run: uv run pytest -v --cov=src/bugowner --cov-report=term --cov-report=xml --cov-fail-under=90
+
+      - name: Upload coverage to Codecov (optional)
+        uses: codecov/codecov-action@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        with:
+          file: ./coverage.xml

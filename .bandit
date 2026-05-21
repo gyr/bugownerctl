@@ -1,0 +1,14 @@
+# Bandit security scanner configuration
+exclude_dirs:
+  - /tests/
+  - /bkp/
+
+# Skip specific tests (with justification):
+# B404 - import_subprocess: Required for git/osc commands
+# B603 - subprocess_without_shell_equals_true: Safe - no shell=True, validated args
+# B607 - start_process_with_partial_path: Using standard PATH tools (git, osc)
+# B104 - hardcoded_bind_all_interfaces: False positive - security check pattern, not binding
+# B405 - import_xml_etree: Parsing trusted SUSE repo metadata, not user input
+# B314 - xml_bad_elementtree: Same as B405 - trusted infrastructure only
+# B501 - request_with_no_cert_validation: Required for internal SUSE infrastructure (documented in code)
+skips: ['B404', 'B603', 'B607', 'B104', 'B405', 'B314', 'B501']
