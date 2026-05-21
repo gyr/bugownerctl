@@ -1,0 +1,321 @@
+"""Integration tests for end-to-end CLI workflows.
+
+Tests complete workflows from CLI entry through to results,
+using real fixtures and minimal mocking.
+"""
+
+import json
+from unittest.mock import patch
+
+from src.bugowner.cli import main
+
+
+class TestValidateWorkflow:
+    """Integration tests for 'bugowner validate' workflow."""
+
+    def test_validate_workflow_with_valid_data(self, tmp_path, monkeypatch):
+        """Should complete full validation workflow with valid maintainership data.
+
+        Workflow:
+        1. Load maintainership data
+        2. List git submodules
+        3. Download and parse repo metadata
+        4. Apply false positives cache
+        5. Report validation results
+        """
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup test data files
+        maintainership_data = {
+            "packages": {
+                "test-package": {"users": ["user1"], "groups": ["team1"]},
+                "another-package": {"users": ["user2"], "groups": []},
+            }
+        }
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+        (tmp_path / "false_positives.json").write_text(json.dumps({}))
+
+        # Create minimal config file
+        config_data = {"cache_dir": str(tmp_path / "cache")}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        # Mock external calls
+        with (
+            patch(
+                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+            ) as mock_git,
+            patch(
+                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
+            ) as mock_download,
+            patch(
+                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
+            ) as mock_parse,
+            patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
+        ):
+            mock_git.return_value = ["test-package", "another-package"]
+            mock_download.return_value = tmp_path / "primary.xml.gz"
+            mock_parse.return_value = {"test-package", "another-package"}
+
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0, "Validate should succeed with valid data"
+            mock_git.assert_called_once()
+
+    def test_validate_workflow_finds_orphan_packages(self, tmp_path, monkeypatch):
+        """Should detect packages in repo without maintainers."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup: package in repo but not in maintainership
+        maintainership_data = {
+            "packages": {"maintained-package": {"users": ["user1"], "groups": []}}
+        }
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+        (tmp_path / "false_positives.json").write_text(json.dumps({}))
+
+        config_data = {"cache_dir": str(tmp_path / "cache")}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with (
+            patch(
+                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+            ) as mock_git,
+            patch(
+                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
+            ) as mock_download,
+            patch(
+                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
+            ) as mock_parse,
+            patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
+        ):
+            mock_git.return_value = ["maintained-package"]
+            mock_download.return_value = tmp_path / "primary.xml.gz"
+            mock_parse.return_value = {"maintained-package", "orphan-package"}
+
+            # Execute
+            exit_code = main()
+
+            # Verify - should report issues found
+            assert exit_code == 1, "Should return 1 when orphan packages found"
+
+
+class TestWhitelistWorkflow:
+    """Integration tests for 'bugowner whitelist update' workflow."""
+
+    def test_whitelist_update_adds_missing_submodules(self, tmp_path, monkeypatch):
+        """Should update whitelist with submodules missing from maintainership.
+
+        Workflow:
+        1. List git submodules
+        2. Load maintainership data
+        3. Find submodules not in maintainership
+        4. Update whitelist file
+        """
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup
+        maintainership_data = {"packages": {"package1": {"users": ["user1"], "groups": []}}}
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+        (tmp_path / "whitelist_maintainership.json").write_text(json.dumps([]))
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with (
+            patch(
+                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+            ) as mock_git,
+            patch("sys.argv", ["bugowner", "whitelist", "update"]),
+        ):
+            mock_git.return_value = ["package1", "package2", "package3"]
+
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0
+            whitelist_data = json.loads((tmp_path / "whitelist_maintainership.json").read_text())
+            assert "package2" in whitelist_data
+            assert "package3" in whitelist_data
+            assert "package1" not in whitelist_data, "Should not whitelist maintained packages"
+
+    def test_whitelist_update_removes_now_maintained_packages(self, tmp_path, monkeypatch):
+        """Should remove packages from whitelist when they gain maintainers."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup - package in whitelist but now has maintainer
+        maintainership_data = {
+            "packages": {
+                "package1": {"users": ["user1"], "groups": []},
+                "package2": {"users": ["user2"], "groups": []},
+            }
+        }
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+        (tmp_path / "whitelist_maintainership.json").write_text(
+            json.dumps(["package1", "package3"])
+        )
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with (
+            patch(
+                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+            ) as mock_git,
+            patch("sys.argv", ["bugowner", "whitelist", "update"]),
+        ):
+            mock_git.return_value = ["package1", "package2", "package3"]
+
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0
+            whitelist_data = json.loads((tmp_path / "whitelist_maintainership.json").read_text())
+            assert "package1" not in whitelist_data, "Should remove now-maintained package"
+            assert "package3" in whitelist_data, "Should keep unmaintained package"
+
+
+class TestQueryPackageWorkflow:
+    """Integration tests for 'bugowner query package' workflow."""
+
+    def test_query_package_finds_maintained_package(self, tmp_path, monkeypatch):
+        """Should find and display package maintainers."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup
+        maintainership_data = {
+            "packages": {"test-package": {"users": ["user1", "user2"], "groups": ["team1"]}}
+        }
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+        (tmp_path / "whitelist_maintainership.json").write_text(json.dumps([]))
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with patch("sys.argv", ["bugowner", "query", "package", "test-package"]):
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0, "Should succeed when package found"
+
+    def test_query_package_finds_whitelisted_package(self, tmp_path, monkeypatch):
+        """Should indicate when package is whitelisted (no maintainer)."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup
+        maintainership_data = {"packages": {}}
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+        (tmp_path / "whitelist_maintainership.json").write_text(json.dumps(["whitelisted-package"]))
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with patch("sys.argv", ["bugowner", "query", "package", "whitelisted-package"]):
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0, "Should succeed when package whitelisted"
+
+    def test_query_package_not_found(self, tmp_path, monkeypatch):
+        """Should report when package not found in maintainership or whitelist."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup
+        maintainership_data = {"packages": {}}
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+        (tmp_path / "whitelist_maintainership.json").write_text(json.dumps([]))
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with patch("sys.argv", ["bugowner", "query", "package", "unknown-package"]):
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0, "Query always returns 0, but prints 'Not found'"
+
+
+class TestQueryMaintainerWorkflow:
+    """Integration tests for 'bugowner query maintainer' workflow."""
+
+    def test_query_maintainer_lists_all_packages(self, tmp_path, monkeypatch):
+        """Should list all packages maintained by user or group."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup
+        maintainership_data = {
+            "packages": {
+                "package1": {"users": ["user1", "user2"], "groups": []},
+                "package2": {"users": ["user1"], "groups": ["team1"]},
+                "package3": {"users": ["user3"], "groups": []},
+                "package4": {"users": [], "groups": ["team1"]},
+            }
+        }
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with patch("sys.argv", ["bugowner", "query", "maintainer", "user1"]):
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0, "Should succeed when maintainer found"
+
+    def test_query_maintainer_finds_group_packages(self, tmp_path, monkeypatch):
+        """Should find packages maintained by a group."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup
+        maintainership_data = {
+            "packages": {
+                "package1": {"users": ["user1"], "groups": ["team1"]},
+                "package2": {"users": [], "groups": ["team1"]},
+                "package3": {"users": ["user1"], "groups": []},
+            }
+        }
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with patch("sys.argv", ["bugowner", "query", "maintainer", "team1"]):
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0, "Should succeed when group found"
+
+    def test_query_maintainer_not_found(self, tmp_path, monkeypatch):
+        """Should report when maintainer has no packages."""
+        # Change to test directory
+        monkeypatch.chdir(tmp_path)
+
+        # Setup
+        maintainership_data = {"packages": {"package1": {"users": ["user1"], "groups": []}}}
+        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
+
+        config_data = {}
+        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+
+        with patch("sys.argv", ["bugowner", "query", "maintainer", "unknown-user"]):
+            # Execute
+            exit_code = main()
+
+            # Verify
+            assert exit_code == 0, "Should succeed but show empty list"

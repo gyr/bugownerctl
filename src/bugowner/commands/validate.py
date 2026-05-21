@@ -26,7 +26,7 @@ def run(args: argparse.Namespace) -> int:
         Exit code (0 = success, 1 = validation failures found)
     """
     # Load configuration
-    config = load_config()
+    config = load_config() or {}
 
     # Get paths from config
     cache_dir = Path(config.get("cache_dir", "~/.cache/bugownership")).expanduser()
@@ -46,6 +46,10 @@ def run(args: argparse.Namespace) -> int:
     obs_repo = ObsRepositoryImpl()
     false_positives_repo = FalsePositivesRepositoryImpl()
 
+    # Download and prepare metadata
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    repo_metadata_file = metadata_repo.download_primary_metadata(args.version, cache_dir)
+
     # Create validation service
     service = ValidationService(
         maintainership_repo,
@@ -57,11 +61,10 @@ def run(args: argparse.Namespace) -> int:
 
     # Execute validation
     result = service.validate_all(
-        version=args.version,
-        repo_path=repo_path,
         maintainership_file=maintainership_file,
+        repo_metadata_file=repo_metadata_file,
         false_positives_file=false_positives_file,
-        cache_dir=cache_dir,
+        git_dir=repo_path,
     )
 
     # Print results

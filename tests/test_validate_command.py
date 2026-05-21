@@ -150,10 +150,19 @@ class TestValidateCommand:
             "src.bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
+        # Mock metadata repository to track download_primary_metadata call
+        mock_metadata_repo = Mock()
+        mock_metadata_repo.download_primary_metadata.return_value = Path(
+            "/test/cache/primary.xml.gz"
+        )
+
         # Mock repositories
         monkeypatch.setattr("src.bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
         monkeypatch.setattr("src.bugowner.commands.validate.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr(
+            "src.bugowner.commands.validate.RepoMetadataRepositoryImpl",
+            Mock(return_value=mock_metadata_repo),
+        )
         monkeypatch.setattr("src.bugowner.commands.validate.ObsRepositoryImpl", Mock())
         monkeypatch.setattr("src.bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
 
@@ -174,14 +183,18 @@ class TestValidateCommand:
         args = argparse.Namespace(version="16.1", debug=False)
         run(args)
 
+        # Verify download_primary_metadata called with version
+        mock_metadata_repo.download_primary_metadata.assert_called_once()
+        download_call_args = mock_metadata_repo.download_primary_metadata.call_args[0]
+        assert download_call_args[0] == "16.1"
+
         # Verify validate_all called with correct parameters
         mock_service.validate_all.assert_called_once()
         call_args = mock_service.validate_all.call_args[1]
-        assert call_args["version"] == "16.1"
-        assert isinstance(call_args["repo_path"], Path)
         assert isinstance(call_args["maintainership_file"], Path)
+        assert isinstance(call_args["repo_metadata_file"], Path)
         assert isinstance(call_args["false_positives_file"], Path)
-        assert isinstance(call_args["cache_dir"], Path)
+        assert isinstance(call_args["git_dir"], Path)
 
     def test_run_returns_zero_when_no_issues_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return 0 exit code when validation finds no issues."""
