@@ -1,258 +1,463 @@
-# Bug Ownership Utility Scripts
+# Bugownership CLI
 
-This repository contains a collection of utility scripts designed to validate and check package maintainership information stored in JSON files.
+[![CI](https://github.com/gyr/bugownership/actions/workflows/ci.yml/badge.svg)](https://github.com/gyr/bugownership/actions/workflows/ci.yml)
 
-## Scripts
+Package maintainership validation and management tool for SUSE Linux Enterprise.
 
-### `validate_json_file.py`
+Validates package ownership, manages whitelists, and queries maintainer information using a unified CLI interface.
 
-#### Purpose
-
-This script validates a given JSON file to ensure it is well-formed and, most importantly, that it **does not contain any duplicate keys**. Standard JSON parsers often silently overwrite duplicate keys, which can lead to data loss or incorrect configurations. This script prevents that issue by explicitly checking for duplicates.
-
-#### How to Use
-
-Run the script from your terminal, passing the path to the JSON file you want to validate as an argument.
+## Installation
 
 ```bash
-python3 validate_json_file.py <path_to_json_file>
+# Install with uv (recommended)
+uv pip install -e .
+
+# Or with pip
+pip install -e .
 ```
+
+## Quick Start
+
+```bash
+# Validate maintainership for SLES 16.1
+bugowner validate -v 16.1
+
+# Update whitelist with missing submodules
+bugowner whitelist update
+
+# Check package maintainership
+bugowner query package apache2
+
+# List packages maintained by user
+bugowner query maintainer user1
+```
+
+## Commands
+
+### `bugowner validate`
+
+Validates package maintainership data for consistency.
+
+**Usage:**
+```bash
+bugowner validate -v <version> [--debug]
+```
+
+**What it checks:**
+- Orphan packages (in repo, no maintainer)
+- Unmaintained submodules (not in maintainership file)
+- Shipped packages missing submodules
+- Binary→source package mappings (cached for performance)
+
+**Examples:**
+```bash
+# Validate SLES 16.1
+bugowner validate -v 16.1
+
+# Validate with debug logging
+bugowner validate -v 16.0 --debug
+```
+
+**Exit codes:**
+- `0` - No issues found
+- `1` - Issues found (orphans, unmaintained, etc.)
+
+**Output:**
+- Orphan packages list
+- Unmaintained submodules list
+- Shipped packages not in submodules
+- New binary→source mappings discovered
+
+---
+
+### `bugowner whitelist update`
+
+Updates whitelist file with submodules missing from maintainership.
+
+**Usage:**
+```bash
+bugowner whitelist update
+```
+
+**What it does:**
+- Compares git submodules with `_maintainership.json`
+- Adds missing submodules to whitelist
+- Removes packages that now have maintainers
+- Reports packages in maintainership but not in submodules
 
 **Example:**
-
 ```bash
-# Validate the maintainership file
-python3 validate_json_file.py _maintainership.json
+bugowner whitelist update
 ```
 
-#### Behavior
+**Exit code:** Always `0`
 
--   **On Success:** The script will print a success message indicating that the JSON is valid and contains no duplicate keys. It will exit with a status code of `0`.
--   **On Failure:** If the file is not found, has a syntax error, or contains duplicate keys, it will print a detailed error message to `stderr` and exit with a status code of `1`.
+**Output:**
+- Packages added to whitelist
+- Packages removed from whitelist
+- Packages in maintainership but not submodules
 
 ---
 
-### `create_whitelist_maintainership.py`
+### `bugowner query package`
 
-#### Purpose
+Check maintainership status of a package.
 
-This script acts as a synchronization tool between the git submodules in the repository and the `_maintainership.json` file. It identifies discrepancies and automatically generates a whitelist file for any submodules that are not officially listed in the maintainership file.
-
-Its primary functions are:
--   To identify which git submodules are missing from `_maintainership.json`.
--   To identify which packages in `_maintainership.json` no longer exist as git submodules.
--   To automatically create `whitelist_maintainership.json` containing the list of missing submodules.
-
-#### How to Use
-
-Run the script from the root of the git repository.
-
+**Usage:**
 ```bash
-python3 create_whitelist_maintainership.py
-```
-
-#### Dependencies
-
--   The script must be run in a git repository.
--   The `git` command-line tool must be installed and accessible in your `PATH`.
-
-#### Behavior
-
--   **On Success:** If all git submodules are correctly listed in `_maintainership.json`, the script will print a success message and exit with a status code of `0`.
--   **On Failure (Discrepancies Found):**
-    -   It will print the list of submodules that are missing from the maintainership file.
-    -   It will create or overwrite the `whitelist_maintainership.json` file with this list.
-    -   It will print the list of any packages in the maintainership file that are no longer active submodules.
-    -   It will exit with a status code of `1`.
-
----
-
-### `check_package_maintainer.py`
-
-#### Purpose
-
-This script checks whether a given package is officially maintained. It does this by looking up the package name in two files:
-1.  `_maintainership.json`: The primary source of truth for maintained packages.
-2.  `whitelist_maintainership.json`: A list of packages that are explicitly allowed even if they are not in the primary file.
-
-#### How to Use
-
-Execute the script with the name of the package you want to check.
-
-```bash
-python3 check_package_maintainer.py <package_name>
-```
-
-**Example:**
-
-```bash
-python3 check_package_maintainer.py my-cool-package
-```
-
-#### Input Files
-
--   `_maintainership.json`: Must be a JSON object where the keys are the package names.
--   `whitelist_maintainership.json`: Must be a JSON array of package names. This file can be generated automatically by the `create_whitelist_maintainership.py` script to capture git submodules that are not yet in the primary maintainership file.
-
-#### Behavior
-
--   The script will print whether the package was found in `_maintainership.json` or `whitelist_maintainership.json`.
--   It exits with a status code of `0` if the package is found in either file (success).
--   It exits with a status code of `1` if the package is not found in either file (failure), making it suitable for use in CI/CD pipelines.
-
----
-
-### `check_package_maintainer.sh`
-
-#### Purpose
-
-This is a shell script alternative to the Python version, performing the same check for package maintainership against the `_maintainership.json` and `whitelist_maintainership.json` files.
-
-#### Dependencies
-
-This script requires `jq` to be installed and available in your `PATH`. `jq` is a command-line JSON processor.
-
-#### How to Use
-
-Make sure the script is executable (`chmod +x check_package_maintainer.sh`) and then run it with the package name.
-
-```bash
-./check_package_maintainer.sh <package_name>
-```
-
-**Example:**
-
-```bash
-./check_package_maintainer.sh another-package
-```
-
-#### Input Files
--   `_maintainership.json`: A JSON object of maintained packages.
--   `whitelist_maintainership.json`: A JSON array of whitelisted packages. Can be auto-generated by `create_whitelist_maintainership.py`.
-
-#### Behavior
-
--   The script provides output on whether the package is present in the files.
--   It will exit with a status code of `1` if the package is not found in either file, suitable for scripting and automation.
-
----
-
-### `validate_maintainership.py`
-
-#### Purpose
-
-This script performs a comprehensive validation of package maintainership for a SUSE Linux Enterprise product. It ensures consistency between the official package metadata from the download repositories and the maintainership information defined in a separate git repository.
-
-Specifically, the script:
--   Reads configuration from `validate_maintainership.yaml`.
--   Determines the correct git branch, tag, or commit to use based on the SLES version provided.
--   Clones or updates the `slfo_git_url` repository into a cache directory, checking out the specific git reference.
--   Downloads SLES product repository metadata (`repomd.xml` and `primary.xml.gz`).
--   Parses the `primary.xml.gz` to get a list of all `src` packages.
--   Gets the official list of source packages from the git submodules in the cloned SLFO repository.
--   Compares the packages from the repo metadata against the git submodules.
--   Uses `osc` to query the Open Build Service (OBS) to resolve discrepancies (potential 'false positives').
--   Manages a `false_positives.json` file to cache these resolutions.
--   Checks for packages listed in `_maintainership.json` that are missing a corresponding git submodule.
--   Checks for valid packages that are missing a maintainer entry in `_maintainership.json` (orphan packages).
-
-#### How to Use
-
-The script is now run with command-line arguments to specify the SLES version and to enable debug mode.
-
-```bash
-python3 validate_maintainership.py --version <sles_version> [--debug]
+bugowner query package <package_name>
 ```
 
 **Examples:**
-
 ```bash
-# Validate version 16.1
-python3 validate_maintainership.py --version 16.1
+# Check if apache2 is maintained
+bugowner query package apache2
 
-# Validate version 16.0 and enable debug output
-python3 validate_maintainership.py --version 16.0 --debug
+# Check whitelisted package
+bugowner query package legacy-pkg
 ```
 
-#### Dependencies
+**Exit code:** Always `0`
 
-##### Python Packages
-
-This project's Python dependencies are listed in `requirements.txt`. You can install them using `pip`.
-
-It is highly recommended to use a virtual environment:
-```bash
-# Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+**Output:**
 ```
-The main Python dependencies are:
--   `lxml`
--   `PyYAML`
--   `requests`
+Package: apache2
+Status: Maintained
+Maintainers:
+  - user1
+  - user2
+  - team1
+```
 
-##### External Requirements
+**Status values:**
+- `Maintained` - Has maintainers in `_maintainership.json`
+- `Whitelisted` - In `whitelist_maintainership.json`
+- `Not found` - Not in either file
 
--   **Command-Line Tools:** The `git` and `osc` command-line tools must be installed and available in your system's `PATH`.
--   **Account Access:**
-    -   A configured **Gitea account with SSH access** is required to clone the `slfo_git_repository`.
-    -   An active and configured **OBS/IBS session** (logged into `https://api.suse.de`) is required for the script to resolve unknown packages using `osc`.
+---
 
+### `bugowner query maintainer`
 
-#### Configuration (`validate_maintainership.yaml`)
+List all packages maintained by a user or group.
 
-The script's behavior is primarily controlled by `validate_maintainership.yaml`.
--   `cache_dir`: (Optional) The base directory where cloned repositories and downloaded metadata will be cached. Defaults to `~/.cache/bugownership`.
--   `slfo_git_url`: The URL of the Git repository (e.g., `gitea@src.suse.de:products/SLFO.git`).
--   `false_positives_file`: (Optional) Path to a JSON file for managing packages that are known to be valid despite not being direct submodules. Defaults to `false_positives.json`.
--   `products`: A list that maps a product `version` to a specific git `branch`, `tag`, or `commit`. This is used to determine which state of the repository to check out for a given SLES version.
+**Usage:**
+```bash
+bugowner query maintainer <maintainer_name>
+```
 
-    ```yaml
-    slfo_git_url: gitea@src.suse.de:products/SLFO.git
-    false_positives_file: false_positives.json
-    products:
-      - version: "16.0"
-        commit: 9d679ed
-      - version: "16.1"
-        branch: slfo-main
-    ```
+**Examples:**
+```bash
+# List packages for user
+bugowner query maintainer user1
 
-#### Input Files
+# List packages for group
+bugowner query maintainer team1
+```
 
--   `validate_maintainership.yaml`: The main configuration file that drives the script.
--   `false_positives.json`: A JSON file containing a mapping of known package name corrections. The script reads this file at startup to avoid re-querying OBS for known discrepancies.
+**Exit code:** Always `0`
 
-The following file is accessed automatically from the cloned `slfo_git_repository`:
--   `_maintainership.json`: The primary JSON file listing packages and their maintainers. Expected format:
-    ```json
-    {
-      "header": {
-        "document": "obs-maintainers",
-        "version": "1.0"
-      },
-      "packages": {
-        "package-name": {
-          "users": ["user1", "user2"],
-          "groups": ["group1"]
-        }
-      }
+**Output:**
+```
+Maintainer: user1
+Packages (5):
+  - apache2
+  - nginx
+  - package1
+  - package2
+  - package3
+```
+
+---
+
+## Configuration
+
+Create `validate_maintainership.yaml` in project root:
+
+```yaml
+# Cache directory for downloads
+cache_dir: ~/.cache/bugownership
+
+# Git repository URL
+slfo_git_url: gitea@src.suse.de:products/SLFO.git
+
+# False positives cache file
+false_positives_file: false_positives.json
+
+# Maintainership file name
+maintainership_file: _maintainership.json
+
+# Whitelist file name
+whitelist_file: whitelist_maintainership.json
+
+# Product version mappings
+products:
+  - version: "16.0"
+    commit: 9d679ed
+  - version: "16.1"
+    branch: slfo-main
+```
+
+## Data Files
+
+### `_maintainership.json`
+
+Primary maintainership data (from SLFO git repo):
+
+```json
+{
+  "header": {
+    "document": "obs-maintainers",
+    "version": "1.0"
+  },
+  "packages": {
+    "apache2": {
+      "users": ["user1", "user2"],
+      "groups": ["webserver-team"]
     }
-    ```
-    The script processes both `users` and `groups` as maintainers for each package.
+  }
+}
+```
 
-#### Output Files
+### `whitelist_maintainership.json`
 
-The script generates and updates several JSON files to report its findings.
+Auto-generated whitelist for unmaintained submodules:
 
-##### Created/Updated on Every Run
--   `false_positives.json`: This file is created or updated when the script successfully resolves a new package name discrepancy by querying OBS. It stores the mapping to serve as a cache and speed up future runs.
--   `orphan_packages.json`: A list of valid packages that do not have an entry in `_maintainership.json`. This file is only created if orphan packages are found.
+```json
+[
+  "legacy-package1",
+  "legacy-package2"
+]
+```
 
-##### Debug-Only Files
-The following files are only generated if the `--debug` or `-d` flag is used when running the script:
--   `src_packages.json`: A complete list of all unique 'src' package names extracted from the product's repository metadata.
--   `shipped_packages_not_in_submodule.json`: A list of packages from the product repository that could not be resolved to a valid git submodule. Created only if such packages are found.
--   `maintained_packages_without_submodule.json`: A list of maintained packages found in `_maintainership.json` that do not correspond to an active git submodule. Created only if such packages are found.
+### `false_positives.json`
+
+Binary→source package mapping cache (auto-generated/updated):
+
+```json
+{
+  "apache2-devel": "apache2",
+  "apache2-utils": "apache2",
+  "SLES-release": null
+}
+```
+
+**Purpose:** Avoid slow OBS queries on every run. Maps binary packages to source names, or `null` to ignore.
+
+## Dependencies
+
+**Runtime:**
+- Python 3.10+
+- `lxml` - XML parsing
+- `PyYAML` - Config file parsing
+- `requests` - HTTP downloads
+
+**External tools:**
+- `git` - Repository operations
+- `osc` - OBS queries (requires logged-in session to `https://api.suse.de`)
+
+**Development:**
+- `pytest` - Testing
+- `pytest-cov` - Coverage reports
+- `mypy` - Type checking
+- `ruff` - Linting and formatting
+- `bandit` - Security scanning
+
+**Install all:**
+```bash
+# Runtime only
+uv pip install -r requirements.txt
+
+# Development
+uv pip install -r requirements-dev.txt
+```
+
+## Development
+
+### Setup
+
+```bash
+# Clone repository
+git clone <repo-url>
+cd bugownership
+
+# Install in editable mode
+uv pip install -e .
+
+# Install development dependencies
+uv pip install -r requirements-dev.txt
+```
+
+### Testing
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src/bugowner --cov-report=term-missing
+
+# Run specific test file
+pytest tests/test_validation_service.py
+
+# Run single test
+pytest tests/test_validation_service.py::test_find_orphan_packages
+```
+
+### Code Quality
+
+**Run CI checks locally (recommended):**
+```bash
+# Check all (mirrors CI exactly)
+./scripts/check.sh
+
+# Auto-fix + check
+./scripts/fix.sh
+```
+
+**Individual checks:**
+```bash
+# Lint
+ruff check src/ tests/
+
+# Format
+ruff format src/ tests/
+
+# Type check
+mypy src/
+
+# Security scan
+bandit -c .bandit -r src/
+
+# Tests with coverage
+pytest --cov=src/bugowner --cov-report=term-missing --cov-fail-under=90
+```
+
+### CI/CD Pipeline
+
+**GitHub Actions workflow runs on:**
+- Push to `master`
+- Pull requests to `master`
+
+**Quality gates (all must pass):**
+1. ✅ Ruff linting
+2. ✅ Ruff formatting
+3. ✅ MyPy type checking
+4. ✅ Bandit security scanning
+5. ✅ Pytest with 90% coverage
+
+**Local validation:**
+```bash
+# Run same checks as CI
+./scripts/check.sh
+
+# Auto-fix issues first
+./scripts/fix.sh
+```
+
+**Scripts:**
+- `scripts/check.sh` - Run all CI checks locally (read-only)
+- `scripts/fix.sh` - Auto-fix formatting/linting, then validate
+
+### Architecture
+
+```
+CLI Layer (cli.py)
+    ↓
+Command Layer (commands/)
+    ↓
+Service Layer (services/)
+    ↓
+Repository Layer (repositories/)
+    ↓
+External Systems (Git, OBS, Files)
+```
+
+**Principles:**
+- TDD (Red-Green-Refactor)
+- SOLID design
+- Protocol-based interfaces
+- Dependency injection
+
+See `IMPLEMENTATION_PLAN.md` for detailed architecture.
+
+## Migration from Legacy Scripts
+
+**Old scripts are deprecated but still functional.**
+
+| Old Script | New Command |
+|------------|-------------|
+| `validate_maintainership.py -v 16.1` | `bugowner validate -v 16.1` |
+| `create_whitelist_maintainership.py` | `bugowner whitelist update` |
+| `check_package_maintainer.py <pkg>` | `bugowner query package <pkg>` |
+| N/A | `bugowner query maintainer <user>` |
+
+**Migration steps:**
+1. Install new CLI: `uv pip install -e .`
+2. Test new commands alongside old scripts
+3. Update scripts/automation to use `bugowner` CLI
+4. Remove old script calls once verified
+
+**Compatibility:** All functionality preserved. Data files (`_maintainership.json`, `false_positives.json`, etc.) shared between old and new.
+
+## Troubleshooting
+
+**"ModuleNotFoundError"**
+```bash
+# Reinstall package
+uv pip install -e .
+```
+
+**"osc command failed"**
+```bash
+# Ensure logged into OBS
+osc api https://api.suse.de
+```
+
+**"Git clone failed"**
+```bash
+# Verify SSH keys configured for Gitea
+ssh -T gitea@src.suse.de
+```
+
+**"Coverage below 90%"**
+```bash
+# Run full test suite
+pytest --cov=src/bugowner --cov-report=html
+firefox htmlcov/index.html
+```
+
+**"CI checks failing locally but passing in CI"**
+```bash
+# Use exact CI commands
+./scripts/check.sh
+```
+
+## Contributing
+
+1. Create feature branch: `git checkout -b feature/description`
+2. Follow TDD: write tests first
+3. Run quality checks: `./scripts/check.sh`
+4. Ensure 90%+ coverage
+5. Create PR with descriptive commit messages
+
+**Pre-commit workflow:**
+```bash
+# Before committing
+./scripts/fix.sh      # Auto-fix issues
+./scripts/check.sh    # Verify all checks pass
+git add <files>
+git commit
+```
+
+**Commit format:** Conventional Commits (`feat:`, `fix:`, `refactor:`, `test:`, `ci:`, `docs:`)
+
+## License
+
+[Add license info]
+
+## Support
+
+- Issues: [GitHub Issues](link)
+- Documentation: See `IMPLEMENTATION_PLAN.md`
+- Help: `bugowner --help`
+- CI Status: Check GitHub Actions tab
