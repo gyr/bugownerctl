@@ -4,6 +4,10 @@
 
 set -e  # Exit on first error
 
+echo "Installing dependencies..."
+uv sync --extra dev --quiet
+echo ""
+
 echo "Running CI validation checks..."
 echo ""
 

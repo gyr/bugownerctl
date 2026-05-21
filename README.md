@@ -264,11 +264,14 @@ Binary→source package mapping cache (auto-generated/updated):
 
 **Install all:**
 ```bash
-# Runtime only
-uv pip install -r requirements.txt
+# Runtime + dev dependencies (recommended)
+uv sync --extra dev
 
-# Development
-uv pip install -r requirements-dev.txt
+# Or with pip (editable install + dev extras)
+uv pip install -e ".[dev]"
+
+# Runtime only
+uv pip install -e .
 ```
 
 ## Development
@@ -280,11 +283,11 @@ uv pip install -r requirements-dev.txt
 git clone <repo-url>
 cd bugownership
 
-# Install in editable mode
-uv pip install -e .
+# Install in editable mode with dev dependencies
+uv sync --extra dev
 
-# Install development dependencies
-uv pip install -r requirements-dev.txt
+# Alternative: pip-style
+uv pip install -e ".[dev]"
 ```
 
 ### Testing

@@ -4,6 +4,10 @@
 
 set -e  # Exit on first error
 
+echo "Installing dependencies..."
+uv sync --extra dev --quiet
+echo ""
+
 echo "🔧 Running auto-fix for code quality issues..."
 echo ""
 
