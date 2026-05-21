@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.bugowner.commands.whitelist import run_update
-from src.bugowner.services.whitelist_service import WhitelistUpdateResult
+from bugowner.commands.whitelist import run_update
+from bugowner.services.whitelist_service import WhitelistUpdateResult
 
 
 class TestWhitelistCommand:
@@ -21,17 +21,17 @@ class TestWhitelistCommand:
             "whitelist_file": "whitelist_maintainership.json",
         }
         mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("src.bugowner.commands.whitelist.load_config", mock_load_config)
+        monkeypatch.setattr("bugowner.commands.whitelist.load_config", mock_load_config)
 
         # Mock repository classes
         mock_maintainership_repo_cls = Mock()
         mock_git_repo_cls = Mock()
 
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.MaintainershipRepositoryImpl",
+            "bugowner.commands.whitelist.MaintainershipRepositoryImpl",
             mock_maintainership_repo_cls,
         )
-        monkeypatch.setattr("src.bugowner.commands.whitelist.GitRepositoryImpl", mock_git_repo_cls)
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", mock_git_repo_cls)
 
         # Mock WhitelistService
         mock_service = Mock()
@@ -39,10 +39,10 @@ class TestWhitelistCommand:
             added=[], removed=[], in_maintainership_not_submodule=[]
         )
         mock_service_cls = Mock(return_value=mock_service)
-        monkeypatch.setattr("src.bugowner.commands.whitelist.WhitelistService", mock_service_cls)
+        monkeypatch.setattr("bugowner.commands.whitelist.WhitelistService", mock_service_cls)
 
         # Mock Path operations
-        monkeypatch.setattr("src.bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace()
         run_update(args)
@@ -58,7 +58,7 @@ class TestWhitelistCommand:
             "whitelist_file": "whitelist_maintainership.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
         # Create mock repository instances
@@ -66,11 +66,11 @@ class TestWhitelistCommand:
         mock_git_repo = Mock()
 
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.MaintainershipRepositoryImpl",
+            "bugowner.commands.whitelist.MaintainershipRepositoryImpl",
             Mock(return_value=mock_maintainership_repo),
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=mock_git_repo)
         )
 
         # Mock WhitelistService to track instantiation
@@ -79,9 +79,9 @@ class TestWhitelistCommand:
             added=[], removed=[], in_maintainership_not_submodule=[]
         )
         mock_service_cls = Mock(return_value=mock_service)
-        monkeypatch.setattr("src.bugowner.commands.whitelist.WhitelistService", mock_service_cls)
+        monkeypatch.setattr("bugowner.commands.whitelist.WhitelistService", mock_service_cls)
 
-        monkeypatch.setattr("src.bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace()
         run_update(args)
@@ -98,12 +98,12 @@ class TestWhitelistCommand:
             "whitelist_file": "whitelist_maintainership.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.whitelist.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
 
         # Mock WhitelistService
         mock_service = Mock()
@@ -111,10 +111,10 @@ class TestWhitelistCommand:
             added=[], removed=[], in_maintainership_not_submodule=[]
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
+            "bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace()
         run_update(args)
@@ -133,12 +133,12 @@ class TestWhitelistCommand:
             "whitelist_file": "whitelist_maintainership.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.whitelist.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
 
         # Mock WhitelistService with results
         mock_service = Mock()
@@ -146,10 +146,10 @@ class TestWhitelistCommand:
             added=["pkg1"], removed=["pkg2"], in_maintainership_not_submodule=["pkg3"]
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
+            "bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace()
         result = run_update(args)
@@ -165,12 +165,12 @@ class TestWhitelistCommand:
             "whitelist_file": "whitelist_maintainership.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.whitelist.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
 
         # Mock WhitelistService
         mock_service = Mock()
@@ -178,10 +178,10 @@ class TestWhitelistCommand:
             added=["pkg1", "pkg2"], removed=[], in_maintainership_not_submodule=[]
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
+            "bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace()
         run_update(args)
@@ -200,12 +200,12 @@ class TestWhitelistCommand:
             "whitelist_file": "whitelist_maintainership.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.whitelist.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
 
         # Mock WhitelistService
         mock_service = Mock()
@@ -213,10 +213,10 @@ class TestWhitelistCommand:
             added=[], removed=["pkg1", "pkg2"], in_maintainership_not_submodule=[]
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
+            "bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace()
         run_update(args)
@@ -235,12 +235,12 @@ class TestWhitelistCommand:
             "whitelist_file": "whitelist_maintainership.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.whitelist.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
 
         # Mock WhitelistService
         mock_service = Mock()
@@ -248,10 +248,10 @@ class TestWhitelistCommand:
             added=[], removed=[], in_maintainership_not_submodule=["pkg1", "pkg2"]
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
+            "bugowner.commands.whitelist.WhitelistService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace()
         run_update(args)

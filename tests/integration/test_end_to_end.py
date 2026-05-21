@@ -7,7 +7,7 @@ using real fixtures and minimal mocking.
 import json
 from unittest.mock import patch
 
-from src.bugowner.cli import main
+from bugowner.cli import main
 
 
 class TestValidateWorkflow:
@@ -43,13 +43,13 @@ class TestValidateWorkflow:
         # Mock external calls
         with (
             patch(
-                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+                "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
             patch(
-                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
+                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
-                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
+                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
             patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
         ):
@@ -81,13 +81,13 @@ class TestValidateWorkflow:
 
         with (
             patch(
-                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+                "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
             patch(
-                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
+                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
-                "src.bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
+                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
             patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
         ):
@@ -127,7 +127,7 @@ class TestWhitelistWorkflow:
 
         with (
             patch(
-                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+                "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
             patch("sys.argv", ["bugowner", "whitelist", "update"]),
         ):
@@ -165,7 +165,7 @@ class TestWhitelistWorkflow:
 
         with (
             patch(
-                "src.bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+                "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
             patch("sys.argv", ["bugowner", "whitelist", "update"]),
         ):

@@ -10,8 +10,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.bugowner.repositories.git_repository import GitRepository
-from src.bugowner.repositories.maintainership_repository import MaintainershipRepository
+from bugowner.repositories.git_repository import GitRepository
+from bugowner.repositories.maintainership_repository import MaintainershipRepository
 
 
 @dataclass

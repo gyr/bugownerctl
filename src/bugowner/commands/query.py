@@ -6,9 +6,9 @@ Executes query subcommands for package and maintainer information.
 import argparse
 from pathlib import Path
 
-from src.bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
-from src.bugowner.services.query_service import PackageStatus, QueryService
-from src.bugowner.utils.config import load_config
+from bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
+from bugowner.services.query_service import PackageStatus, QueryService
+from bugowner.utils.config import load_config
 
 
 def run_package(args: argparse.Namespace) -> int:

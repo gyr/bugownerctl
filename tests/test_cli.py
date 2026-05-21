@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.bugowner.cli import create_parser, main
+from bugowner.cli import create_parser, main
 
 
 class TestCreateParser:
@@ -78,7 +78,7 @@ class TestCreateParser:
 
     def test_query_package_wires_correct_handler(self) -> None:
         """Query package should wire query.run_package as handler."""
-        from src.bugowner.commands import query
+        from bugowner.commands import query
 
         parser = create_parser()
         args = parser.parse_args(["query", "package", "test-pkg"])
@@ -86,7 +86,7 @@ class TestCreateParser:
 
     def test_query_maintainer_wires_correct_handler(self) -> None:
         """Query maintainer should wire query.run_maintainer as handler."""
-        from src.bugowner.commands import query
+        from bugowner.commands import query
 
         parser = create_parser()
         args = parser.parse_args(["query", "maintainer", "testuser"])
@@ -108,7 +108,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=Mock(return_value=0))
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("src.bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
 
         main()
 
@@ -129,7 +129,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=True, func=Mock(return_value=0))
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("src.bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
 
         main()
 
@@ -145,7 +145,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("src.bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
 
         result = main()
 
@@ -161,7 +161,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("src.bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
 
         result = main()
 

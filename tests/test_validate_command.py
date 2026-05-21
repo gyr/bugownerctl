@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.bugowner.commands.validate import run
-from src.bugowner.services.validation_service import ValidationResult
+from bugowner.commands.validate import run
+from bugowner.services.validation_service import ValidationResult
 
 
 class TestValidateCommand:
@@ -24,7 +24,7 @@ class TestValidateCommand:
             "false_positives_file": "false_positives.json",
         }
         mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("src.bugowner.commands.validate.load_config", mock_load_config)
+        monkeypatch.setattr("bugowner.commands.validate.load_config", mock_load_config)
 
         # Mock repository classes to track instantiation
         mock_maintainership_repo_cls = Mock()
@@ -34,16 +34,16 @@ class TestValidateCommand:
         mock_false_positives_repo_cls = Mock()
 
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.MaintainershipRepositoryImpl",
+            "bugowner.commands.validate.MaintainershipRepositoryImpl",
             mock_maintainership_repo_cls,
         )
-        monkeypatch.setattr("src.bugowner.commands.validate.GitRepositoryImpl", mock_git_repo_cls)
+        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", mock_git_repo_cls)
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.RepoMetadataRepositoryImpl", mock_metadata_repo_cls
+            "bugowner.commands.validate.RepoMetadataRepositoryImpl", mock_metadata_repo_cls
         )
-        monkeypatch.setattr("src.bugowner.commands.validate.ObsRepositoryImpl", mock_obs_repo_cls)
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", mock_obs_repo_cls)
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.FalsePositivesRepositoryImpl",
+            "bugowner.commands.validate.FalsePositivesRepositoryImpl",
             mock_false_positives_repo_cls,
         )
 
@@ -56,10 +56,10 @@ class TestValidateCommand:
             new_false_positives={},
         )
         mock_service_cls = Mock(return_value=mock_service)
-        monkeypatch.setattr("src.bugowner.commands.validate.ValidationService", mock_service_cls)
+        monkeypatch.setattr("bugowner.commands.validate.ValidationService", mock_service_cls)
 
         # Mock Path operations
-        monkeypatch.setattr("src.bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace(version="16.1", debug=False)
         run(args)
@@ -81,7 +81,7 @@ class TestValidateCommand:
             "false_positives_file": "false_positives.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Create mock repository instances
@@ -92,21 +92,21 @@ class TestValidateCommand:
         mock_false_positives_repo = Mock()
 
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.MaintainershipRepositoryImpl",
+            "bugowner.commands.validate.MaintainershipRepositoryImpl",
             Mock(return_value=mock_maintainership_repo),
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.RepoMetadataRepositoryImpl",
+            "bugowner.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.ObsRepositoryImpl", Mock(return_value=mock_obs_repo)
+            "bugowner.commands.validate.ObsRepositoryImpl", Mock(return_value=mock_obs_repo)
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.FalsePositivesRepositoryImpl",
+            "bugowner.commands.validate.FalsePositivesRepositoryImpl",
             Mock(return_value=mock_false_positives_repo),
         )
 
@@ -119,9 +119,9 @@ class TestValidateCommand:
             new_false_positives={},
         )
         mock_service_cls = Mock(return_value=mock_service)
-        monkeypatch.setattr("src.bugowner.commands.validate.ValidationService", mock_service_cls)
+        monkeypatch.setattr("bugowner.commands.validate.ValidationService", mock_service_cls)
 
-        monkeypatch.setattr("src.bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace(version="16.1", debug=False)
         run(args)
@@ -147,7 +147,7 @@ class TestValidateCommand:
             "false_positives_file": "false_positives.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock metadata repository to track download_primary_metadata call
@@ -157,14 +157,14 @@ class TestValidateCommand:
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.RepoMetadataRepositoryImpl",
+            "bugowner.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
-        monkeypatch.setattr("src.bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
 
         # Mock ValidationService
         mock_service = Mock()
@@ -175,10 +175,10 @@ class TestValidateCommand:
             new_false_positives={},
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace(version="16.1", debug=False)
         run(args)
@@ -206,15 +206,15 @@ class TestValidateCommand:
             "false_positives_file": "false_positives.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
 
         # Mock ValidationService with clean results
         mock_service = Mock()
@@ -225,10 +225,10 @@ class TestValidateCommand:
             new_false_positives={},
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace(version="16.1", debug=False)
         result = run(args)
@@ -247,15 +247,15 @@ class TestValidateCommand:
             "false_positives_file": "false_positives.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
 
         # Mock ValidationService with orphan packages
         mock_service = Mock()
@@ -266,10 +266,10 @@ class TestValidateCommand:
             new_false_positives={},
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace(version="16.1", debug=False)
         result = run(args)
@@ -288,15 +288,15 @@ class TestValidateCommand:
             "false_positives_file": "false_positives.json",
         }
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("src.bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("src.bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
 
         # Mock ValidationService
         mock_service = Mock()
@@ -307,10 +307,10 @@ class TestValidateCommand:
             new_false_positives={},
         )
         monkeypatch.setattr(
-            "src.bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("src.bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
         args = argparse.Namespace(version="16.1", debug=False)
         run(args)

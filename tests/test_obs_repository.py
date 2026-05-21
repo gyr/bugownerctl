@@ -2,7 +2,7 @@
 
 from unittest.mock import Mock, patch
 
-from src.bugowner.repositories.obs_repository import ObsRepositoryImpl
+from bugowner.repositories.obs_repository import ObsRepositoryImpl
 
 
 class TestObsRepository:

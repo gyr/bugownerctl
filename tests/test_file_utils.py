@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.bugowner.utils.file_utils import load_json, save_json
+from bugowner.utils.file_utils import load_json, save_json
 
 
 class TestLoadJson:

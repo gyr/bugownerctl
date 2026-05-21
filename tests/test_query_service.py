@@ -3,8 +3,8 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-from src.bugowner.domain.maintainer import MaintainershipData
-from src.bugowner.services.query_service import (
+from bugowner.domain.maintainer import MaintainershipData
+from bugowner.services.query_service import (
     PackageStatus,
     QueryService,
 )

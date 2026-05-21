@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.bugowner.repositories.false_positives_repository import (
+from bugowner.repositories.false_positives_repository import (
     FalsePositivesRepositoryImpl,
 )
 

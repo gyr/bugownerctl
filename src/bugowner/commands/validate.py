@@ -7,13 +7,13 @@ and packages shipped but not in submodules.
 import argparse
 from pathlib import Path
 
-from src.bugowner.repositories.false_positives_repository import FalsePositivesRepositoryImpl
-from src.bugowner.repositories.git_repository import GitRepositoryImpl
-from src.bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
-from src.bugowner.repositories.obs_repository import ObsRepositoryImpl
-from src.bugowner.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
-from src.bugowner.services.validation_service import ValidationService
-from src.bugowner.utils.config import load_config
+from bugowner.repositories.false_positives_repository import FalsePositivesRepositoryImpl
+from bugowner.repositories.git_repository import GitRepositoryImpl
+from bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
+from bugowner.repositories.obs_repository import ObsRepositoryImpl
+from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
+from bugowner.services.validation_service import ValidationService
+from bugowner.utils.config import load_config
 
 
 def run(args: argparse.Namespace) -> int:

@@ -7,10 +7,10 @@ file and updates whitelist with packages missing from maintainership.
 import argparse
 from pathlib import Path
 
-from src.bugowner.repositories.git_repository import GitRepositoryImpl
-from src.bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
-from src.bugowner.services.whitelist_service import WhitelistService
-from src.bugowner.utils.config import load_config
+from bugowner.repositories.git_repository import GitRepositoryImpl
+from bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
+from bugowner.services.whitelist_service import WhitelistService
+from bugowner.utils.config import load_config
 
 
 def run_update(args: argparse.Namespace) -> int:

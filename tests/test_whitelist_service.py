@@ -7,8 +7,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.bugowner.domain.maintainer import MaintainershipData
-from src.bugowner.services.whitelist_service import WhitelistService
+from bugowner.domain.maintainer import MaintainershipData
+from bugowner.services.whitelist_service import WhitelistService
 
 
 class TestWhitelistService:

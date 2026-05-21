@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.bugowner.utils.config import load_config
+from bugowner.utils.config import load_config
 
 
 class TestLoadConfig:

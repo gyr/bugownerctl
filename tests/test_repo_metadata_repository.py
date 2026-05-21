@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from src.bugowner.repositories.repo_metadata_repository import (
+from bugowner.repositories.repo_metadata_repository import (
     RepoMetadataRepositoryImpl,
 )
 

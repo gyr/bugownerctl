@@ -9,14 +9,14 @@ Design Notes:
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.bugowner.domain.maintainer import MaintainershipData
-from src.bugowner.repositories.false_positives_repository import (
+from bugowner.domain.maintainer import MaintainershipData
+from bugowner.repositories.false_positives_repository import (
     FalsePositivesRepository,
 )
-from src.bugowner.repositories.git_repository import GitRepository
-from src.bugowner.repositories.maintainership_repository import MaintainershipRepository
-from src.bugowner.repositories.obs_repository import ObsRepository
-from src.bugowner.repositories.repo_metadata_repository import RepoMetadataRepository
+from bugowner.repositories.git_repository import GitRepository
+from bugowner.repositories.maintainership_repository import MaintainershipRepository
+from bugowner.repositories.obs_repository import ObsRepository
+from bugowner.repositories.repo_metadata_repository import RepoMetadataRepository
 
 
 @dataclass

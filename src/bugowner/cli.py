@@ -8,7 +8,7 @@ import argparse
 import logging
 import sys
 
-from src.bugowner.commands import query, validate, whitelist
+from bugowner.commands import query, validate, whitelist
 
 
 def create_parser() -> argparse.ArgumentParser:

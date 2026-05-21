@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-from src.bugowner.repositories.maintainership_repository import MaintainershipRepository
+from bugowner.repositories.maintainership_repository import MaintainershipRepository
 
 
 class PackageStatus(Enum):

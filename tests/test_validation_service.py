@@ -3,8 +3,8 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-from src.bugowner.domain.maintainer import MaintainershipData
-from src.bugowner.services.validation_service import ValidationResult, ValidationService
+from bugowner.domain.maintainer import MaintainershipData
+from bugowner.services.validation_service import ValidationResult, ValidationService
 
 
 class TestValidationResult:
