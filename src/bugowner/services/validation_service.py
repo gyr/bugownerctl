@@ -27,6 +27,7 @@ class ValidationResult:
     """Results from validation workflow."""
 
     orphan_packages: list[str]
+    maintained_packages_without_submodule: list[str]
     shipped_not_in_submodule: list[str]
     new_false_positives: dict[str, str]
 
@@ -172,6 +173,10 @@ class ValidationService:
         cache = self.false_positives_repo.load(false_positives_file)
 
         # Run all validation checks
+        maintained_packages_without_submodule = self.find_maintained_packages_without_submodule(
+            maintainership_data, submodules
+        )
+
         # IMPORTANT: Get valid packages first, then check orphans only for valid packages
         (
             valid_packages,
@@ -186,6 +191,7 @@ class ValidationService:
 
         return ValidationResult(
             orphan_packages=orphan_packages,
+            maintained_packages_without_submodule=maintained_packages_without_submodule,
             shipped_not_in_submodule=shipped_not_in_submodule,
             new_false_positives=new_false_positives,
         )

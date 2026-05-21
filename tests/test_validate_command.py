@@ -53,6 +53,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -116,6 +117,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -175,6 +177,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -228,6 +231,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -272,6 +276,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=["orphan-pkg1", "orphan-pkg2"],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -316,6 +321,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=["pkg1", "pkg2"],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )

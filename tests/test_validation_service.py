@@ -15,11 +15,13 @@ class TestValidationResult:
         """Should initialize with all required fields."""
         result = ValidationResult(
             orphan_packages=["pkg1", "pkg2"],
+            maintained_packages_without_submodule=["pkg4"],
             shipped_not_in_submodule=["pkg3"],
             new_false_positives={"bin1": "src1"},
         )
 
         assert result.orphan_packages == ["pkg1", "pkg2"]
+        assert result.maintained_packages_without_submodule == ["pkg4"]
         assert result.shipped_not_in_submodule == ["pkg3"]
         assert result.new_false_positives == {"bin1": "src1"}
 
@@ -27,11 +29,13 @@ class TestValidationResult:
         """Should handle empty lists and dicts."""
         result = ValidationResult(
             orphan_packages=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
 
         assert result.orphan_packages == []
+        assert result.maintained_packages_without_submodule == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
@@ -927,5 +931,49 @@ class TestValidateAll:
         # Should still load all data sources
         maintainership_repo.load.assert_called_once()
         metadata_repo.parse_source_packages.assert_called_once()
+
+    def test_validate_all_includes_maintained_packages_without_submodule(self):
+        """Should include maintained_packages_without_submodule in ValidationResult."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["alice@example.com"],
+                "pkg2": ["bob@example.com"],
+                "pkg3": ["charlie@example.com"],
+            }
+        )
+
+        git_repo = Mock()
+        # Only pkg1 has submodule
+        git_repo.list_submodules.return_value = ["pkg1"]
+
+        metadata_repo = Mock()
+        # All packages shipped
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # pkg2, pkg3 in maintainership but not in submodules
+        assert result.maintained_packages_without_submodule == ["pkg2", "pkg3"]
         git_repo.list_submodules.assert_called_once()
         false_positives_repo.load.assert_called_once()
