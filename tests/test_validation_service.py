@@ -254,6 +254,43 @@ class TestFindUnmaintainedSubmodules:
 class TestFindShippedWithoutSubmodule:
     """Test ValidationService.find_shipped_without_submodule method."""
 
+    def test_returns_three_tuple_with_shipped_not_in_submodule(self):
+        """Should return 3-tuple including shipped_not_in_submodule list."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+        # OBS finds pkg2 → "pkg2-src", but NOT pkg3 (returns empty dict means not found)
+        obs_repo.query_source_packages.return_value = {"pkg2": "pkg2-src"}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2", "pkg3"}
+        submodules = ["pkg1", "pkg2-src"]
+        fp_file = Path("/tmp/fp.json")
+
+        # Expecting 3-tuple return
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
+
+        # pkg1 in submodules directly
+        # pkg2 mapped to pkg2-src via OBS, pkg2-src in submodules
+        assert valid == {"pkg1", "pkg2-src"}
+
+        # pkg3 NOT found in OBS (not in new_fps), so should be in shipped_not_in_submodule
+        assert not_in_sub == ["pkg3"]
+
+        # Only pkg2 discovered via OBS
+        assert new_fps == {"pkg2": "pkg2-src"}
+
     def test_all_packages_in_submodules_no_obs_queries(self):
         """Should return all packages when already in submodules."""
         # Mock repositories
@@ -274,10 +311,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["pkg1", "pkg2", "pkg3"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # All shipped packages found in submodules
         assert valid == {"pkg1", "pkg2"}
+        assert not_in_sub == []  # No packages missing
         assert new_fps == {}
 
         # Should load cache
@@ -309,10 +349,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["source-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Binary package remapped to source package found in submodules
         assert valid == {"source-pkg"}
+        assert not_in_sub == []  # Resolved via cache
         assert new_fps == {}
 
         # Should load cache
@@ -345,10 +388,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["source-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Unknown package resolved via OBS to source package in submodules
         assert valid == {"source-pkg"}
+        assert not_in_sub == []  # Found via OBS
         assert new_fps == {"unknown-pkg": "source-pkg"}
 
         # Should load cache
@@ -381,10 +427,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["known-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Only known package is valid, unknown not resolved
         assert valid == {"known-pkg"}
+        assert not_in_sub == ["unknown-pkg"]  # OBS didn't find it
         assert new_fps == {}
 
         # Should load cache
@@ -416,7 +465,9 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["pkg1", "pkg2"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # No shipped packages, so nothing valid
         assert valid == set()
@@ -453,7 +504,9 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["source1"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Only unknown1 resolved to source1
         assert valid == {"source1"}
@@ -491,7 +544,9 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["valid-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # skip-pkg filtered out (null in cache), valid-pkg found
         assert valid == {"valid-pkg"}

@@ -99,7 +99,7 @@ class ValidationService:
         false_positives_file: Path,
         obs_project: str = "SUSE:SLFO:Main",
         cache: dict[str, str | None] | None = None,
-    ) -> tuple[set[str], dict[str, str]]:
+    ) -> tuple[set[str], list[str], dict[str, str]]:
         """Find shipped packages not in submodules (with OBS fallback).
 
         Args:
@@ -110,7 +110,10 @@ class ValidationService:
             cache: Optional pre-loaded cache (avoids redundant I/O)
 
         Returns:
-            Tuple of (valid_packages, new_false_positives)
+            Tuple of (valid_packages, shipped_not_in_submodule, new_false_positives)
+            - valid_packages: Packages found in submodules or resolved via OBS
+            - shipped_not_in_submodule: Packages not found in submodules or OBS
+            - new_false_positives: New binary→source mappings discovered
         """
         # Load cache if not provided
         if cache is None:
@@ -132,6 +135,8 @@ class ValidationService:
 
         # Query OBS for unknowns if any
         new_false_positives: dict[str, str] = {}
+        shipped_not_in_submodule: list[str] = []
+
         if unknowns:
             new_false_positives = self.obs_repo.query_source_packages(unknowns, obs_project)
 
@@ -140,12 +145,15 @@ class ValidationService:
                 if source_pkg in submodules_set:
                     valid_packages.add(source_pkg)
 
+            # Packages where OBS query failed (not found)
+            shipped_not_in_submodule = sorted(unknowns - set(new_false_positives.keys()))
+
             # Merge and save cache if there are new discoveries
             if new_false_positives:
                 cache.update(new_false_positives)
                 self.false_positives_repo.save(false_positives_file, cache)
 
-        return (valid_packages, new_false_positives)
+        return (valid_packages, shipped_not_in_submodule, new_false_positives)
 
     def validate_all(
         self,
@@ -174,26 +182,13 @@ class ValidationService:
         # Run all validation checks
         orphan_packages = self.find_orphan_packages(shipped_packages, maintainership_data)
         unmaintained_submodules = self.find_unmaintained_submodules(submodules, maintainership_data)
-        valid_packages, new_false_positives = self.find_shipped_without_submodule(
+        (
+            valid_packages,
+            shipped_not_in_submodule,
+            new_false_positives,
+        ) = self.find_shipped_without_submodule(
             shipped_packages, submodules, false_positives_file, cache=cache
         )
-
-        # Calculate shipped_not_in_submodule
-        # Map each ORIGINAL shipped package name (from metadata) through cache
-        # to check if its source package is valid. This preserves original
-        # package names in error reports (e.g., "binary-pkg" not "source-pkg").
-        cache.update(new_false_positives)  # Include discoveries from this run
-
-        # Check each shipped package
-        invalid_shipped: list[str] = []
-        for pkg in shipped_packages:
-            # Apply mapping (if exists)
-            remapped = cache.get(pkg, pkg)
-            # Check if remapped package is valid (or if it's None, it's invalid)
-            if remapped is None or remapped not in valid_packages:
-                invalid_shipped.append(pkg)
-
-        shipped_not_in_submodule = sorted(invalid_shipped)
 
         return ValidationResult(
             orphan_packages=orphan_packages,
