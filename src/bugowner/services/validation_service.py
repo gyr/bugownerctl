@@ -27,7 +27,6 @@ class ValidationResult:
     """Results from validation workflow."""
 
     orphan_packages: list[str]
-    unmaintained_submodules: list[str]
     shipped_not_in_submodule: list[str]
     new_false_positives: dict[str, str]
 
@@ -80,20 +79,6 @@ class ValidationService:
         packages_in_maintainership = set(maintainership_data.packages.keys())
         submodule_set = set(submodules)
         return sorted(packages_in_maintainership - submodule_set)
-
-    def find_unmaintained_submodules(
-        self, submodules: list[str], maintainership_data: MaintainershipData
-    ) -> list[str]:
-        """Find submodules not listed in maintainership file.
-
-        Args:
-            submodules: List of git submodule names
-            maintainership_data: Maintainership data
-
-        Returns:
-            Sorted list of unmaintained submodule names
-        """
-        return sorted([sub for sub in submodules if sub not in maintainership_data.packages])
 
     def find_shipped_without_submodule(
         self,
@@ -198,11 +183,9 @@ class ValidationService:
 
         # Check orphans only for valid packages (in submodules or OBS-resolved)
         orphan_packages = self.find_orphan_packages(valid_packages, maintainership_data)
-        unmaintained_submodules = self.find_unmaintained_submodules(submodules, maintainership_data)
 
         return ValidationResult(
             orphan_packages=orphan_packages,
-            unmaintained_submodules=unmaintained_submodules,
             shipped_not_in_submodule=shipped_not_in_submodule,
             new_false_positives=new_false_positives,
         )

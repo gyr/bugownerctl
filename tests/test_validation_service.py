@@ -15,13 +15,11 @@ class TestValidationResult:
         """Should initialize with all required fields."""
         result = ValidationResult(
             orphan_packages=["pkg1", "pkg2"],
-            unmaintained_submodules=["mod1"],
             shipped_not_in_submodule=["pkg3"],
             new_false_positives={"bin1": "src1"},
         )
 
         assert result.orphan_packages == ["pkg1", "pkg2"]
-        assert result.unmaintained_submodules == ["mod1"]
         assert result.shipped_not_in_submodule == ["pkg3"]
         assert result.new_false_positives == {"bin1": "src1"}
 
@@ -29,13 +27,11 @@ class TestValidationResult:
         """Should handle empty lists and dicts."""
         result = ValidationResult(
             orphan_packages=[],
-            unmaintained_submodules=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
 
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
@@ -185,71 +181,6 @@ class TestFindMaintainedPackagesWithoutSubmodule:
         result = service.find_maintained_packages_without_submodule(maintainership, submodules)
 
         assert result == ["pkg1", "pkg2", "pkg3"]
-
-
-class TestFindUnmaintainedSubmodules:
-    """Test ValidationService.find_unmaintained_submodules method."""
-
-    def test_finds_submodules_not_in_maintainership(self):
-        """Should identify submodules missing from maintainership data."""
-        service = ValidationService(None, None, None, None, None)
-        submodules = ["mod1", "mod2", "mod3"]
-        maintainership = MaintainershipData(
-            packages={
-                "mod1": ["user1"],
-                "mod2": ["user2"],
-                # mod3 missing - should be unmaintained
-            }
-        )
-
-        result = service.find_unmaintained_submodules(submodules, maintainership)
-
-        assert result == ["mod3"]
-
-    def test_all_submodules_maintained(self):
-        """Should return empty list when all submodules in maintainership."""
-        service = ValidationService(None, None, None, None, None)
-        submodules = ["mod1", "mod2"]
-        maintainership = MaintainershipData(
-            packages={
-                "mod1": ["user1"],
-                "mod2": ["user2"],
-            }
-        )
-
-        result = service.find_unmaintained_submodules(submodules, maintainership)
-
-        assert result == []
-
-    def test_all_submodules_unmaintained_returns_sorted(self):
-        """Should return sorted list when all submodules unmaintained."""
-        service = ValidationService(None, None, None, None, None)
-        submodules = ["zebra", "apple", "middle"]
-        maintainership = MaintainershipData(packages={})
-
-        result = service.find_unmaintained_submodules(submodules, maintainership)
-
-        assert result == ["apple", "middle", "zebra"]
-
-    def test_empty_submodules_list(self):
-        """Should return empty list when no submodules provided."""
-        service = ValidationService(None, None, None, None, None)
-        submodules = []
-        maintainership = MaintainershipData(packages={"mod1": ["user1"]})
-
-        result = service.find_unmaintained_submodules(submodules, maintainership)
-
-        assert result == []
-
-    def test_empty_maintainership_all_unmaintained(self):
-        """Should return all submodules when maintainership empty."""
-        service = ValidationService(None, None, None, None, None)
-        submodules = ["mod1", "mod2", "mod3"]
-        maintainership = MaintainershipData(packages={})
-
-        result = service.find_unmaintained_submodules(submodules, maintainership)
-
-        assert result == ["mod1", "mod2", "mod3"]
 
 
 class TestFindShippedWithoutSubmodule:
@@ -712,7 +643,6 @@ class TestValidateAll:
 
         # All packages have maintainers, all submodules maintained, all shipped in submodules
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
@@ -756,50 +686,6 @@ class TestValidateAll:
 
         # Should find pkg2 as orphan (empty maintainer list)
         assert result.orphan_packages == ["pkg2"]
-        assert result.unmaintained_submodules == []
-        assert result.shipped_not_in_submodule == []
-        assert result.new_false_positives == {}
-
-    def test_validate_all_finds_unmaintained_submodules(self):
-        """Should identify submodules not in maintainership file."""
-        # Mock repositories
-        maintainership_repo = Mock()
-        maintainership_repo.load.return_value = MaintainershipData(
-            packages={
-                "submod1": ["user2"],
-                # submod2 missing - unmaintained
-            }
-        )
-
-        git_repo = Mock()
-        git_repo.list_submodules.return_value = ["submod1", "submod2"]
-
-        metadata_repo = Mock()
-        metadata_repo.parse_source_packages.return_value = set()  # No shipped packages
-
-        obs_repo = Mock()
-
-        false_positives_repo = Mock()
-        false_positives_repo.load.return_value = {}
-
-        service = ValidationService(
-            maintainership_repo=maintainership_repo,
-            git_repo=git_repo,
-            metadata_repo=metadata_repo,
-            obs_repo=obs_repo,
-            false_positives_repo=false_positives_repo,
-        )
-
-        result = service.validate_all(
-            Path("/tmp/maintainership.json"),
-            Path("/tmp/primary.xml.gz"),
-            Path("/tmp/fp.json"),
-            Path("/tmp/repo"),
-        )
-
-        # Should find submod2 as unmaintained
-        assert result.orphan_packages == []
-        assert result.unmaintained_submodules == ["submod2"]
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
@@ -843,7 +729,6 @@ class TestValidateAll:
 
         # Should find pkg2 not in submodules
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == ["pkg2"]
         assert result.new_false_positives == {}
 
@@ -947,7 +832,6 @@ class TestValidateAll:
         # Should return new mapping, bin-pkg maps to src-pkg which IS in submodules
         # So no shipped_not_in_submodule issue
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {"bin-pkg": "src-pkg"}
 
@@ -1000,7 +884,6 @@ class TestValidateAll:
         # - submod2 is unmaintained submodule
         # - pkg1, pkg2, pkg3 are all shipped but not in submodules (none are valid)
         assert result.orphan_packages == []  # None valid, so none checked for orphans
-        assert result.unmaintained_submodules == ["submod2"]
         assert result.shipped_not_in_submodule == ["pkg1", "pkg2", "pkg3"]
         assert result.new_false_positives == {}
 
@@ -1038,7 +921,6 @@ class TestValidateAll:
 
         # All results should be empty
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 

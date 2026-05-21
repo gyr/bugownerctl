@@ -111,11 +111,6 @@ def run(args: argparse.Namespace) -> int:
         for pkg in result.orphan_packages:
             print(f"  - {pkg}")
 
-    if result.unmaintained_submodules:
-        print("\nUnmaintained submodules (not in maintainership file):")
-        for sub in result.unmaintained_submodules:
-            print(f"  - {sub}")
-
     if result.shipped_not_in_submodule:
         print("\nShipped packages not in submodules:")
         for pkg in result.shipped_not_in_submodule:
@@ -125,9 +120,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"\nDiscovered {len(result.new_false_positives)} new binary→source mappings")
 
     # Determine exit code
-    has_issues = bool(
-        result.orphan_packages or result.unmaintained_submodules or result.shipped_not_in_submodule
-    )
+    has_issues = bool(result.orphan_packages or result.shipped_not_in_submodule)
 
     if not has_issues:
         print("\n✅ Validation passed: No issues found")
