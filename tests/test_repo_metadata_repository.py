@@ -1,5 +1,6 @@
 """Tests for repository metadata repository module."""
 
+import contextlib
 import gzip
 import hashlib
 from pathlib import Path
@@ -364,3 +365,42 @@ class TestDownloadPrimaryMetadata:
         # Act & Assert
         with pytest.raises(RuntimeError, match="Invalid primary.xml location"):
             repo.download_primary_metadata("16.1", tmp_path)
+
+    @patch("bugowner.repositories.repo_metadata_repository.requests.get")
+    def test_download_primary_metadata_constructs_correct_ibs_url(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should construct URL using IBS path format, not update path format."""
+        # Arrange
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha256">abc123</checksum>
+  </data>
+</repomd>"""
+
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+        mock_get.return_value = mock_repomd_response
+
+        repo = RepoMetadataRepositoryImpl()
+
+        # Act
+        with contextlib.suppress(Exception):
+            # May fail on primary download, we only care about repomd URL
+            repo.download_primary_metadata("16.1", tmp_path)
+
+        # Assert
+        # Verify first call (repomd.xml) uses IBS URL format
+        assert mock_get.call_count >= 1
+        repomd_url = mock_get.call_args_list[0][0][0]
+
+        # Should use IBS format: /ibs/SUSE:/SLFO:/Products:/SLES:/16.1:/PUBLISH/product/
+        assert "/ibs/SUSE:/SLFO:/Products:/SLES:/16.1:/PUBLISH/product/" in repomd_url
+        assert repomd_url.startswith("https://")
+        assert "download.suse.de" in repomd_url
+
+        # Should NOT use update format: /update/SLFO/16.1/SLES/
+        assert "/update/SLFO/" not in repomd_url

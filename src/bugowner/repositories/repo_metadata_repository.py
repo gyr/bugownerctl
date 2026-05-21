@@ -60,9 +60,12 @@ class RepoMetadataRepositoryImpl:
         """Initialize repository metadata repository.
 
         Args:
-            base_url: Base URL for repository metadata (defaults to SUSE update repo)
+            base_url: Base URL for repository metadata (defaults to SUSE IBS repo)
         """
-        self.base_url = base_url or "http://download.suse.de/update/SLFO/{version}/SLES/"
+        self.base_url = (
+            base_url
+            or "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{version}:/PUBLISH/product/"
+        )
 
     def download_primary_metadata(self, version: str, cache_dir: Path) -> Path:
         """Download and cache primary repository metadata.
