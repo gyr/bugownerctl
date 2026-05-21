@@ -6,6 +6,7 @@ Design Notes:
     - Extracted from validate_maintainership.py
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from bugowner.repositories.git_repository import GitRepository
 from bugowner.repositories.maintainership_repository import MaintainershipRepository
 from bugowner.repositories.obs_repository import ObsRepository
 from bugowner.repositories.repo_metadata_repository import RepoMetadataRepository
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -138,6 +141,7 @@ class ValidationService:
         shipped_not_in_submodule: list[str] = []
 
         if unknowns:
+            logger.info(f"Found {len(unknowns)} unknown packages. Querying OBS in parallel...")
             new_false_positives = self.obs_repo.query_source_packages(unknowns, obs_project)
 
             # Check if OBS-resolved packages are in submodules
@@ -150,8 +154,11 @@ class ValidationService:
 
             # Merge and save cache if there are new discoveries
             if new_false_positives:
+                logger.info(f"Found {len(new_false_positives)} false-positives packages.")
                 cache.update(new_false_positives)
                 self.false_positives_repo.save(false_positives_file, cache)
+            else:
+                logger.info("No false-positives packages found.")
 
         return (valid_packages, shipped_not_in_submodule, new_false_positives)
 

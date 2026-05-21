@@ -1,5 +1,6 @@
 """Tests for validation_service module - orchestrates validation workflow."""
 
+import logging
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -560,6 +561,103 @@ class TestFindShippedWithoutSubmodule:
 
         # Should NOT save cache
         false_positives_repo.save.assert_not_called()
+
+    def test_logs_obs_query_activity_when_unknowns_found(self, caplog):
+        """Should log OBS query activity when unknown packages found."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+        # OBS finds pkg2 → pkg2-src
+        obs_repo.query_source_packages.return_value = {"pkg2": "pkg2-src"}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2", "pkg3"}
+        submodules = ["pkg1"]  # pkg2, pkg3 unknown
+        fp_file = Path("/tmp/fp.json")
+
+        # Capture logs
+        with caplog.at_level(logging.INFO):
+            valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+                shipped, submodules, fp_file
+            )
+
+        # Should log before OBS queries
+        assert "Found 2 unknown packages. Querying OBS in parallel..." in caplog.text
+
+        # Should log when false positives discovered
+        assert "Found 1 false-positives packages" in caplog.text
+
+    def test_logs_no_false_positives_when_obs_returns_empty(self, caplog):
+        """Should log 'No false-positives' when OBS returns nothing."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}  # OBS finds nothing
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2"}
+        submodules = []  # All unknown
+        fp_file = Path("/tmp/fp.json")
+
+        # Capture logs
+        with caplog.at_level(logging.INFO):
+            valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+                shipped, submodules, fp_file
+            )
+
+        # Should log before OBS queries
+        assert "Found 2 unknown packages. Querying OBS in parallel..." in caplog.text
+
+        # Should log when no false positives found
+        assert "No false-positives packages found" in caplog.text
+
+    def test_no_obs_logging_when_all_packages_in_submodules(self, caplog):
+        """Should NOT log OBS activity when all packages in submodules."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2"}
+        submodules = ["pkg1", "pkg2"]  # All in submodules
+        fp_file = Path("/tmp/fp.json")
+
+        # Capture logs
+        with caplog.at_level(logging.INFO):
+            valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+                shipped, submodules, fp_file
+            )
+
+        # Should NOT log OBS activity (no unknowns)
+        assert "Querying OBS" not in caplog.text
+        assert "false-positives" not in caplog.text
 
 
 class TestValidateAll:
