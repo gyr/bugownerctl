@@ -15,20 +15,22 @@ class TestValidateCommand:
 
     def test_run_creates_repository_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create all repository implementation instances."""
-        # Mock config loading
+        # Mock config loading with correct format (slfo_git_url + products)
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
-            "repo_url": "https://github.com/test/repo",
-            "repo_ref": "main",
+            "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
         }
         mock_load_config = Mock(return_value=mock_config)
         monkeypatch.setattr("bugowner.commands.validate.load_config", mock_load_config)
 
         # Mock repository classes to track instantiation
         mock_maintainership_repo_cls = Mock()
-        mock_git_repo_cls = Mock()
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        mock_git_repo_cls = Mock(return_value=mock_git_repo)
         mock_metadata_repo_cls = Mock()
         mock_obs_repo_cls = Mock()
         mock_false_positives_repo_cls = Mock()
@@ -75,10 +77,10 @@ class TestValidateCommand:
         """Should create ValidationService with repository instances."""
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
-            "repo_url": "https://github.com/test/repo",
-            "repo_ref": "main",
+            "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
             "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
@@ -87,6 +89,7 @@ class TestValidateCommand:
         # Create mock repository instances
         mock_maintainership_repo = Mock()
         mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
         mock_metadata_repo = Mock()
         mock_obs_repo = Mock()
         mock_false_positives_repo = Mock()
@@ -141,10 +144,10 @@ class TestValidateCommand:
         """Should call ValidationService.validate_all() with correct parameters."""
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
-            "repo_url": "https://github.com/test/repo",
-            "repo_ref": "main",
+            "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
             "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
@@ -158,7 +161,11 @@ class TestValidateCommand:
 
         # Mock repositories
         monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
         monkeypatch.setattr(
             "bugowner.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
@@ -200,10 +207,10 @@ class TestValidateCommand:
         """Should return 0 exit code when validation finds no issues."""
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
-            "repo_url": "https://github.com/test/repo",
-            "repo_ref": "main",
+            "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
             "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
@@ -211,7 +218,11 @@ class TestValidateCommand:
 
         # Mock repositories
         monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
         monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
@@ -241,10 +252,10 @@ class TestValidateCommand:
         """Should return 1 exit code when orphan packages found."""
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
-            "repo_url": "https://github.com/test/repo",
-            "repo_ref": "main",
+            "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
             "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
@@ -252,7 +263,11 @@ class TestValidateCommand:
 
         # Mock repositories
         monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
         monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
@@ -282,10 +297,10 @@ class TestValidateCommand:
         """Should print orphan packages to stdout."""
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
-            "repo_url": "https://github.com/test/repo",
-            "repo_ref": "main",
+            "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
             "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
@@ -293,7 +308,11 @@ class TestValidateCommand:
 
         # Mock repositories
         monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
         monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())

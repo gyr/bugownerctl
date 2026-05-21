@@ -150,6 +150,35 @@ class TestCloneOrUpdate:
                     RefType.BRANCH,
                 )
 
+    def test_accepts_valid_git_refs_with_hyphens(self) -> None:
+        """Should accept valid git refs containing hyphens."""
+        repo = GitRepositoryImpl()
+
+        valid_refs = [
+            "slfo-main",
+            "feature-branch",
+            "release-1.0",
+            "hotfix-security-patch",
+            "main-stable",
+        ]
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.mkdir"),
+        ):
+            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+
+            for valid_ref in valid_refs:
+                # Should not raise ValueError
+                result = repo.clone_or_update(
+                    "https://github.com/test/repo.git",
+                    valid_ref,
+                    Path("/cache"),
+                    RefType.BRANCH,
+                )
+                assert isinstance(result, Path)
+
     def test_blocks_git_option_injection(self) -> None:
         """Should block git refs starting with - (option injection)."""
         repo = GitRepositoryImpl()

@@ -36,12 +36,19 @@ class TestValidateWorkflow:
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
         (tmp_path / "false_positives.json").write_text(json.dumps({}))
 
-        # Create minimal config file
-        config_data = {"cache_dir": str(tmp_path / "cache")}
+        # Create minimal config file with new format
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
         # Mock external calls
         with (
+            patch(
+                "bugowner.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
             patch(
                 "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
@@ -53,6 +60,7 @@ class TestValidateWorkflow:
             ) as mock_parse,
             patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
         ):
+            mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["test-package", "another-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"test-package", "another-package"}
@@ -76,10 +84,17 @@ class TestValidateWorkflow:
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
         (tmp_path / "false_positives.json").write_text(json.dumps({}))
 
-        config_data = {"cache_dir": str(tmp_path / "cache")}
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
         with (
+            patch(
+                "bugowner.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
             patch(
                 "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
@@ -91,6 +106,7 @@ class TestValidateWorkflow:
             ) as mock_parse,
             patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
         ):
+            mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["maintained-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"maintained-package", "orphan-package"}

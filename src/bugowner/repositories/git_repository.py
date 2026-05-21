@@ -236,8 +236,9 @@ class GitRepositoryImpl:
         if ".." in git_ref:
             raise ValueError(f"Path traversal not allowed in git reference: {git_ref}")
 
-        # Validate git_ref doesn't contain dangerous characters (removed - from allowed)
-        if not re.match(r"^[\w\./]+$", git_ref):
+        # Validate git_ref doesn't contain dangerous characters
+        # Allows: word chars (a-zA-Z0-9_), dots, slashes, hyphens
+        if not re.match(r"^[\w\./-]+$", git_ref):
             raise ValueError(f"Invalid git reference format: {git_ref}")
 
         # Create cache_dir if doesn't exist
