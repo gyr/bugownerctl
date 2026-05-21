@@ -180,8 +180,7 @@ class ValidationService:
         cache = self.false_positives_repo.load(false_positives_file)
 
         # Run all validation checks
-        orphan_packages = self.find_orphan_packages(shipped_packages, maintainership_data)
-        unmaintained_submodules = self.find_unmaintained_submodules(submodules, maintainership_data)
+        # IMPORTANT: Get valid packages first, then check orphans only for valid packages
         (
             valid_packages,
             shipped_not_in_submodule,
@@ -189,6 +188,10 @@ class ValidationService:
         ) = self.find_shipped_without_submodule(
             shipped_packages, submodules, false_positives_file, cache=cache
         )
+
+        # Check orphans only for valid packages (in submodules or OBS-resolved)
+        orphan_packages = self.find_orphan_packages(valid_packages, maintainership_data)
+        unmaintained_submodules = self.find_unmaintained_submodules(submodules, maintainership_data)
 
         return ValidationResult(
             orphan_packages=orphan_packages,

@@ -749,6 +749,62 @@ class TestValidateAll:
         assert result.shipped_not_in_submodule == ["pkg2"]
         assert result.new_false_positives == {}
 
+    def test_validate_all_uses_valid_packages_for_orphan_check(self):
+        """Should check orphans only for valid packages, not all shipped packages.
+
+        Bug: validate_all currently passes shipped_packages to find_orphan_packages,
+        but should pass valid_packages (packages in submodules or OBS-resolved).
+
+        Scenario:
+        - shipped_packages = {pkg1, pkg2, pkg3}
+        - pkg3 NOT in submodules
+        - OBS query returns None for pkg3 (not found)
+        - Therefore pkg3 NOT in valid_packages
+        - Therefore pkg3 should NOT appear in orphan_packages
+        """
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],  # Has maintainer
+                # pkg2 missing - orphan (but in submodules, so valid)
+                # pkg3 missing - but NOT valid (not in submodules, OBS returns None)
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1", "pkg2"]  # pkg3 NOT in submodules
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}  # OBS returns None for pkg3
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # BUG EXPOSED: Current code incorrectly includes pkg3 in orphan check
+        # pkg3 should NOT be checked because it's not valid (not in submodules, OBS failed)
+        # Only pkg2 should be in orphan_packages (valid but no maintainer)
+        assert result.orphan_packages == ["pkg2"]  # Will FAIL with current code
+        assert result.shipped_not_in_submodule == ["pkg3"]
+
     def test_validate_all_with_new_false_positives_discovered(self):
         """Should return new binary→source mappings discovered from OBS queries."""
         # Mock repositories
@@ -842,10 +898,10 @@ class TestValidateAll:
         )
 
         # Should find all types of issues:
-        # - pkg2 is orphan (empty maintainer list)
+        # - NO orphans (pkg2 has empty maintainer list BUT not valid - not in submodules)
         # - submod2 is unmaintained submodule
-        # - pkg1, pkg2, pkg3 are all shipped but not in submodules
-        assert result.orphan_packages == ["pkg2"]
+        # - pkg1, pkg2, pkg3 are all shipped but not in submodules (none are valid)
+        assert result.orphan_packages == []  # None valid, so none checked for orphans
         assert result.unmaintained_submodules == ["submod2"]
         assert result.shipped_not_in_submodule == ["pkg1", "pkg2", "pkg3"]
         assert result.new_false_positives == {}
