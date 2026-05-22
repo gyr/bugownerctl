@@ -6,6 +6,7 @@ Design Notes:
     - Extracted from validate_maintainership.py
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,13 +19,15 @@ from bugowner.repositories.maintainership_repository import MaintainershipReposi
 from bugowner.repositories.obs_repository import ObsRepository
 from bugowner.repositories.repo_metadata_repository import RepoMetadataRepository
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ValidationResult:
     """Results from validation workflow."""
 
     orphan_packages: list[str]
-    unmaintained_submodules: list[str]
+    maintained_packages_without_submodule: list[str]
     shipped_not_in_submodule: list[str]
     new_false_positives: dict[str, str]
 
@@ -62,19 +65,21 @@ class ValidationService:
             [pkg for pkg in shipped_packages if not maintainership_data.packages.get(pkg)]
         )
 
-    def find_unmaintained_submodules(
-        self, submodules: list[str], maintainership_data: MaintainershipData
+    def find_maintained_packages_without_submodule(
+        self, maintainership_data: MaintainershipData, submodules: list[str]
     ) -> list[str]:
-        """Find submodules not listed in maintainership file.
+        """Find packages in maintainership file but not in git submodules.
 
         Args:
-            submodules: List of git submodule names
             maintainership_data: Maintainership data
+            submodules: List of git submodule names
 
         Returns:
-            Sorted list of unmaintained submodule names
+            Sorted list of packages in maintainership without submodules
         """
-        return sorted([sub for sub in submodules if sub not in maintainership_data.packages])
+        packages_in_maintainership = set(maintainership_data.packages.keys())
+        submodule_set = set(submodules)
+        return sorted(packages_in_maintainership - submodule_set)
 
     def find_shipped_without_submodule(
         self,
@@ -83,7 +88,7 @@ class ValidationService:
         false_positives_file: Path,
         obs_project: str = "SUSE:SLFO:Main",
         cache: dict[str, str | None] | None = None,
-    ) -> tuple[set[str], dict[str, str]]:
+    ) -> tuple[set[str], list[str], dict[str, str]]:
         """Find shipped packages not in submodules (with OBS fallback).
 
         Args:
@@ -94,7 +99,10 @@ class ValidationService:
             cache: Optional pre-loaded cache (avoids redundant I/O)
 
         Returns:
-            Tuple of (valid_packages, new_false_positives)
+            Tuple of (valid_packages, shipped_not_in_submodule, new_false_positives)
+            - valid_packages: Packages found in submodules or resolved via OBS
+            - shipped_not_in_submodule: Packages not found in submodules or OBS
+            - new_false_positives: New binary→source mappings discovered
         """
         # Load cache if not provided
         if cache is None:
@@ -116,7 +124,10 @@ class ValidationService:
 
         # Query OBS for unknowns if any
         new_false_positives: dict[str, str] = {}
+        shipped_not_in_submodule: list[str] = []
+
         if unknowns:
+            logger.info(f"Found {len(unknowns)} unknown packages. Querying OBS in parallel...")
             new_false_positives = self.obs_repo.query_source_packages(unknowns, obs_project)
 
             # Check if OBS-resolved packages are in submodules
@@ -124,12 +135,18 @@ class ValidationService:
                 if source_pkg in submodules_set:
                     valid_packages.add(source_pkg)
 
+            # Packages where OBS query failed (not found)
+            shipped_not_in_submodule = sorted(unknowns - set(new_false_positives.keys()))
+
             # Merge and save cache if there are new discoveries
             if new_false_positives:
+                logger.info(f"Found {len(new_false_positives)} false-positives packages.")
                 cache.update(new_false_positives)
                 self.false_positives_repo.save(false_positives_file, cache)
+            else:
+                logger.info("No false-positives packages found.")
 
-        return (valid_packages, new_false_positives)
+        return (valid_packages, shipped_not_in_submodule, new_false_positives)
 
     def validate_all(
         self,
@@ -156,32 +173,25 @@ class ValidationService:
         cache = self.false_positives_repo.load(false_positives_file)
 
         # Run all validation checks
-        orphan_packages = self.find_orphan_packages(shipped_packages, maintainership_data)
-        unmaintained_submodules = self.find_unmaintained_submodules(submodules, maintainership_data)
-        valid_packages, new_false_positives = self.find_shipped_without_submodule(
+        maintained_packages_without_submodule = self.find_maintained_packages_without_submodule(
+            maintainership_data, submodules
+        )
+
+        # IMPORTANT: Get valid packages first, then check orphans only for valid packages
+        (
+            valid_packages,
+            shipped_not_in_submodule,
+            new_false_positives,
+        ) = self.find_shipped_without_submodule(
             shipped_packages, submodules, false_positives_file, cache=cache
         )
 
-        # Calculate shipped_not_in_submodule
-        # Map each ORIGINAL shipped package name (from metadata) through cache
-        # to check if its source package is valid. This preserves original
-        # package names in error reports (e.g., "binary-pkg" not "source-pkg").
-        cache.update(new_false_positives)  # Include discoveries from this run
-
-        # Check each shipped package
-        invalid_shipped: list[str] = []
-        for pkg in shipped_packages:
-            # Apply mapping (if exists)
-            remapped = cache.get(pkg, pkg)
-            # Check if remapped package is valid (or if it's None, it's invalid)
-            if remapped is None or remapped not in valid_packages:
-                invalid_shipped.append(pkg)
-
-        shipped_not_in_submodule = sorted(invalid_shipped)
+        # Check orphans only for valid packages (in submodules or OBS-resolved)
+        orphan_packages = self.find_orphan_packages(valid_packages, maintainership_data)
 
         return ValidationResult(
             orphan_packages=orphan_packages,
-            unmaintained_submodules=unmaintained_submodules,
+            maintained_packages_without_submodule=maintained_packages_without_submodule,
             shipped_not_in_submodule=shipped_not_in_submodule,
             new_false_positives=new_false_positives,
         )

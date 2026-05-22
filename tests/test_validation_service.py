@@ -1,5 +1,6 @@
 """Tests for validation_service module - orchestrates validation workflow."""
 
+import logging
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -14,13 +15,13 @@ class TestValidationResult:
         """Should initialize with all required fields."""
         result = ValidationResult(
             orphan_packages=["pkg1", "pkg2"],
-            unmaintained_submodules=["mod1"],
+            maintained_packages_without_submodule=["pkg4"],
             shipped_not_in_submodule=["pkg3"],
             new_false_positives={"bin1": "src1"},
         )
 
         assert result.orphan_packages == ["pkg1", "pkg2"]
-        assert result.unmaintained_submodules == ["mod1"]
+        assert result.maintained_packages_without_submodule == ["pkg4"]
         assert result.shipped_not_in_submodule == ["pkg3"]
         assert result.new_false_positives == {"bin1": "src1"}
 
@@ -28,13 +29,13 @@ class TestValidationResult:
         """Should handle empty lists and dicts."""
         result = ValidationResult(
             orphan_packages=[],
-            unmaintained_submodules=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
 
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
+        assert result.maintained_packages_without_submodule == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
@@ -109,73 +110,122 @@ class TestFindOrphanPackages:
         assert result == ["apple", "middle", "zebra"]
 
 
-class TestFindUnmaintainedSubmodules:
-    """Test ValidationService.find_unmaintained_submodules method."""
+class TestFindMaintainedPackagesWithoutSubmodule:
+    """Test ValidationService.find_maintained_packages_without_submodule method."""
 
-    def test_finds_submodules_not_in_maintainership(self):
-        """Should identify submodules missing from maintainership data."""
+    def test_finds_packages_in_maintainership_not_in_submodules(self):
+        """Should identify packages in maintainership but not in git submodules."""
         service = ValidationService(None, None, None, None, None)
-        submodules = ["mod1", "mod2", "mod3"]
         maintainership = MaintainershipData(
             packages={
-                "mod1": ["user1"],
-                "mod2": ["user2"],
-                # mod3 missing - should be unmaintained
+                "pkg1": ["user1"],
+                "pkg2": ["user2"],
+                "pkg3": ["user3"],
             }
         )
+        submodules = ["pkg2", "pkg4"]  # pkg1 and pkg3 missing
 
-        result = service.find_unmaintained_submodules(submodules, maintainership)
+        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
 
-        assert result == ["mod3"]
+        assert result == ["pkg1", "pkg3"]
 
-    def test_all_submodules_maintained(self):
-        """Should return empty list when all submodules in maintainership."""
+    def test_all_packages_have_submodules(self):
+        """Should return empty list when all maintained packages have submodules."""
         service = ValidationService(None, None, None, None, None)
-        submodules = ["mod1", "mod2"]
         maintainership = MaintainershipData(
             packages={
-                "mod1": ["user1"],
-                "mod2": ["user2"],
+                "pkg1": ["user1"],
+                "pkg2": ["user2"],
             }
         )
+        submodules = ["pkg1", "pkg2", "pkg3"]
 
-        result = service.find_unmaintained_submodules(submodules, maintainership)
+        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
 
         assert result == []
 
-    def test_all_submodules_unmaintained_returns_sorted(self):
-        """Should return sorted list when all submodules unmaintained."""
+    def test_all_packages_lack_submodules_returns_sorted(self):
+        """Should return sorted list when all packages lack submodules."""
         service = ValidationService(None, None, None, None, None)
-        submodules = ["zebra", "apple", "middle"]
-        maintainership = MaintainershipData(packages={})
+        maintainership = MaintainershipData(
+            packages={
+                "zebra": ["user1"],
+                "apple": ["user2"],
+                "middle": ["user3"],
+            }
+        )
+        submodules = []
 
-        result = service.find_unmaintained_submodules(submodules, maintainership)
+        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
 
         assert result == ["apple", "middle", "zebra"]
 
-    def test_empty_submodules_list(self):
-        """Should return empty list when no submodules provided."""
+    def test_empty_maintainership(self):
+        """Should return empty list when maintainership is empty."""
         service = ValidationService(None, None, None, None, None)
-        submodules = []
-        maintainership = MaintainershipData(packages={"mod1": ["user1"]})
+        maintainership = MaintainershipData(packages={})
+        submodules = ["mod1", "mod2"]
 
-        result = service.find_unmaintained_submodules(submodules, maintainership)
+        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
 
         assert result == []
 
-    def test_empty_maintainership_all_unmaintained(self):
-        """Should return all submodules when maintainership empty."""
+    def test_empty_submodules_returns_all_maintained(self):
+        """Should return all maintained packages when no submodules exist."""
         service = ValidationService(None, None, None, None, None)
-        submodules = ["mod1", "mod2", "mod3"]
-        maintainership = MaintainershipData(packages={})
+        maintainership = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],
+                "pkg2": ["user2"],
+                "pkg3": ["user3"],
+            }
+        )
+        submodules = []
 
-        result = service.find_unmaintained_submodules(submodules, maintainership)
+        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
 
-        assert result == ["mod1", "mod2", "mod3"]
+        assert result == ["pkg1", "pkg2", "pkg3"]
 
 
 class TestFindShippedWithoutSubmodule:
     """Test ValidationService.find_shipped_without_submodule method."""
+
+    def test_returns_three_tuple_with_shipped_not_in_submodule(self):
+        """Should return 3-tuple including shipped_not_in_submodule list."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+        # OBS finds pkg2 → "pkg2-src", but NOT pkg3 (returns empty dict means not found)
+        obs_repo.query_source_packages.return_value = {"pkg2": "pkg2-src"}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2", "pkg3"}
+        submodules = ["pkg1", "pkg2-src"]
+        fp_file = Path("/tmp/fp.json")
+
+        # Expecting 3-tuple return
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
+
+        # pkg1 in submodules directly
+        # pkg2 mapped to pkg2-src via OBS, pkg2-src in submodules
+        assert valid == {"pkg1", "pkg2-src"}
+
+        # pkg3 NOT found in OBS (not in new_fps), so should be in shipped_not_in_submodule
+        assert not_in_sub == ["pkg3"]
+
+        # Only pkg2 discovered via OBS
+        assert new_fps == {"pkg2": "pkg2-src"}
 
     def test_all_packages_in_submodules_no_obs_queries(self):
         """Should return all packages when already in submodules."""
@@ -197,10 +247,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["pkg1", "pkg2", "pkg3"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # All shipped packages found in submodules
         assert valid == {"pkg1", "pkg2"}
+        assert not_in_sub == []  # No packages missing
         assert new_fps == {}
 
         # Should load cache
@@ -232,10 +285,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["source-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Binary package remapped to source package found in submodules
         assert valid == {"source-pkg"}
+        assert not_in_sub == []  # Resolved via cache
         assert new_fps == {}
 
         # Should load cache
@@ -268,10 +324,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["source-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Unknown package resolved via OBS to source package in submodules
         assert valid == {"source-pkg"}
+        assert not_in_sub == []  # Found via OBS
         assert new_fps == {"unknown-pkg": "source-pkg"}
 
         # Should load cache
@@ -304,10 +363,13 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["known-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Only known package is valid, unknown not resolved
         assert valid == {"known-pkg"}
+        assert not_in_sub == ["unknown-pkg"]  # OBS didn't find it
         assert new_fps == {}
 
         # Should load cache
@@ -339,7 +401,9 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["pkg1", "pkg2"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # No shipped packages, so nothing valid
         assert valid == set()
@@ -376,7 +440,9 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["source1"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # Only unknown1 resolved to source1
         assert valid == {"source1"}
@@ -414,7 +480,9 @@ class TestFindShippedWithoutSubmodule:
         submodules = ["valid-pkg"]
         fp_file = Path("/tmp/fp.json")
 
-        valid, new_fps = service.find_shipped_without_submodule(shipped, submodules, fp_file)
+        valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+            shipped, submodules, fp_file
+        )
 
         # skip-pkg filtered out (null in cache), valid-pkg found
         assert valid == {"valid-pkg"}
@@ -428,6 +496,103 @@ class TestFindShippedWithoutSubmodule:
 
         # Should NOT save cache
         false_positives_repo.save.assert_not_called()
+
+    def test_logs_obs_query_activity_when_unknowns_found(self, caplog):
+        """Should log OBS query activity when unknown packages found."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+        # OBS finds pkg2 → pkg2-src
+        obs_repo.query_source_packages.return_value = {"pkg2": "pkg2-src"}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2", "pkg3"}
+        submodules = ["pkg1"]  # pkg2, pkg3 unknown
+        fp_file = Path("/tmp/fp.json")
+
+        # Capture logs
+        with caplog.at_level(logging.INFO):
+            valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+                shipped, submodules, fp_file
+            )
+
+        # Should log before OBS queries
+        assert "Found 2 unknown packages. Querying OBS in parallel..." in caplog.text
+
+        # Should log when false positives discovered
+        assert "Found 1 false-positives packages" in caplog.text
+
+    def test_logs_no_false_positives_when_obs_returns_empty(self, caplog):
+        """Should log 'No false-positives' when OBS returns nothing."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}  # OBS finds nothing
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2"}
+        submodules = []  # All unknown
+        fp_file = Path("/tmp/fp.json")
+
+        # Capture logs
+        with caplog.at_level(logging.INFO):
+            valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+                shipped, submodules, fp_file
+            )
+
+        # Should log before OBS queries
+        assert "Found 2 unknown packages. Querying OBS in parallel..." in caplog.text
+
+        # Should log when no false positives found
+        assert "No false-positives packages found" in caplog.text
+
+    def test_no_obs_logging_when_all_packages_in_submodules(self, caplog):
+        """Should NOT log OBS activity when all packages in submodules."""
+        # Mock repositories
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        obs_repo = Mock()
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        shipped = {"pkg1", "pkg2"}
+        submodules = ["pkg1", "pkg2"]  # All in submodules
+        fp_file = Path("/tmp/fp.json")
+
+        # Capture logs
+        with caplog.at_level(logging.INFO):
+            valid, not_in_sub, new_fps = service.find_shipped_without_submodule(
+                shipped, submodules, fp_file
+            )
+
+        # Should NOT log OBS activity (no unknowns)
+        assert "Querying OBS" not in caplog.text
+        assert "false-positives" not in caplog.text
 
 
 class TestValidateAll:
@@ -482,7 +647,6 @@ class TestValidateAll:
 
         # All packages have maintainers, all submodules maintained, all shipped in submodules
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
@@ -526,50 +690,6 @@ class TestValidateAll:
 
         # Should find pkg2 as orphan (empty maintainer list)
         assert result.orphan_packages == ["pkg2"]
-        assert result.unmaintained_submodules == []
-        assert result.shipped_not_in_submodule == []
-        assert result.new_false_positives == {}
-
-    def test_validate_all_finds_unmaintained_submodules(self):
-        """Should identify submodules not in maintainership file."""
-        # Mock repositories
-        maintainership_repo = Mock()
-        maintainership_repo.load.return_value = MaintainershipData(
-            packages={
-                "submod1": ["user2"],
-                # submod2 missing - unmaintained
-            }
-        )
-
-        git_repo = Mock()
-        git_repo.list_submodules.return_value = ["submod1", "submod2"]
-
-        metadata_repo = Mock()
-        metadata_repo.parse_source_packages.return_value = set()  # No shipped packages
-
-        obs_repo = Mock()
-
-        false_positives_repo = Mock()
-        false_positives_repo.load.return_value = {}
-
-        service = ValidationService(
-            maintainership_repo=maintainership_repo,
-            git_repo=git_repo,
-            metadata_repo=metadata_repo,
-            obs_repo=obs_repo,
-            false_positives_repo=false_positives_repo,
-        )
-
-        result = service.validate_all(
-            Path("/tmp/maintainership.json"),
-            Path("/tmp/primary.xml.gz"),
-            Path("/tmp/fp.json"),
-            Path("/tmp/repo"),
-        )
-
-        # Should find submod2 as unmaintained
-        assert result.orphan_packages == []
-        assert result.unmaintained_submodules == ["submod2"]
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
@@ -613,9 +733,64 @@ class TestValidateAll:
 
         # Should find pkg2 not in submodules
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == ["pkg2"]
         assert result.new_false_positives == {}
+
+    def test_validate_all_uses_valid_packages_for_orphan_check(self):
+        """Should check orphans only for valid packages, not all shipped packages.
+
+        Bug: validate_all currently passes shipped_packages to find_orphan_packages,
+        but should pass valid_packages (packages in submodules or OBS-resolved).
+
+        Scenario:
+        - shipped_packages = {pkg1, pkg2, pkg3}
+        - pkg3 NOT in submodules
+        - OBS query returns None for pkg3 (not found)
+        - Therefore pkg3 NOT in valid_packages
+        - Therefore pkg3 should NOT appear in orphan_packages
+        """
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],  # Has maintainer
+                # pkg2 missing - orphan (but in submodules, so valid)
+                # pkg3 missing - but NOT valid (not in submodules, OBS returns None)
+            }
+        )
+
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1", "pkg2"]  # pkg3 NOT in submodules
+
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}  # OBS returns None for pkg3
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # BUG EXPOSED: Current code incorrectly includes pkg3 in orphan check
+        # pkg3 should NOT be checked because it's not valid (not in submodules, OBS failed)
+        # Only pkg2 should be in orphan_packages (valid but no maintainer)
+        assert result.orphan_packages == ["pkg2"]  # Will FAIL with current code
+        assert result.shipped_not_in_submodule == ["pkg3"]
 
     def test_validate_all_with_new_false_positives_discovered(self):
         """Should return new binary→source mappings discovered from OBS queries."""
@@ -661,7 +836,6 @@ class TestValidateAll:
         # Should return new mapping, bin-pkg maps to src-pkg which IS in submodules
         # So no shipped_not_in_submodule issue
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {"bin-pkg": "src-pkg"}
 
@@ -710,11 +884,10 @@ class TestValidateAll:
         )
 
         # Should find all types of issues:
-        # - pkg2 is orphan (empty maintainer list)
+        # - NO orphans (pkg2 has empty maintainer list BUT not valid - not in submodules)
         # - submod2 is unmaintained submodule
-        # - pkg1, pkg2, pkg3 are all shipped but not in submodules
-        assert result.orphan_packages == ["pkg2"]
-        assert result.unmaintained_submodules == ["submod2"]
+        # - pkg1, pkg2, pkg3 are all shipped but not in submodules (none are valid)
+        assert result.orphan_packages == []  # None valid, so none checked for orphans
         assert result.shipped_not_in_submodule == ["pkg1", "pkg2", "pkg3"]
         assert result.new_false_positives == {}
 
@@ -752,12 +925,55 @@ class TestValidateAll:
 
         # All results should be empty
         assert result.orphan_packages == []
-        assert result.unmaintained_submodules == []
         assert result.shipped_not_in_submodule == []
         assert result.new_false_positives == {}
 
         # Should still load all data sources
         maintainership_repo.load.assert_called_once()
         metadata_repo.parse_source_packages.assert_called_once()
+
+    def test_validate_all_includes_maintained_packages_without_submodule(self):
+        """Should include maintained_packages_without_submodule in ValidationResult."""
+        # Mock repositories
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["alice@example.com"],
+                "pkg2": ["bob@example.com"],
+                "pkg3": ["charlie@example.com"],
+            }
+        )
+
+        git_repo = Mock()
+        # Only pkg1 has submodule
+        git_repo.list_submodules.return_value = ["pkg1"]
+
+        metadata_repo = Mock()
+        # All packages shipped
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
+
+        obs_repo = Mock()
+        obs_repo.query_source_packages.return_value = {}
+
+        false_positives_repo = Mock()
+        false_positives_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=obs_repo,
+            false_positives_repo=false_positives_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        # pkg2, pkg3 in maintainership but not in submodules
+        assert result.maintained_packages_without_submodule == ["pkg2", "pkg3"]
         git_repo.list_submodules.assert_called_once()
         false_positives_repo.load.assert_called_once()

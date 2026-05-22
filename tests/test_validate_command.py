@@ -53,7 +53,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
-            unmaintained_submodules=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -117,7 +117,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
-            unmaintained_submodules=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -177,7 +177,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
-            unmaintained_submodules=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -231,7 +231,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=[],
-            unmaintained_submodules=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -276,7 +276,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=["orphan-pkg1", "orphan-pkg2"],
-            unmaintained_submodules=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -321,7 +321,7 @@ class TestValidateCommand:
         mock_service = Mock()
         mock_service.validate_all.return_value = ValidationResult(
             orphan_packages=["pkg1", "pkg2"],
-            unmaintained_submodules=[],
+            maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
             new_false_positives={},
         )
@@ -338,3 +338,126 @@ class TestValidateCommand:
         assert "Orphan packages" in captured.out
         assert "pkg1" in captured.out
         assert "pkg2" in captured.out
+
+    def test_output_format_matches_old_script_with_info_prefix_and_set_labels(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Should print output with INFO prefix and SET labels matching old script format."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "slfo_git_url": "https://github.com/test/repo",
+            "maintainership_file": "_maintainership.json",
+            "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+        )
+
+        # Mock repositories
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
+        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+
+        # Mock ValidationService with all 4 result sets
+        mock_service = Mock()
+        mock_service.validate_all.return_value = ValidationResult(
+            orphan_packages=["orphan1", "orphan2"],
+            maintained_packages_without_submodule=["maintained1", "maintained2"],
+            shipped_not_in_submodule=["shipped1"],
+            new_false_positives={"binary1": "source1"},
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+        )
+
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+
+        args = argparse.Namespace(version="16.1", debug=False)
+        run(args)
+
+        captured = capsys.readouterr()
+        output = captured.out
+
+        # Verify INFO prefix on all output lines
+        assert "INFO: Found 2 maintained packages without an equivalent git submodule." in output
+        assert "INFO: Maintained packages without an equivalent git submodule:" in output
+        assert "INFO: - maintained1" in output
+        assert "INFO: - maintained2" in output
+
+        assert "INFO: Found 1 shipped packages not found in git submodule." in output
+        assert "INFO: Shipped packages not found in git submodule:" in output
+        assert "INFO: - shipped1" in output
+
+        assert "INFO: Found 2 orphan packages." in output
+        assert "INFO: Orphan packages:" in output
+        assert "INFO: - orphan1" in output
+        assert "INFO: - orphan2" in output
+
+        assert "INFO: Discovered 1 new binary→source mappings." in output
+
+        # Verify no emoji in output
+        assert "✅" not in output
+        assert "❌" not in output
+
+    def test_output_format_shows_empty_state_messages(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Should print INFO messages for empty result sets."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "slfo_git_url": "https://github.com/test/repo",
+            "maintainership_file": "_maintainership.json",
+            "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+        )
+
+        # Mock repositories
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
+        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+
+        # Mock ValidationService with empty results
+        mock_service = Mock()
+        mock_service.validate_all.return_value = ValidationResult(
+            orphan_packages=[],
+            maintained_packages_without_submodule=[],
+            shipped_not_in_submodule=[],
+            new_false_positives={},
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+        )
+
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+
+        args = argparse.Namespace(version="16.1", debug=False)
+        run(args)
+
+        captured = capsys.readouterr()
+        output = captured.out
+
+        # Verify INFO messages for empty states
+        assert (
+            "INFO: No maintained packages without an equivalent git submodule were found." in output
+        )
+        assert "INFO: No orphan packages found." in output
+
+        # Verify no emoji
+        assert "✅" not in output
+        assert "❌" not in output
