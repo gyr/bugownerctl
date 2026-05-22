@@ -105,26 +105,44 @@ def run(args: argparse.Namespace) -> int:
         git_dir=repo_path,
     )
 
-    # Print results
-    if result.orphan_packages:
-        print("\nOrphan packages (no maintainer):")
-        for pkg in result.orphan_packages:
-            print(f"  - {pkg}")
+    # Print results matching old script format (INFO prefix, SET labels)
 
+    # SET 1: Maintained packages without git submodule
+    if result.maintained_packages_without_submodule:
+        print(
+            f"INFO: Found {len(result.maintained_packages_without_submodule)} "
+            "maintained packages without an equivalent git submodule."
+        )
+        print("INFO: Maintained packages without an equivalent git submodule:")
+        for pkg in result.maintained_packages_without_submodule:
+            print(f"INFO: - {pkg}")
+    else:
+        print("INFO: No maintained packages without an equivalent git submodule were found.")
+
+    # SET 3: Shipped packages not found in git submodule
     if result.shipped_not_in_submodule:
-        print("\nShipped packages not in submodules:")
+        print(
+            f"INFO: Found {len(result.shipped_not_in_submodule)} "
+            "shipped packages not found in git submodule."
+        )
+        print("INFO: Shipped packages not found in git submodule:")
         for pkg in result.shipped_not_in_submodule:
-            print(f"  - {pkg}")
+            print(f"INFO: - {pkg}")
 
+    # SET 4: Orphan packages
+    if result.orphan_packages:
+        print(f"INFO: Found {len(result.orphan_packages)} orphan packages.")
+        print("INFO: Orphan packages:")
+        for pkg in result.orphan_packages:
+            print(f"INFO: - {pkg}")
+    else:
+        print("INFO: No orphan packages found.")
+
+    # New false-positives discovered
     if result.new_false_positives:
-        print(f"\nDiscovered {len(result.new_false_positives)} new binary→source mappings")
+        print(f"INFO: Discovered {len(result.new_false_positives)} new binary→source mappings.")
 
     # Determine exit code
     has_issues = bool(result.orphan_packages or result.shipped_not_in_submodule)
 
-    if not has_issues:
-        print("\n✅ Validation passed: No issues found")
-        return 0
-    else:
-        print("\n❌ Validation failed: Issues found")
-        return 1
+    return 1 if has_issues else 0
