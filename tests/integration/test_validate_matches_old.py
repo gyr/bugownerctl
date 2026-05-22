@@ -3,10 +3,17 @@
 This test ensures the new CLI produces identical output to the legacy script.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
+import pytest
 
+
+@pytest.mark.skipif(
+    os.getenv("CI") == "true",
+    reason="Requires access to internal SUSE network (src.suse.de)",
+)
 def test_validate_output_matches_old_script() -> None:
     """Compare bugowner validate output with old script exactly.
 
