@@ -1,6 +1,7 @@
 import logging
 import argparse
 import gzip
+import sys
 from lxml import etree
 import yaml
 import requests
@@ -50,9 +51,7 @@ def load_config(config_file_path: str) -> Dict[str, Any]:
 config = load_config("validate_maintainership.yaml")
 
 CACHE_DIR = Path(config.get("cache_dir", "~/.cache/bugownership")).expanduser()
-BASE_URL = (
-    "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{}:/PUBLISH/product/"
-)
+BASE_URL = "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{}:/PUBLISH/product/"
 REPOMD_PATH = "repodata/repomd.xml"
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
 
@@ -111,9 +110,7 @@ def download_file(
         raise
 
 
-def get_file_checksum(
-    file_path: Union[str, Path], checksum_type: str = "sha256"
-) -> Optional[str]:
+def get_file_checksum(file_path: Union[str, Path], checksum_type: str = "sha256") -> Optional[str]:
     """Calculates the checksum of a file.
 
     :param file_path: The path to the file.
@@ -197,9 +194,7 @@ def download_repo_metadata(version: str, cache_dir: Path) -> str:
 
     primary_info = parse_repomd(downloaded_repomd_path)
     if not primary_info:
-        raise RuntimeError(
-            f"Failed to parse primary info from {downloaded_repomd_path}"
-        )
+        raise RuntimeError(f"Failed to parse primary info from {downloaded_repomd_path}")
 
     primary_location_href = primary_info["href"]
     expected_checksum = primary_info["checksum"]
@@ -211,9 +206,7 @@ def download_repo_metadata(version: str, cache_dir: Path) -> str:
     primary_filename = Path(primary_location_href).name
     primary_file_path_in_cache = metadata_cache_dir / primary_filename
 
-    existing_checksum = get_file_checksum(
-        str(primary_file_path_in_cache), checksum_type
-    )
+    existing_checksum = get_file_checksum(str(primary_file_path_in_cache), checksum_type)
 
     if existing_checksum == expected_checksum:
         logging.info(
@@ -234,9 +227,7 @@ def download_repo_metadata(version: str, cache_dir: Path) -> str:
             primary_file_url, destination_folder=str(metadata_cache_dir)
         )
         if not downloaded_primary_path:
-            raise RuntimeError(
-                f"Failed to download primary XML from {primary_file_url}"
-            )
+            raise RuntimeError(f"Failed to download primary XML from {primary_file_url}")
         return downloaded_primary_path
 
 
@@ -263,10 +254,7 @@ def parse_primary_xml(file_path: Union[str, Path], debug: bool) -> Set[str]:
             }
 
             for event, elem in etree.iterparse(f, events=("end",)):
-                if (
-                    event == "end"
-                    and elem.tag == "{http://linux.duke.edu/metadata/common}package"
-                ):
+                if event == "end" and elem.tag == "{http://linux.duke.edu/metadata/common}package":
                     if elem.get("type") == "rpm":
                         arch = elem.find("common:arch", namespace)
                         if arch is not None and arch.text == "src":
@@ -277,9 +265,7 @@ def parse_primary_xml(file_path: Union[str, Path], debug: bool) -> Set[str]:
                     elem.clear()
 
         unique_packages = sorted(list(package_names))
-        logging.info(
-            f"Successfully extracted {len(unique_packages)} unique 'src' package names"
-        )
+        logging.info(f"Successfully extracted {len(unique_packages)} unique 'src' package names")
         if debug:
             output_filename = "src_packages.json"
             with open(output_filename, "w") as f_out:
@@ -293,9 +279,7 @@ def parse_primary_xml(file_path: Union[str, Path], debug: bool) -> Set[str]:
     return package_names
 
 
-def manage_git_repository(
-    repo_url: str, git_ref: str, cache_dir: Path, ref_type: RefType
-) -> str:
+def manage_git_repository(repo_url: str, git_ref: str, cache_dir: Path, ref_type: RefType) -> str:
     """Clones or updates a Git repository in the cache directory.
 
     If the repository does not exist, it's cloned. It then checks out the
@@ -319,9 +303,7 @@ def manage_git_repository(
 
     try:
         if not repo_path.exists():
-            logging.info(
-                f"--- Cloning {repo_url} with --no-remote-submodules into {repo_path} ---"
-            )
+            logging.info(f"--- Cloning {repo_url} with --no-remote-submodules into {repo_path} ---")
             subprocess.run(
                 [
                     "git",
@@ -374,9 +356,7 @@ def manage_git_repository(
                     )
 
                 # Reset to remote branch state
-                logging.info(
-                    f"Updating {repo_path} to latest version of branch {git_ref}"
-                )
+                logging.info(f"Updating {repo_path} to latest version of branch {git_ref}")
                 subprocess.run(
                     ["git", "reset", "--hard", f"origin/{git_ref}"],
                     cwd=str(repo_path),
@@ -398,9 +378,7 @@ def manage_git_repository(
 
     except subprocess.CalledProcessError as e:
         logging.error(f"Error managing repository {repo_url}: {e.stderr}")
-        raise RuntimeError(
-            f"Failed to manage git repository {repo_url}: {e.stderr.strip()}"
-        ) from e
+        raise RuntimeError(f"Failed to manage git repository {repo_url}: {e.stderr.strip()}") from e
 
 
 def get_source_package_from_obs(package: str) -> Optional[str]:
@@ -474,12 +452,8 @@ def run_git_submodule(slfo_git_repo_path: str) -> str:
         logging.error(" Ensure you are in the root of a Git repository.")
         raise RuntimeError(f"Git command failed: {e.stderr.strip()}") from e
     except FileNotFoundError:
-        logging.error(
-            " Error: 'git' command not found. Ensure Git is installed and in your PATH."
-        )
-        raise RuntimeError(
-            "'git' command not found. Ensure Git is installed and in your PATH."
-        )
+        logging.error(" Error: 'git' command not found. Ensure Git is installed and in your PATH.")
+        raise RuntimeError("'git' command not found. Ensure Git is installed and in your PATH.")
 
 
 def parse_git_submodules(git_output: str) -> List[str]:
@@ -551,9 +525,7 @@ def find_shipped_packages_without_submodule(
             f"False positives file not found at '{FALSEPOSITIVES_FILE}'. Using empty remapping."
         )
     except json.JSONDecodeError:
-        logging.error(
-            f"Invalid JSON format in '{FALSEPOSITIVES_FILE}'. Using empty remapping."
-        )
+        logging.error(f"Invalid JSON format in '{FALSEPOSITIVES_FILE}'. Using empty remapping.")
 
     if remapping:
         logging.info(
@@ -573,13 +545,10 @@ def find_shipped_packages_without_submodule(
     shipped_not_in_submodule: List[str] = []
     false_positive_packages: Dict[str, str] = {}
 
-    logging.info(
-        f"Found {len(unknown_packages)} unknown packages. Querying OBS in parallel..."
-    )
+    logging.info(f"Found {len(unknown_packages)} unknown packages. Querying OBS in parallel...")
     with ThreadPoolExecutor(max_workers=10) as executor:
         future_to_package = {
-            executor.submit(get_source_package_from_obs, pkg): pkg
-            for pkg in unknown_packages
+            executor.submit(get_source_package_from_obs, pkg): pkg for pkg in unknown_packages
         }
 
         for future in as_completed(future_to_package):
@@ -705,9 +674,7 @@ def find_maintained_packages_without_submodule(
     packages_in_maintainership = {pkg for pkg in packages_in_maintainership if pkg}
     submodule_set: Set[str] = set(submodule_list)
 
-    mismatched_packages: List[str] = sorted(
-        list(packages_in_maintainership - submodule_set)
-    )
+    mismatched_packages: List[str] = sorted(list(packages_in_maintainership - submodule_set))
 
     if mismatched_packages:
         logging.info(
@@ -720,13 +687,9 @@ def find_maintained_packages_without_submodule(
             output_file = OUTPUT_FILES["maintained_packages_without_submodule"]
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(mismatched_packages, f, indent=4, sort_keys=True)
-            logging.info(
-                f"Saved maintained packages without submodule to {output_file}"
-            )
+            logging.info(f"Saved maintained packages without submodule to {output_file}")
     else:
-        logging.info(
-            "No maintained packages without an equivalent git submodule were found."
-        )
+        logging.info("No maintained packages without an equivalent git submodule were found.")
 
 
 def main() -> None:
@@ -775,9 +738,7 @@ def main() -> None:
             break
 
     if not product_config:
-        logging.error(
-            f"No product configuration found for SLES version: {sles_version}"
-        )
+        logging.error(f"No product configuration found for SLES version: {sles_version}")
         return
 
     git_ref: str
@@ -800,9 +761,7 @@ def main() -> None:
         )
         return
 
-    slfo_repo_path: str = manage_git_repository(
-        slfo_git_url, git_ref, CACHE_DIR, ref_type
-    )
+    slfo_repo_path: str = manage_git_repository(slfo_git_url, git_ref, CACHE_DIR, ref_type)
 
     primary_xml_file: str = download_repo_metadata(sles_version, CACHE_DIR)
 
@@ -814,9 +773,7 @@ def main() -> None:
 
     maintainer_data: Dict[str, List[str]] = get_maintainer_data(maintainership_file)
 
-    find_maintained_packages_without_submodule(
-        submodule_list, maintainer_data, args.debug
-    )
+    find_maintained_packages_without_submodule(submodule_list, maintainer_data, args.debug)
 
     shipped_packages: Set[str] = find_shipped_packages_without_submodule(
         src_package_list, submodule_list, args.debug
@@ -825,9 +782,7 @@ def main() -> None:
         logging.error("No shipped packages found. Aborting.")
         return
 
-    orphan_packages: List[str] = check_orphan_packages(
-        shipped_packages, maintainer_data
-    )
+    orphan_packages: List[str] = check_orphan_packages(shipped_packages, maintainer_data)
     if orphan_packages:
         logging.info(f"Found {len(orphan_packages)} orphan packages.")
         logging.info("Orphan packages:")
