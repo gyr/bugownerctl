@@ -21,11 +21,13 @@ class ObsRepository(Protocol):
     def get_source_package(self, binary_package: str, project: str) -> str | None:
         """Query OBS to find source package for a binary package.
 
-        Uses `osc bse` command to search for source packages.
+        Uses `osc -A https://api.suse.de bse {package}` command (old format).
+        The command queries all projects, then filters output by project parameter.
 
         Args:
             binary_package: Name of binary package
-            project: OBS project (e.g., "SUSE:SLFO:Main")
+            project: OBS project for filtering results (e.g., "SUSE:SLFO:Main").
+                Not passed to osc command, only used for output filtering.
 
         Returns:
             Source package name if found, None otherwise
@@ -51,11 +53,13 @@ class ObsRepositoryImpl:
     def get_source_package(self, binary_package: str, project: str) -> str | None:
         """Query OBS to find source package for a binary package.
 
-        Uses `osc bse` command to search for source packages.
+        Uses `osc -A https://api.suse.de bse {package}` command (old format).
+        The command queries all projects, then filters output by project parameter.
 
         Args:
             binary_package: Name of binary package
-            project: OBS project (e.g., "SUSE:SLFO:Main")
+            project: OBS project for filtering results (e.g., "SUSE:SLFO:Main").
+                Not passed to osc command, only used for output filtering.
 
         Returns:
             Source package name if found, None otherwise
@@ -75,10 +79,10 @@ class ObsRepositoryImpl:
             )
             return None
 
-        # Run osc bse command with timeout
+        # Run osc command matching old code format
         try:
             result = subprocess.run(
-                ["osc", "bse", project.strip(), binary_package.strip()],
+                ["osc", "-A", "https://api.suse.de", "bse", binary_package.strip()],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -102,22 +106,48 @@ class ObsRepositoryImpl:
             )
             return None
 
-        # Parse output - format: "binary | source | arch"
+        # Parse output - OLD FORMAT: space-separated "SUSE:SLFO:Main apache2:apache2-devel x86_64"
         stdout = result.stdout.strip()
         if not stdout:
+            logger.info("No source package found for %s in %s.", binary_package, project)
             return None
 
-        # Get first line (in case of multiple matches)
-        first_line = stdout.split("\n")[0]
+        # Filter lines starting with project prefix (e.g., "SUSE:SLFO:Main ")
+        project_prefix = f"{project.strip()} "
+        filtered_lines = [line for line in stdout.splitlines() if line.startswith(project_prefix)]
 
-        # Parse pipe-separated format
-        parts = first_line.split("|")
-        if len(parts) < 2:
+        if not filtered_lines:
+            logger.info("No source package found for %s in %s.", binary_package, project)
             return None
 
-        # Extract source package name (second column)
-        source_package = parts[1].strip()
-        return source_package if source_package else None
+        # Extract source packages from filtered lines
+        source_packages = set()
+        for line in filtered_lines:
+            parts = line.split()
+            if len(parts) >= 2:
+                # parts[0] is project, parts[1] is "source:binary" or "source"
+                package_field = parts[1]
+                # Skip empty package fields
+                if package_field:
+                    # Split by colon to get source package
+                    colon_parts = package_field.split(":")
+                    source_packages.add(colon_parts[0])
+
+        if not source_packages:
+            logger.info("No source package found for %s in %s.", binary_package, project)
+            return None
+
+        # Warn if multiple different source packages found
+        if len(source_packages) > 1:
+            logger.warning(
+                "Found multiple source packages for %s in %s: %s",
+                binary_package,
+                project,
+                source_packages,
+            )
+
+        # Return first source package (sorted for deterministic behavior)
+        return sorted(source_packages)[0]
 
     def query_source_packages(self, binary_packages: set[str], project: str) -> dict[str, str]:
         """Query OBS for multiple packages in parallel.
