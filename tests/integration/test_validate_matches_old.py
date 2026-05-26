@@ -4,6 +4,7 @@ This test ensures the new CLI produces identical output to the legacy script.
 """
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -139,6 +140,18 @@ def test_validate_output_matches_old_script() -> None:
         f"  New: {sorted(new_orphans)}"
     )
 
-    # Verify OBS query logging present in both
-    assert "Found 6 unknown packages" in old_all_output
-    assert "Found 6 unknown packages" in new_all_output
+    # Verify OBS query logging present in both (extract actual count dynamically)
+    # Note: Count varies based on current repository metadata, so we verify both
+    # scripts find the same count rather than hardcoding an expected value.
+    old_unknown_match = re.search(r"Found (\d+) unknown packages", old_all_output)
+    new_unknown_match = re.search(r"Found (\d+) unknown packages", new_all_output)
+
+    assert old_unknown_match, "Old script should log 'Found X unknown packages'"
+    assert new_unknown_match, "New script should log 'Found X unknown packages'"
+
+    old_unknown_count = int(old_unknown_match.group(1))
+    new_unknown_count = int(new_unknown_match.group(1))
+
+    assert old_unknown_count == new_unknown_count, (
+        f"Unknown package count differs:\n  Old: {old_unknown_count}\n  New: {new_unknown_count}"
+    )
