@@ -102,6 +102,12 @@ class RepoMetadataRepositoryImpl:
             # but should NOT be used in production environments with untrusted sources.
             repomd_response = requests.get(repomd_url, verify=False, timeout=30)
             repomd_response.raise_for_status()
+
+            # Cache repomd.xml for future use
+            repomd_cache_file = metadata_cache_dir / "repomd.xml"
+            repomd_cache_file.write_bytes(repomd_response.content)
+            logger.debug("Cached repomd.xml to %s", repomd_cache_file)
+
         except (requests.RequestException, requests.Timeout, OSError) as e:
             logger.error("Failed to download repomd.xml for version %s: %s", version, e)
             raise RuntimeError(f"Failed to download repomd.xml: {e}") from e

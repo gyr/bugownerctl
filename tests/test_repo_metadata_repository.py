@@ -497,3 +497,38 @@ class TestDownloadPrimaryMetadata:
         assert result_16_0.parent.name == "16.0"
         assert result_16_1.parent.name == "16.1"
         assert result_16_0 != result_16_1
+
+    @patch("requests.get")
+    def test_download_primary_metadata_caches_repomd_xml(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should cache repomd.xml to disk for future use."""
+        # Arrange
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha256">abc123</checksum>
+  </data>
+</repomd>"""
+
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        mock_primary_response = Mock()
+        mock_primary_response.content = b"primary content"
+        mock_primary_response.raise_for_status = Mock()
+
+        mock_get.side_effect = [mock_repomd_response, mock_primary_response]
+
+        repo = RepoMetadataRepositoryImpl()
+        cache_dir = tmp_path / "cache"
+
+        # Act
+        repo.download_primary_metadata("16.1", cache_dir)
+
+        # Assert
+        repomd_cache_file = cache_dir / "repodata" / "16.1" / "repomd.xml"
+        assert repomd_cache_file.exists(), "repomd.xml should be cached"
+        assert repomd_cache_file.read_text() == repomd_content
