@@ -89,8 +89,9 @@ class RepoMetadataRepositoryImpl:
         if not version or not re.match(r"^\d+\.\d+$", version):
             raise ValueError(f"Invalid version format: {version!r} (expected: X.Y)")
 
-        # Create cache directory if it doesn't exist
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        # Create version-specific cache directory
+        metadata_cache_dir = cache_dir / "repodata" / version
+        metadata_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Download repomd.xml
         logger.info("Downloading repomd.xml for version %s", version)
@@ -148,7 +149,7 @@ class RepoMetadataRepositoryImpl:
             raise RuntimeError(f"Failed to parse repomd.xml: {e}") from e
 
         # Check if cached file exists with matching checksum
-        cached_file = cache_dir / "primary.xml.gz"
+        cached_file = metadata_cache_dir / "primary.xml.gz"
         if cached_file.exists():
             # Calculate checksum of cached file
             cached_checksum = hashlib.sha256(cached_file.read_bytes()).hexdigest()
