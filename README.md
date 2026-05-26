@@ -49,6 +49,12 @@ bugowner validate -v <version> [--debug]
 - Shipped packages missing submodules
 - Binary→source package mappings (cached for performance)
 
+**Performance features:**
+- Version-specific cache isolation (no data corruption across versions)
+- Memory-efficient streaming downloads (~8KB vs ~50MB)
+- Repomd.xml caching for faster subsequent runs
+- Cache hits skip unnecessary network requests
+
 **Examples:**
 ```bash
 # Validate SLES 16.1
@@ -174,7 +180,8 @@ Packages (5):
 Create `validate_maintainership.yaml` in project root:
 
 ```yaml
-# Cache directory for downloads
+# Cache directory for downloads (version-specific subdirs created automatically)
+# Structure: {cache_dir}/repodata/{version}/
 cache_dir: ~/.cache/bugownership
 
 # Git repository URL
@@ -242,6 +249,62 @@ Binary→source package mapping cache (auto-generated/updated):
 ```
 
 **Purpose:** Avoid slow OBS queries on every run. Maps binary packages to source names, or `null` to ignore.
+
+## Cache System
+
+### Repository Metadata Cache
+
+The tool caches repository metadata for performance and to support multiple SLES versions simultaneously.
+
+**Cache directory structure:**
+```
+~/.cache/bugownership/repodata/
+├── 16.0/
+│   ├── repomd.xml                      # Repository metadata index
+│   └── {checksum}-primary.xml.gz       # Package metadata (20-50MB)
+├── 16.1/
+│   ├── repomd.xml
+│   └── {checksum}-primary.xml.gz
+└── {version}/
+    └── ...
+```
+
+**Key features:**
+
+1. **Version-specific isolation** - Each SLES version has its own cache directory
+   - Prevents data corruption when switching between versions
+   - Allows parallel validation of multiple versions
+   - Example: `~/.cache/bugownership/repodata/16.1/`
+
+2. **Memory-efficient streaming** - Downloads use 8KB chunks instead of loading entire files
+   - Reduces memory footprint from ~50MB to ~8KB
+   - Handles large metadata files without memory issues
+
+3. **Smart caching** - Checksum validation prevents unnecessary downloads
+   - Repomd.xml cached for faster subsequent runs
+   - Primary metadata only re-downloaded when checksums change
+   - Cache hits skip all network requests
+
+**Cache management:**
+```bash
+# View cache contents
+ls -lh ~/.cache/bugownership/repodata/
+
+# Clear cache for specific version
+rm -rf ~/.cache/bugownership/repodata/16.1/
+
+# Clear all cached metadata
+rm -rf ~/.cache/bugownership/repodata/
+
+# Cache will automatically rebuild on next run
+bugowner validate -v 16.1
+```
+
+**Performance impact:**
+- First run: Downloads ~20-50MB metadata (one-time cost)
+- Subsequent runs: 0 downloads if metadata unchanged
+- Memory usage: ~8KB during download (streaming)
+- Multi-version: Each version cached independently
 
 ## Dependencies
 
@@ -433,6 +496,35 @@ firefox htmlcov/index.html
 ```bash
 # Use exact CI commands
 ./scripts/check.sh
+```
+
+**"Download or parsing errors"**
+```bash
+# Clear cache for affected version
+rm -rf ~/.cache/bugownership/repodata/16.1/
+
+# Retry validation (will re-download)
+bugowner validate -v 16.1
+```
+
+**"Cache corruption or stale data"**
+```bash
+# Clear all cached metadata
+rm -rf ~/.cache/bugownership/repodata/
+
+# Or clear specific version
+rm -rf ~/.cache/bugownership/repodata/16.0/
+
+# Cache rebuilds automatically on next run
+```
+
+**"Disk space issues"**
+```bash
+# Check cache size (each version ~20-50MB)
+du -sh ~/.cache/bugownership/repodata/*/
+
+# Remove old/unused version caches
+rm -rf ~/.cache/bugownership/repodata/15.*/
 ```
 
 ## Contributing
