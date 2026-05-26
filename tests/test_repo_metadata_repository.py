@@ -162,6 +162,7 @@ class TestDownloadPrimaryMetadata:
 
         mock_primary_response = Mock()
         mock_primary_response.content = primary_content
+        mock_primary_response.iter_content = Mock(return_value=[primary_content])
         mock_primary_response.raise_for_status = Mock()
 
         mock_get.side_effect = [mock_repomd_response, mock_primary_response]
@@ -250,6 +251,7 @@ class TestDownloadPrimaryMetadata:
 
         mock_primary_response = Mock()
         mock_primary_response.content = new_content
+        mock_primary_response.iter_content = Mock(return_value=[new_content])
         mock_primary_response.raise_for_status = Mock()
 
         mock_get.side_effect = [mock_repomd_response, mock_primary_response]
@@ -427,6 +429,7 @@ class TestDownloadPrimaryMetadata:
 
         mock_primary_response = Mock()
         mock_primary_response.content = b"primary content"
+        mock_primary_response.iter_content = Mock(return_value=[b"primary content"])
         mock_primary_response.raise_for_status = Mock()
 
         mock_get.side_effect = [mock_repomd_response, mock_primary_response]
@@ -476,14 +479,22 @@ class TestDownloadPrimaryMetadata:
         # Act - Download version 16.0
         mock_get.side_effect = [
             Mock(content=make_repomd(checksum_16_0), raise_for_status=Mock()),
-            Mock(content=content_16_0, raise_for_status=Mock()),
+            Mock(
+                content=content_16_0,
+                iter_content=Mock(return_value=[content_16_0]),
+                raise_for_status=Mock(),
+            ),
         ]
         result_16_0 = repo.download_primary_metadata("16.0", cache_dir)
 
         # Act - Download version 16.1
         mock_get.side_effect = [
             Mock(content=make_repomd(checksum_16_1), raise_for_status=Mock()),
-            Mock(content=content_16_1, raise_for_status=Mock()),
+            Mock(
+                content=content_16_1,
+                iter_content=Mock(return_value=[content_16_1]),
+                raise_for_status=Mock(),
+            ),
         ]
         result_16_1 = repo.download_primary_metadata("16.1", cache_dir)
 
@@ -518,6 +529,7 @@ class TestDownloadPrimaryMetadata:
 
         mock_primary_response = Mock()
         mock_primary_response.content = b"primary content"
+        mock_primary_response.iter_content = Mock(return_value=[b"primary content"])
         mock_primary_response.raise_for_status = Mock()
 
         mock_get.side_effect = [mock_repomd_response, mock_primary_response]
@@ -532,3 +544,52 @@ class TestDownloadPrimaryMetadata:
         repomd_cache_file = cache_dir / "repodata" / "16.1" / "repomd.xml"
         assert repomd_cache_file.exists(), "repomd.xml should be cached"
         assert repomd_cache_file.read_text() == repomd_content
+
+    @patch("requests.get")
+    def test_download_primary_metadata_uses_streaming_download(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should use streaming download (stream=True) for memory efficiency."""
+        # Arrange
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha256">abc123</checksum>
+  </data>
+</repomd>"""
+
+        # Create mock that tracks if stream=True was used
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        # Mock primary response with iter_content support
+        mock_primary_response = Mock()
+        primary_content = b"primary xml content"
+        mock_primary_response.content = primary_content  # For current non-streaming code
+        mock_primary_response.iter_content = Mock(
+            return_value=[
+                primary_content[i : i + 8192] for i in range(0, len(primary_content), 8192)
+            ]
+        )
+        mock_primary_response.raise_for_status = Mock()
+
+        mock_get.side_effect = [mock_repomd_response, mock_primary_response]
+
+        repo = RepoMetadataRepositoryImpl()
+        cache_dir = tmp_path / "cache"
+
+        # Act
+        result = repo.download_primary_metadata("16.1", cache_dir)
+
+        # Assert - verify stream=True was used for primary download
+        primary_call = mock_get.call_args_list[1]
+        assert primary_call[1].get("stream") is True, "Should use stream=True for download"
+
+        # Verify iter_content was called (streaming API)
+        mock_primary_response.iter_content.assert_called_once()
+
+        # Verify file was written correctly
+        assert result.exists()
+        assert result.read_bytes() == primary_content

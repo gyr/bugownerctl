@@ -172,11 +172,13 @@ class RepoMetadataRepositoryImpl:
         try:
             primary_url = self.base_url.format(version=version) + primary_href
             # NOTE: verify=False is required for internal SUSE infrastructure (see above)
-            primary_response = requests.get(primary_url, verify=False, timeout=30)
+            primary_response = requests.get(primary_url, verify=False, timeout=30, stream=True)
             primary_response.raise_for_status()
 
-            # Write to cache
-            cached_file.write_bytes(primary_response.content)
+            # Write to cache using streaming (memory-efficient)
+            with cached_file.open("wb") as f:
+                for chunk in primary_response.iter_content(chunk_size=8192):
+                    f.write(chunk)
             logger.info("Successfully downloaded and cached primary.xml for version %s", version)
 
             return cached_file
