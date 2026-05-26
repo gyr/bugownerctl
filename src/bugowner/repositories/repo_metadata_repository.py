@@ -89,8 +89,9 @@ class RepoMetadataRepositoryImpl:
         if not version or not re.match(r"^\d+\.\d+$", version):
             raise ValueError(f"Invalid version format: {version!r} (expected: X.Y)")
 
-        # Create cache directory if it doesn't exist
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        # Create version-specific cache directory
+        metadata_cache_dir = cache_dir / "repodata" / version
+        metadata_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Download repomd.xml
         logger.info("Downloading repomd.xml for version %s", version)
@@ -101,6 +102,12 @@ class RepoMetadataRepositoryImpl:
             # but should NOT be used in production environments with untrusted sources.
             repomd_response = requests.get(repomd_url, verify=False, timeout=30)
             repomd_response.raise_for_status()
+
+            # Cache repomd.xml for future use
+            repomd_cache_file = metadata_cache_dir / "repomd.xml"
+            repomd_cache_file.write_bytes(repomd_response.content)
+            logger.debug("Cached repomd.xml to %s", repomd_cache_file)
+
         except (requests.RequestException, requests.Timeout, OSError) as e:
             logger.error("Failed to download repomd.xml for version %s: %s", version, e)
             raise RuntimeError(f"Failed to download repomd.xml: {e}") from e
@@ -148,7 +155,7 @@ class RepoMetadataRepositoryImpl:
             raise RuntimeError(f"Failed to parse repomd.xml: {e}") from e
 
         # Check if cached file exists with matching checksum
-        cached_file = cache_dir / "primary.xml.gz"
+        cached_file = metadata_cache_dir / "primary.xml.gz"
         if cached_file.exists():
             # Calculate checksum of cached file
             cached_checksum = hashlib.sha256(cached_file.read_bytes()).hexdigest()
@@ -165,11 +172,13 @@ class RepoMetadataRepositoryImpl:
         try:
             primary_url = self.base_url.format(version=version) + primary_href
             # NOTE: verify=False is required for internal SUSE infrastructure (see above)
-            primary_response = requests.get(primary_url, verify=False, timeout=30)
+            primary_response = requests.get(primary_url, verify=False, timeout=30, stream=True)
             primary_response.raise_for_status()
 
-            # Write to cache
-            cached_file.write_bytes(primary_response.content)
+            # Write to cache using streaming (memory-efficient)
+            with cached_file.open("wb") as f:
+                for chunk in primary_response.iter_content(chunk_size=8192):
+                    f.write(chunk)
             logger.info("Successfully downloaded and cached primary.xml for version %s", version)
 
             return cached_file
