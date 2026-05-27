@@ -138,9 +138,14 @@ class RepoMetadataRepositoryImpl:
 
             primary_href = location_elem.get("href")
             expected_checksum = checksum_elem.text
+            checksum_type = checksum_elem.get("type", "sha256")
 
             if not primary_href or not expected_checksum:
                 raise RuntimeError("Invalid location or checksum in repomd.xml")
+
+            # Log primary metadata info (matches old validate_maintainership.py format)
+            logger.info("Primary data location from repomd.xml: %s", primary_href)
+            logger.info("Expected %s checksum: %s", checksum_type, expected_checksum)
 
             # Validate primary_href to prevent SSRF
             # (path traversal, absolute paths, protocol-relative URLs)
@@ -161,9 +166,17 @@ class RepoMetadataRepositoryImpl:
             cached_checksum = hashlib.sha256(cached_file.read_bytes()).hexdigest()
             if cached_checksum == expected_checksum:
                 # Cache hit - return cached file
-                logger.info("Cache hit for version %s", version)
+                logger.info(
+                    "File %s already exists in cache and checksum matches. Skipping download.",
+                    cached_file.name,
+                )
                 return cached_file
-            logger.info("Cache miss for version %s (checksum mismatch)", version)
+            # Checksum mismatch - delete corrupted file and re-download
+            logger.warning(
+                "Checksum mismatch for %s in cache. Deleting and re-downloading.",
+                cached_file.name,
+            )
+            cached_file.unlink()
         else:
             logger.info("Cache miss for version %s (file not found)", version)
 
