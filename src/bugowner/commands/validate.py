@@ -15,6 +15,7 @@ from bugowner.repositories.obs_repository import ObsRepositoryImpl
 from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
 from bugowner.services.validation_service import ValidationService
 from bugowner.utils.config import load_config
+from bugowner.utils.file_utils import validate_file_within_directory
 
 
 def run(args: argparse.Namespace) -> int:
@@ -84,7 +85,10 @@ def run(args: argparse.Namespace) -> int:
     )
 
     # Use paths from cloned SLFO repository
-    maintainership_file = slfo_repo_path / maintainership_file_name
+    # Validate to prevent path traversal via config
+    maintainership_file = validate_file_within_directory(
+        slfo_repo_path, maintainership_file_name, "Maintainership file"
+    )
     false_positives_file = Path.cwd() / false_positives_file_name
     repo_path = slfo_repo_path
 

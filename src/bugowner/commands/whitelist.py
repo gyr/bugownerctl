@@ -16,6 +16,7 @@ from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositor
 from bugowner.services.validation_service import ValidationService
 from bugowner.services.whitelist_service import WhitelistService
 from bugowner.utils.config import load_config
+from bugowner.utils.file_utils import validate_file_within_directory
 
 
 def run(args: argparse.Namespace) -> int:
@@ -101,7 +102,10 @@ def run(args: argparse.Namespace) -> int:
     submodules = git_repo.list_submodules(slfo_repo_path)
 
     # Use paths from cloned SLFO repository (whitelist) and current directory (cache)
-    whitelist_file = slfo_repo_path / whitelist_file_name
+    # Validate to prevent path traversal via config
+    whitelist_file = validate_file_within_directory(
+        slfo_repo_path, whitelist_file_name, "Whitelist file"
+    )
     false_positives_file = Path.cwd() / false_positives_file_name
 
     # Execute whitelist check
