@@ -11,20 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from bugowner.repositories.git_repository import GitRepository
-from bugowner.repositories.maintainership_repository import MaintainershipRepository
-
 if TYPE_CHECKING:
     from bugowner.services.validation_service import ValidationService
-
-
-@dataclass
-class WhitelistUpdateResult:
-    """Results from whitelist update operation."""
-
-    added: list[str]
-    removed: list[str]
-    in_maintainership_not_submodule: list[str]
 
 
 @dataclass
@@ -40,25 +28,13 @@ class WhitelistService:
 
     MAX_WHITELIST_SIZE = 10 * 1024 * 1024  # 10 MB
 
-    def __init__(
-        self,
-        validation_service: "ValidationService | MaintainershipRepository",
-        git_repo: GitRepository | None = None,
-    ) -> None:
-        # Support both old and new constructor signatures (temporary backward compatibility)
-        # Old: WhitelistService(maintainership_repo, git_repo)
-        # New: WhitelistService(validation_service)
-        # TODO: Remove old signature in Phase 2 of whitelist refactor
-        if git_repo is not None:
-            # Old signature: first arg is maintainership_repo
-            self.maintainership_repo: MaintainershipRepository | None = validation_service  # type: ignore[assignment]
-            self.git_repo: GitRepository | None = git_repo
-            self.validation_service: "ValidationService | None" = None
-        else:
-            # New signature: first arg is validation_service
-            self.validation_service = validation_service  # type: ignore[assignment]
-            self.maintainership_repo = None
-            self.git_repo = None
+    def __init__(self, validation_service: "ValidationService") -> None:
+        """Initialize whitelist service with validation service dependency.
+
+        Args:
+            validation_service: Service for validating shipped packages
+        """
+        self.validation_service = validation_service
 
     def load_whitelist(self, whitelist_file: Path) -> set[str]:
         """Load existing whitelist file.
@@ -102,63 +78,6 @@ class WhitelistService:
             raise ValueError(f"Whitelist file {whitelist_file} must contain only strings")
 
         return set(packages)
-
-    def save_whitelist(self, whitelist_file: Path, packages: list[str]) -> None:
-        """Save whitelist to file (sorted JSON array).
-
-        Args:
-            whitelist_file: Path to whitelist JSON file
-            packages: List of package names
-
-        Raises:
-            OSError: If file cannot be written (permissions, disk space, etc.)
-        """
-        sorted_packages = sorted(packages)
-
-        with open(whitelist_file, "w", encoding="utf-8") as f:
-            json.dump(sorted_packages, f, indent=4)
-
-        # Set restrictive permissions (owner read/write only)
-        whitelist_file.chmod(0o600)
-
-    def update_whitelist(
-        self,
-        repo_path: Path,
-        maintainership_file: Path,
-        whitelist_file: Path,
-    ) -> WhitelistUpdateResult:
-        """Update whitelist with missing submodules.
-
-        Compares actual git submodules with packages in maintainership file.
-        Updates whitelist to contain submodules missing from maintainership.
-
-        Args:
-            repo_path: Path to git repository
-            maintainership_file: Path to _maintainership.json
-            whitelist_file: Path to whitelist_maintainership.json
-
-        Returns:
-            WhitelistUpdateResult with added/removed packages
-        """
-        # Load current state
-        submodules = set(self.git_repo.list_submodules(repo_path))
-        maintainership_data = self.maintainership_repo.load(maintainership_file)
-        maintained = set(maintainership_data.packages.keys())
-        old_whitelist = self.load_whitelist(whitelist_file)
-
-        # Calculate changes
-        added = submodules - maintained
-        in_maintainership_not_submodule = maintained - submodules
-        removed = old_whitelist - added
-
-        # Save new whitelist
-        self.save_whitelist(whitelist_file, sorted(added))
-
-        return WhitelistUpdateResult(
-            added=sorted(added),
-            removed=sorted(removed),
-            in_maintainership_not_submodule=sorted(in_maintainership_not_submodule),
-        )
 
     def check_whitelist(
         self,
