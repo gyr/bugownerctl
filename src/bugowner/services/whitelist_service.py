@@ -9,9 +9,13 @@ Design Notes:
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from bugowner.repositories.git_repository import GitRepository
 from bugowner.repositories.maintainership_repository import MaintainershipRepository
+
+if TYPE_CHECKING:
+    from bugowner.services.validation_service import ValidationService
 
 
 @dataclass
@@ -23,6 +27,14 @@ class WhitelistUpdateResult:
     in_maintainership_not_submodule: list[str]
 
 
+@dataclass
+class WhitelistCheckResult:
+    """Results from whitelist check operation."""
+
+    inconsistent_packages: list[str]  # Packages BOTH shipped AND whitelisted (sorted)
+    new_false_positives: dict[str, str]  # New binary→source mappings from validation
+
+
 class WhitelistService:
     """Service for managing maintainership whitelist."""
 
@@ -30,11 +42,23 @@ class WhitelistService:
 
     def __init__(
         self,
-        maintainership_repo: MaintainershipRepository,
-        git_repo: GitRepository,
+        validation_service: "ValidationService | MaintainershipRepository",
+        git_repo: GitRepository | None = None,
     ) -> None:
-        self.maintainership_repo = maintainership_repo
-        self.git_repo = git_repo
+        # Support both old and new constructor signatures (temporary backward compatibility)
+        # Old: WhitelistService(maintainership_repo, git_repo)
+        # New: WhitelistService(validation_service)
+        # TODO: Remove old signature in Phase 2 of whitelist refactor
+        if git_repo is not None:
+            # Old signature: first arg is maintainership_repo
+            self.maintainership_repo: MaintainershipRepository | None = validation_service  # type: ignore[assignment]
+            self.git_repo: GitRepository | None = git_repo
+            self.validation_service: "ValidationService | None" = None
+        else:
+            # New signature: first arg is validation_service
+            self.validation_service = validation_service  # type: ignore[assignment]
+            self.maintainership_repo = None
+            self.git_repo = None
 
     def load_whitelist(self, whitelist_file: Path) -> set[str]:
         """Load existing whitelist file.
@@ -134,4 +158,55 @@ class WhitelistService:
             added=sorted(added),
             removed=sorted(removed),
             in_maintainership_not_submodule=sorted(in_maintainership_not_submodule),
+        )
+
+    def check_whitelist(
+        self,
+        whitelist_file: Path,
+        shipped_packages: set[str],
+        submodules: list[str],
+        false_positives_file: Path,
+        obs_project: str = "SUSE:SLFO:Main",
+    ) -> WhitelistCheckResult:
+        """Check whitelist for inconsistencies with shipped packages.
+
+        Validates that whitelisted packages are NOT shipped. Reports packages
+        that are BOTH whitelisted AND validated as shipped (inconsistency).
+
+        Args:
+            whitelist_file: Path to whitelist JSON file
+            shipped_packages: Set of shipped package names from metadata
+            submodules: List of git submodule names
+            false_positives_file: Path to false positives cache
+            obs_project: OBS project to query for package resolution
+
+        Returns:
+            WhitelistCheckResult with inconsistent packages and new false positives
+
+        Raises:
+            FileNotFoundError: If whitelist file doesn't exist
+            ValueError: If whitelist file is invalid
+        """
+        # Validate whitelist file exists
+        if not whitelist_file.exists():
+            raise FileNotFoundError(f"Whitelist file {whitelist_file} does not exist")
+
+        # Load whitelist
+        whitelist = self.load_whitelist(whitelist_file)
+
+        # Get validated shipped packages using validation pipeline
+        (
+            valid_packages,
+            _,
+            new_false_positives,
+        ) = self.validation_service.find_shipped_without_submodule(
+            shipped_packages, submodules, false_positives_file, obs_project
+        )
+
+        # Find intersection: packages BOTH shipped AND whitelisted (inconsistency)
+        inconsistent_packages = valid_packages & whitelist
+
+        return WhitelistCheckResult(
+            inconsistent_packages=sorted(inconsistent_packages),
+            new_false_positives=new_false_positives,
         )
