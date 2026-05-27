@@ -100,8 +100,8 @@ def run(args: argparse.Namespace) -> int:
     shipped_packages = metadata_repo.parse_source_packages(repo_metadata_file)
     submodules = git_repo.list_submodules(slfo_repo_path)
 
-    # Use paths
-    whitelist_file = Path.cwd() / whitelist_file_name
+    # Use paths from cloned SLFO repository (whitelist) and current directory (cache)
+    whitelist_file = slfo_repo_path / whitelist_file_name
     false_positives_file = Path.cwd() / false_positives_file_name
 
     # Execute whitelist check

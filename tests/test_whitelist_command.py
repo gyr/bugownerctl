@@ -279,9 +279,11 @@ class TestWhitelistCheckCommand:
         # Verify check_whitelist called with correct parameters
         mock_whitelist_service.check_whitelist.assert_called_once()
         call_args = mock_whitelist_service.check_whitelist.call_args[1]
-        assert call_args["whitelist_file"] == Path("/test/whitelist_maintainership.json")
+        # whitelist_file should come from cloned SLFO repo (like validate command)
+        assert call_args["whitelist_file"] == Path("/cache/slfo/whitelist_maintainership.json")
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert call_args["submodules"] == ["pkg1", "pkg2"]
+        # false_positives_file should come from current directory (persistent cache)
         assert call_args["false_positives_file"] == Path("/test/false_positives.json")
 
     def test_run_returns_zero_when_no_inconsistencies_found(
