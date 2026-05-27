@@ -41,18 +41,32 @@ class TestCreateParser:
         with pytest.raises(SystemExit):
             parser.parse_args(["validate"])
 
-    def test_parser_has_whitelist_subcommand(self) -> None:
-        """Parser should have 'whitelist' subcommand."""
-        parser = create_parser()
-        args = parser.parse_args(["whitelist", "update"])
-        assert args.command == "whitelist"
-        assert args.whitelist_command == "update"
-
-    def test_whitelist_requires_subcommand(self) -> None:
-        """Whitelist should require a subcommand (update)."""
+    def test_parser_rejects_whitelist_update_subcommand(self) -> None:
+        """Parser should NOT have 'whitelist update' subcommand (removed)."""
         parser = create_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["whitelist"])
+            parser.parse_args(["whitelist", "update"])
+
+    def test_parser_has_whitelist_check_subcommand(self) -> None:
+        """Parser should have 'whitelist-check' subcommand with version flag."""
+        parser = create_parser()
+        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
+        assert args.command == "whitelist-check"
+        assert args.version == "16.1"
+
+    def test_whitelist_check_requires_version_flag(self) -> None:
+        """Whitelist-check should require -v/--version flag."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["whitelist-check"])
+
+    def test_whitelist_check_wires_correct_handler(self) -> None:
+        """Whitelist-check should wire whitelist.run as handler."""
+        from bugowner.commands import whitelist
+
+        parser = create_parser()
+        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
+        assert args.func == whitelist.run
 
     def test_parser_has_query_package_subcommand(self) -> None:
         """Parser should have 'query package' subcommand."""
