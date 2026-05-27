@@ -121,9 +121,15 @@ INFO: - package3
 INFO: Discovered 5 new binary→source mappings.
 ```
 
+**Whitelist File Location:**
+
+The whitelist file is read from the **cloned SLFO git repository**, not the current working directory.
+
+Example path: `~/.cache/bugownership/SLFO/whitelist_maintainership.json`
+
 **Whitelist File Format:**
 
-Create `whitelist_maintainership.json` with package names expected to be NOT shipped:
+Create `whitelist_maintainership.json` in the SLFO git repository with package names expected to be NOT shipped:
 
 ```json
 [
@@ -132,6 +138,10 @@ Create `whitelist_maintainership.json` with package names expected to be NOT shi
   "package3"
 ]
 ```
+
+**Security:**
+
+Config file names are validated to prevent path traversal attacks. Invalid file names (e.g., `../../../etc/passwd`) are rejected with a clear error message.
 
 **Migration Note:**
 
@@ -563,6 +573,38 @@ du -sh ~/.cache/bugownership/repodata/*/
 # Remove old/unused version caches
 rm -rf ~/.cache/bugownership/repodata/15.*/
 ```
+
+## Security
+
+### Path Traversal Protection
+
+Config file names (e.g., `whitelist_file`, `maintainership_file`) are validated to prevent path traversal attacks.
+
+**Validated:**
+- ✅ Simple filenames: `whitelist.json`
+- ✅ Subdirectories: `config/whitelist.json`
+
+**Rejected:**
+- ❌ Parent directory traversal: `../etc/passwd`
+- ❌ Absolute paths: `/etc/passwd`
+- ❌ Hidden traversal: `subdir/../../etc/passwd`
+
+**Implementation:**
+
+Uses `Path.resolve() + relative_to()` pattern to ensure config file names stay within their intended directories. Symlinks are followed and validated to prevent symlink attacks.
+
+**Error Example:**
+```
+ValueError: Whitelist file escapes base directory: 
+'../../../etc/passwd' resolves to /home/user/etc/passwd 
+(outside /home/user/.cache/bugownership/SLFO)
+```
+
+### File Location Security
+
+- **Whitelist file:** Read from cloned SLFO repository (validated)
+- **Maintainership file:** Read from cloned SLFO repository (validated)
+- **False positives cache:** Read/write from current directory (not validated - persistent cache)
 
 ## Contributing
 
