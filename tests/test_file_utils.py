@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from bugowner.utils.file_utils import load_json, save_json
+from bugowner.utils.file_utils import (
+    load_json,
+    save_json,
+    validate_file_within_directory,
+)
 
 
 class TestLoadJson:
@@ -255,3 +259,65 @@ class TestSaveJson:
             temp_path = Path(temp_path_str)
             if temp_path.exists():
                 temp_path.unlink()
+
+
+class TestValidateFileWithinDirectory:
+    """Test validate_file_within_directory() - path traversal prevention."""
+
+    def test_validate_file_accepts_simple_filename(self, tmp_path: Path) -> None:
+        """Should accept simple filename without path traversal."""
+        base_dir = tmp_path / "base"
+        base_dir.mkdir()
+
+        result = validate_file_within_directory(base_dir, "file.json", "Test file")
+
+        assert result == base_dir / "file.json"
+
+    def test_validate_file_rejects_parent_directory_traversal(self, tmp_path: Path) -> None:
+        """Should reject filename containing '..' (parent directory)."""
+        base_dir = tmp_path / "base"
+        base_dir.mkdir()
+
+        with pytest.raises(ValueError, match="escapes base directory"):
+            validate_file_within_directory(base_dir, "../etc/passwd", "Test file")
+
+    def test_validate_file_rejects_absolute_path(self, tmp_path: Path) -> None:
+        """Should reject absolute paths starting with '/'."""
+        base_dir = tmp_path / "base"
+        base_dir.mkdir()
+
+        with pytest.raises(ValueError, match="escapes base directory"):
+            validate_file_within_directory(base_dir, "/etc/passwd", "Test file")
+
+    def test_validate_file_rejects_nested_traversal(self, tmp_path: Path) -> None:
+        """Should reject multiple '..' components that escape base directory."""
+        base_dir = tmp_path / "base"
+        base_dir.mkdir()
+
+        with pytest.raises(ValueError, match="escapes base directory"):
+            validate_file_within_directory(base_dir, "../../etc/passwd", "Test file")
+
+    def test_validate_file_accepts_subdirectory_path(self, tmp_path: Path) -> None:
+        """Should accept valid subdirectory paths within base directory."""
+        base_dir = tmp_path / "base"
+        base_dir.mkdir()
+
+        result = validate_file_within_directory(base_dir, "subdir/file.json", "Test file")
+
+        assert result == base_dir / "subdir" / "file.json"
+
+    def test_validate_file_rejects_hidden_traversal_via_subdirectory(self, tmp_path: Path) -> None:
+        """Should reject hidden path traversal like 'subdir/../../etc'."""
+        base_dir = tmp_path / "base"
+        base_dir.mkdir()
+
+        with pytest.raises(ValueError, match="escapes base directory"):
+            validate_file_within_directory(base_dir, "subdir/../../etc/passwd", "Test file")
+
+    def test_validate_file_includes_description_in_error_message(self, tmp_path: Path) -> None:
+        """Should include file_description in error message for clarity."""
+        base_dir = tmp_path / "base"
+        base_dir.mkdir()
+
+        with pytest.raises(ValueError, match="Whitelist file.*escapes base directory"):
+            validate_file_within_directory(base_dir, "../escape", "Whitelist file")

@@ -1,7 +1,7 @@
 """CLI entry point for bugowner package.
 
 This module provides the command-line interface with subcommands for
-validating maintainership data, managing whitelists, and querying packages.
+validating maintainership data, checking whitelists, and querying packages.
 """
 
 import argparse
@@ -15,7 +15,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser with subcommands.
 
     Returns:
-        Configured ArgumentParser with validate, whitelist, and query subcommands.
+        Configured ArgumentParser with validate, whitelist-check, and query subcommands.
     """
     parser = argparse.ArgumentParser(
         prog="bugowner", description="Bug ownership and package maintainership validation tool"
@@ -34,13 +34,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
     validate_parser.set_defaults(func=validate.run)
 
-    # bugowner whitelist
-    whitelist_parser = subparsers.add_parser("whitelist", help="Manage whitelist file")
-    whitelist_subparsers = whitelist_parser.add_subparsers(dest="whitelist_command", required=True)
-    update_parser = whitelist_subparsers.add_parser(
-        "update", help="Update whitelist with missing submodules"
+    # bugowner whitelist-check
+    whitelist_check_parser = subparsers.add_parser(
+        "whitelist-check",
+        help="Validate that whitelisted packages are NOT shipped",
     )
-    update_parser.set_defaults(func=whitelist.run_update)
+    whitelist_check_parser.add_argument(
+        "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+    )
+    whitelist_check_parser.set_defaults(func=whitelist.run)
 
     # bugowner query
     query_parser = subparsers.add_parser("query", help="Query package and maintainer information")

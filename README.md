@@ -4,7 +4,7 @@
 
 Package maintainership validation and management tool for SUSE Linux Enterprise.
 
-Validates package ownership, manages whitelists, and queries maintainer information using a unified CLI interface.
+Validates package ownership, checks whitelists, and queries maintainer information using a unified CLI interface.
 
 ## Installation
 
@@ -22,8 +22,8 @@ pip install -e .
 # Validate maintainership for SLES 16.1
 bugowner validate -v 16.1
 
-# Update whitelist with missing submodules
-bugowner whitelist update
+# Check whitelist against shipped packages
+bugowner whitelist-check -v 16.1
 
 # Check package maintainership
 bugowner query package apache2
@@ -76,32 +76,76 @@ bugowner validate -v 16.0 --debug
 
 ---
 
-### `bugowner whitelist update`
+### `bugowner whitelist-check`
 
-Updates whitelist file with submodules missing from maintainership.
+Validates that whitelisted packages are NOT shipped in the distribution.
+
+**Purpose:** Detect when packages expected to be unshipped are actually shipped (inconsistency).
 
 **Usage:**
 ```bash
-bugowner whitelist update
+bugowner whitelist-check --version <version>
+bugowner whitelist-check -v <version>
 ```
 
 **What it does:**
-- Compares git submodules with `_maintainership.json`
-- Adds missing submodules to whitelist
-- Removes packages that now have maintainers
-- Reports packages in maintainership but not in submodules
+- Downloads repository metadata (primary.xml.gz)
+- Clones/updates git repository
+- Extracts validated shipped packages (same pipeline as `validate`)
+- Loads whitelist file (`whitelist_maintainership.json`)
+- Finds intersection: packages that are BOTH shipped AND whitelisted
+- Reports inconsistencies
 
 **Example:**
 ```bash
-bugowner whitelist update
+bugowner whitelist-check -v 16.1
 ```
 
-**Exit code:** Always `0`
+**Exit codes:**
+- `0` - No inconsistencies found (all whitelisted packages are NOT shipped)
+- `1` - Inconsistencies found (some whitelisted packages ARE shipped)
 
 **Output:**
-- Packages added to whitelist
-- Packages removed from whitelist
-- Packages in maintainership but not submodules
+```
+INFO: No inconsistencies found. All whitelisted packages are NOT shipped.
+```
+
+or:
+
+```
+INFO: Found 3 packages that are BOTH shipped AND whitelisted (inconsistency).
+INFO: Inconsistent packages (should NOT be shipped if whitelisted):
+INFO: - package1
+INFO: - package2
+INFO: - package3
+INFO: Discovered 5 new binary→source mappings.
+```
+
+**Whitelist File Location:**
+
+The whitelist file is read from the **cloned SLFO git repository**, not the current working directory.
+
+Example path: `~/.cache/bugownership/SLFO/whitelist_maintainership.json`
+
+**Whitelist File Format:**
+
+Create `whitelist_maintainership.json` in the SLFO git repository with package names expected to be NOT shipped:
+
+```json
+[
+  "package1",
+  "package2",
+  "package3"
+]
+```
+
+**Security:**
+
+Config file names are validated to prevent path traversal attacks. Invalid file names (e.g., `../../../etc/passwd`) are rejected with a clear error message.
+
+**Migration Note:**
+
+The old `bugowner whitelist update` command has been removed. The whitelist file is now manually maintained as a reference for validation.
 
 ---
 
@@ -227,7 +271,7 @@ Primary maintainership data (from SLFO git repo):
 
 ### `whitelist_maintainership.json`
 
-Auto-generated whitelist for unmaintained submodules:
+Manually maintained whitelist for packages expected to be NOT shipped:
 
 ```json
 [
@@ -235,6 +279,8 @@ Auto-generated whitelist for unmaintained submodules:
   "legacy-package2"
 ]
 ```
+
+**Note:** This file is no longer auto-generated. It serves as a reference list for validation via `bugowner whitelist-check`.
 
 ### `false_positives.json`
 
@@ -453,9 +499,10 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 | Old Script | New Command |
 |------------|-------------|
 | `validate_maintainership.py -v 16.1` | `bugowner validate -v 16.1` |
-| `create_whitelist_maintainership.py` | `bugowner whitelist update` |
+| `create_whitelist_maintainership.py` | ~~`bugowner whitelist update`~~ (removed) |
 | `check_package_maintainer.py <pkg>` | `bugowner query package <pkg>` |
 | N/A | `bugowner query maintainer <user>` |
+| N/A | `bugowner whitelist-check -v <version>` (new) |
 
 **Migration steps:**
 1. Install new CLI: `uv pip install -e .`
@@ -526,6 +573,38 @@ du -sh ~/.cache/bugownership/repodata/*/
 # Remove old/unused version caches
 rm -rf ~/.cache/bugownership/repodata/15.*/
 ```
+
+## Security
+
+### Path Traversal Protection
+
+Config file names (e.g., `whitelist_file`, `maintainership_file`) are validated to prevent path traversal attacks.
+
+**Validated:**
+- ✅ Simple filenames: `whitelist.json`
+- ✅ Subdirectories: `config/whitelist.json`
+
+**Rejected:**
+- ❌ Parent directory traversal: `../etc/passwd`
+- ❌ Absolute paths: `/etc/passwd`
+- ❌ Hidden traversal: `subdir/../../etc/passwd`
+
+**Implementation:**
+
+Uses `Path.resolve() + relative_to()` pattern to ensure config file names stay within their intended directories. Symlinks are followed and validated to prevent symlink attacks.
+
+**Error Example:**
+```
+ValueError: Whitelist file escapes base directory: 
+'../../../etc/passwd' resolves to /home/user/etc/passwd 
+(outside /home/user/.cache/bugownership/SLFO)
+```
+
+### File Location Security
+
+- **Whitelist file:** Read from cloned SLFO repository (validated)
+- **Maintainership file:** Read from cloned SLFO repository (validated)
+- **False positives cache:** Read/write from current directory (not validated - persistent cache)
 
 ## Contributing
 
