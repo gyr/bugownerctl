@@ -280,7 +280,9 @@ class GitRepositoryImpl:
             if ref_type == RefType.BRANCH:
                 # For branches: fetch and reset to latest
                 logging.debug(f"Fetching latest changes for branch {git_ref}")
-                self._run_git_command(["git", "fetch", "--prune", "origin"], cwd=str(repo_path))
+                self._run_git_command(
+                    ["git", "fetch", "--prune", "origin", git_ref], cwd=str(repo_path)
+                )
 
                 # Check current branch
                 result = self._run_git_command(
@@ -302,7 +304,12 @@ class GitRepositoryImpl:
                     cwd=str(repo_path),
                 )
             else:
-                # For tags/commits: just checkout
+                # For tags/commits: fetch all branches then checkout
+                # Tags/commits may be on any branch, so we need all branches
+                logging.debug("Fetching all branches to ensure tag/commit is available")
+                self._run_git_command(["git", "fetch", "--prune", "origin"], cwd=str(repo_path))
+
+                # Checkout the tag/commit
                 logging.info(f"Checking out {ref_type.value} {git_ref}")
                 self._run_git_command(["git", "checkout", git_ref], cwd=str(repo_path))
 

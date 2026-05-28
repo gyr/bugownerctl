@@ -372,7 +372,7 @@ class TestCloneOrUpdate:
                 # Should call git fetch, rev-parse, and reset
                 assert mock_run.call_count == 3
                 mock_run.assert_any_call(
-                    ["git", "fetch", "--prune", "origin"],
+                    ["git", "fetch", "--prune", "origin", git_ref],  # ← Updated to include git_ref
                     cwd=str(expected_path),
                     check=True,
                     capture_output=True,
@@ -380,7 +380,7 @@ class TestCloneOrUpdate:
                 )
 
     def test_update_existing_repository_tag(self) -> None:
-        """Should only checkout when ref is a tag."""
+        """Should fetch all branches then checkout when ref is a tag."""
         repo_url = "https://github.com/test/repo.git"
         git_ref = "v1.0.0"
         cache_dir = Path("/cache")
@@ -403,8 +403,16 @@ class TestCloneOrUpdate:
                 result = repo.clone_or_update(repo_url, git_ref, cache_dir, ref_type)
 
                 assert result == expected_path
-                # Should only call git checkout (not fetch/reset)
-                mock_run.assert_called_once_with(
+                # Should call git fetch (all branches) then git checkout
+                assert mock_run.call_count == 2
+                mock_run.assert_any_call(
+                    ["git", "fetch", "--prune", "origin"],
+                    cwd=str(expected_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                mock_run.assert_any_call(
                     ["git", "checkout", git_ref],
                     cwd=str(expected_path),
                     check=True,
@@ -413,7 +421,7 @@ class TestCloneOrUpdate:
                 )
 
     def test_update_existing_repository_commit(self) -> None:
-        """Should only checkout when ref is a commit hash."""
+        """Should fetch all branches then checkout when ref is a commit hash."""
         repo_url = "https://github.com/test/repo.git"
         git_ref = "abc123def456"
         cache_dir = Path("/cache")
@@ -436,8 +444,22 @@ class TestCloneOrUpdate:
                 result = repo.clone_or_update(repo_url, git_ref, cache_dir, ref_type)
 
                 assert result == expected_path
-                # Should only call git checkout
-                mock_run.assert_called_once()
+                # Should call git fetch (all branches) then git checkout
+                assert mock_run.call_count == 2
+                mock_run.assert_any_call(
+                    ["git", "fetch", "--prune", "origin"],
+                    cwd=str(expected_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                mock_run.assert_any_call(
+                    ["git", "checkout", git_ref],
+                    cwd=str(expected_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
 
     def test_clone_raises_on_git_error(self) -> None:
         """Should raise RuntimeError when clone fails."""
@@ -495,6 +517,134 @@ class TestCloneOrUpdate:
                 assert mock_run.call_count == 4
                 mock_run.assert_any_call(
                     ["git", "checkout", git_ref],
+                    cwd=str(expected_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+    def test_fetch_only_specific_branch_not_all_branches(self) -> None:
+        """Should fetch only the specific branch, not all branches (performance optimization)."""
+        repo_url = "https://github.com/test/repo.git"
+        git_ref = "slfo-main"
+        cache_dir = Path("/cache")
+        ref_type = RefType.BRANCH
+        expected_path = Path("/cache/repo")
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.resolve", side_effect=lambda: expected_path),
+        ):
+
+            def exists_side_effect(self):
+                return True
+
+            with patch.object(Path, "exists", exists_side_effect):
+                # Mock git commands
+                mock_run.side_effect = [
+                    Mock(returncode=0, stdout="", stderr=""),  # git fetch
+                    Mock(returncode=0, stdout="slfo-main\n", stderr=""),  # git rev-parse
+                    Mock(returncode=0, stdout="", stderr=""),  # git reset
+                ]
+
+                repo = GitRepositoryImpl()
+                result = repo.clone_or_update(repo_url, git_ref, cache_dir, ref_type)
+
+                assert result == expected_path
+                # Verify git fetch was called with specific branch (not all branches)
+                mock_run.assert_any_call(
+                    ["git", "fetch", "--prune", "origin", git_ref],  # ← Should include git_ref
+                    cwd=str(expected_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+    def test_commit_update_fetches_all_branches(self) -> None:
+        """Should fetch all branches when updating to commit (commit might be on any branch).
+
+        Bug scenario:
+        1. Version 16.1 fetches only slfo-main branch (single-branch optimization)
+        2. Version 16.0 tries to checkout commit 9d679ed from slfo-1.2 branch
+        3. Commit not found because slfo-1.2 was never fetched
+
+        Fix: Commits must fetch all branches to ensure commit is available.
+        """
+        repo_url = "https://github.com/test/repo.git"
+        git_ref = "9d679ed"  # Commit from slfo-1.2 branch
+        cache_dir = Path("/cache")
+        ref_type = RefType.COMMIT
+        expected_path = Path("/cache/repo")
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.resolve", side_effect=lambda: expected_path),
+        ):
+
+            def exists_side_effect(self):
+                return True
+
+            with patch.object(Path, "exists", exists_side_effect):
+                # Mock git commands
+                mock_run.side_effect = [
+                    Mock(returncode=0, stdout="", stderr=""),  # git fetch (ALL branches)
+                    Mock(returncode=0, stdout="", stderr=""),  # git checkout
+                ]
+
+                repo = GitRepositoryImpl()
+                result = repo.clone_or_update(repo_url, git_ref, cache_dir, ref_type)
+
+                assert result == expected_path
+                # Verify git fetch was called WITHOUT branch (fetches all branches)
+                mock_run.assert_any_call(
+                    ["git", "fetch", "--prune", "origin"],  # ← No git_ref (all branches)
+                    cwd=str(expected_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                # Verify checkout called
+                mock_run.assert_any_call(
+                    ["git", "checkout", git_ref],
+                    cwd=str(expected_path),
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+
+    def test_tag_update_fetches_all_branches(self) -> None:
+        """Should fetch all branches when updating to tag (tag might be on any branch)."""
+        repo_url = "https://github.com/test/repo.git"
+        git_ref = "v1.0.0"
+        cache_dir = Path("/cache")
+        ref_type = RefType.TAG
+        expected_path = Path("/cache/repo")
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.resolve", side_effect=lambda: expected_path),
+        ):
+
+            def exists_side_effect(self):
+                return True
+
+            with patch.object(Path, "exists", exists_side_effect):
+                # Mock git commands
+                mock_run.side_effect = [
+                    Mock(returncode=0, stdout="", stderr=""),  # git fetch (ALL branches)
+                    Mock(returncode=0, stdout="", stderr=""),  # git checkout
+                ]
+
+                repo = GitRepositoryImpl()
+                result = repo.clone_or_update(repo_url, git_ref, cache_dir, ref_type)
+
+                assert result == expected_path
+                # Verify git fetch was called WITHOUT branch (fetches all branches)
+                mock_run.assert_any_call(
+                    ["git", "fetch", "--prune", "origin"],  # ← No git_ref (all branches)
                     cwd=str(expected_path),
                     check=True,
                     capture_output=True,
