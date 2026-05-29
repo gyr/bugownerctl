@@ -9,14 +9,14 @@ import logging
 import sys
 from pathlib import Path
 
-from bugowner.commands import query, validate, whitelist
+from bugowner.commands import init, query, validate, whitelist
 
 
 def create_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser with subcommands.
 
     Returns:
-        Configured ArgumentParser with validate, whitelist-check, and query subcommands.
+        Configured ArgumentParser with init, validate, whitelist-check, and query subcommands.
     """
     parser = argparse.ArgumentParser(
         prog="bugowner", description="Bug ownership and package maintainership validation tool"
@@ -24,6 +24,17 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # bugowner init
+    init_parser = subparsers.add_parser("init", help="Create initial configuration file")
+    init_parser.add_argument(
+        "--location",
+        choices=["user", "local", "system"],
+        default="user",
+        help="Config location: user (default), local, or system",
+    )
+    init_parser.add_argument("--force", action="store_true", help="Overwrite existing config")
+    init_parser.set_defaults(func=init.run)
 
     # bugowner validate
     validate_parser = subparsers.add_parser(

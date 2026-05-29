@@ -151,6 +151,63 @@ class TestCreateParser:
         args = parser.parse_args(["whitelist-check", "-v", "16.1"])
         assert args.config is None
 
+    def test_parser_has_init_subcommand(self) -> None:
+        """Parser should have 'init' subcommand."""
+        parser = create_parser()
+        args = parser.parse_args(["init"])
+        assert args.command == "init"
+
+    def test_init_location_defaults_to_user(self) -> None:
+        """Init subcommand should default location to 'user'."""
+        parser = create_parser()
+        args = parser.parse_args(["init"])
+        assert args.location == "user"
+
+    def test_init_force_defaults_to_false(self) -> None:
+        """Init subcommand should default force to False."""
+        parser = create_parser()
+        args = parser.parse_args(["init"])
+        assert args.force is False
+
+    def test_init_accepts_location_flag(self) -> None:
+        """Init should accept --location flag with valid choices."""
+        parser = create_parser()
+        args = parser.parse_args(["init", "--location", "local"])
+        assert args.location == "local"
+
+    def test_init_accepts_location_choices(self) -> None:
+        """Init should accept user, local, and system as location choices."""
+        parser = create_parser()
+
+        args_user = parser.parse_args(["init", "--location", "user"])
+        assert args_user.location == "user"
+
+        args_local = parser.parse_args(["init", "--location", "local"])
+        assert args_local.location == "local"
+
+        args_system = parser.parse_args(["init", "--location", "system"])
+        assert args_system.location == "system"
+
+    def test_init_rejects_invalid_location(self) -> None:
+        """Init should reject invalid location values."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["init", "--location", "invalid"])
+
+    def test_init_accepts_force_flag(self) -> None:
+        """Init should accept --force flag."""
+        parser = create_parser()
+        args = parser.parse_args(["init", "--force"])
+        assert args.force is True
+
+    def test_init_wires_correct_handler(self) -> None:
+        """Init should wire init.run as handler."""
+        from bugowner.commands import init
+
+        parser = create_parser()
+        args = parser.parse_args(["init"])
+        assert args.func == init.run
+
 
 class TestMain:
     """Tests for main entry point."""
