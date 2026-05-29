@@ -31,6 +31,12 @@ bugowner = "bugowner.cli:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/bugowner"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/bugowner/data/config.example.yaml" = "bugowner/data/config.example.yaml"
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
