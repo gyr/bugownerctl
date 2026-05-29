@@ -27,8 +27,9 @@ def run(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success, 1 = validation failures found)
     """
-    # Load configuration
-    config = load_config() or {}
+    # Load configuration - pass explicit config from CLI if provided
+    # If args.config is None, load_config() searches standard locations
+    config = load_config(args.config) or {}
 
     # Get paths from config
     cache_dir = Path(config.get("cache_dir", "~/.cache/bugownership")).expanduser()

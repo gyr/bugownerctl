@@ -1,5 +1,6 @@
 """Tests for CLI argument parsing and routing."""
 
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -105,6 +106,50 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["query", "maintainer", "testuser"])
         assert args.func == query.run_maintainer
+
+    def test_validate_accepts_config_flag(self) -> None:
+        """Validate subcommand should accept --config flag."""
+        parser = create_parser()
+        args = parser.parse_args(["validate", "-v", "16.1", "--config", "/custom/config.yaml"])
+        assert args.config == Path("/custom/config.yaml")
+
+    def test_validate_config_flag_short_form(self) -> None:
+        """Validate subcommand should accept -c short form for config flag."""
+        parser = create_parser()
+        args = parser.parse_args(["validate", "-v", "16.1", "-c", "/custom/config.yaml"])
+        assert args.config == Path("/custom/config.yaml")
+
+    def test_validate_config_flag_defaults_to_none(self) -> None:
+        """Config flag should default to None when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["validate", "-v", "16.1"])
+        assert args.config is None
+
+    def test_validate_config_flag_is_path_type(self) -> None:
+        """Config flag should be converted to Path type."""
+        parser = create_parser()
+        args = parser.parse_args(["validate", "-v", "16.1", "--config", "/custom/config.yaml"])
+        assert isinstance(args.config, Path)
+
+    def test_whitelist_check_accepts_config_flag(self) -> None:
+        """Whitelist-check subcommand should accept --config flag."""
+        parser = create_parser()
+        args = parser.parse_args(
+            ["whitelist-check", "-v", "16.1", "--config", "/custom/config.yaml"]
+        )
+        assert args.config == Path("/custom/config.yaml")
+
+    def test_whitelist_check_config_flag_short_form(self) -> None:
+        """Whitelist-check subcommand should accept -c short form."""
+        parser = create_parser()
+        args = parser.parse_args(["whitelist-check", "-v", "16.1", "-c", "/custom/config.yaml"])
+        assert args.config == Path("/custom/config.yaml")
+
+    def test_whitelist_check_config_flag_defaults_to_none(self) -> None:
+        """Config flag should default to None for whitelist-check."""
+        parser = create_parser()
+        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
+        assert args.config is None
 
 
 class TestMain:

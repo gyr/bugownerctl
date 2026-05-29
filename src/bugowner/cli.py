@@ -7,6 +7,7 @@ validating maintainership data, checking whitelists, and querying packages.
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from bugowner.commands import query, validate, whitelist
 
@@ -32,6 +33,13 @@ def create_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument(
         "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
     )
+    validate_parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (default: search standard locations)",
+    )
     validate_parser.set_defaults(func=validate.run)
 
     # bugowner whitelist-check
@@ -41,6 +49,13 @@ def create_parser() -> argparse.ArgumentParser:
     )
     whitelist_check_parser.add_argument(
         "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+    )
+    whitelist_check_parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (default: search standard locations)",
     )
     whitelist_check_parser.set_defaults(func=whitelist.run)
 
