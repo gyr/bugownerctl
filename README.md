@@ -19,6 +19,9 @@ pip install -e .
 ## Quick Start
 
 ```bash
+# First time: Initialize config file (recommended)
+bugowner init
+
 # Validate maintainership for SLES 16.1
 bugowner validate -v 16.1
 
@@ -34,14 +37,73 @@ bugowner query maintainer user1
 
 ## Commands
 
+### `bugowner init`
+
+Create initial configuration file from bundled template.
+
+**Usage:**
+```bash
+bugowner init [--location {user,local,system}] [--force]
+```
+
+**Options:**
+- `--location` - Where to create config (default: `user`)
+  - `user` - `~/.config/bugownership/config.yaml` (recommended)
+  - `local` - `./validate_maintainership.yaml` (project-specific)
+  - `system` - `/etc/bugownership/config.yaml` (system-wide, requires sudo)
+- `--force` - Overwrite existing config file
+
+**Examples:**
+```bash
+# Create user config (recommended for first-time setup)
+bugowner init
+
+# Create project-local config
+bugowner init --location local
+
+# Create system-wide config
+sudo bugowner init --location system
+
+# Overwrite existing config
+bugowner init --force
+```
+
+**What it does:**
+1. Loads bundled example template
+2. Creates parent directories if needed
+3. Copies template to target location
+4. Shows next steps (edit config, run validate)
+
+**Exit codes:**
+- `0` - Config created successfully
+- `1` - Error (file exists, permission denied, etc.)
+
+**Output:**
+```
+✓ Created user config
+  Location: /home/user/.config/bugownership/config.yaml
+
+Next steps:
+  1. Edit config: /home/user/.config/bugownership/config.yaml
+  2. Update slfo_git_url and products
+  3. Run: bugowner validate -v 16.1
+```
+
+---
+
 ### `bugowner validate`
 
 Validates package maintainership data for consistency.
 
 **Usage:**
 ```bash
-bugowner validate -v <version> [--debug]
+bugowner validate -v <version> [--config <path>] [--debug]
 ```
+
+**Options:**
+- `-v, --version` - SLES version (required, e.g., "16.1")
+- `-c, --config` - Path to config file (optional, uses search hierarchy)
+- `-d, --debug` - Enable debug logging
 
 **What it checks:**
 - Orphan packages (in repo, no maintainer)
@@ -57,11 +119,18 @@ bugowner validate -v <version> [--debug]
 
 **Examples:**
 ```bash
-# Validate SLES 16.1
+# Validate SLES 16.1 (uses config search hierarchy)
 bugowner validate -v 16.1
+
+# Validate with explicit config file
+bugowner validate -v 16.1 --config /custom/config.yaml
 
 # Validate with debug logging
 bugowner validate -v 16.0 --debug
+
+# Use environment variable for config
+export BUGOWNER_CONFIG=/path/to/config.yaml
+bugowner validate -v 16.1
 ```
 
 **Exit codes:**
@@ -84,9 +153,12 @@ Validates that whitelisted packages are NOT shipped in the distribution.
 
 **Usage:**
 ```bash
-bugowner whitelist-check --version <version>
-bugowner whitelist-check -v <version>
+bugowner whitelist-check -v <version> [--config <path>]
 ```
+
+**Options:**
+- `-v, --version` - SLES version (required)
+- `-c, --config` - Path to config file (optional, uses search hierarchy)
 
 **What it does:**
 - Downloads repository metadata (primary.xml.gz)
@@ -96,9 +168,13 @@ bugowner whitelist-check -v <version>
 - Finds intersection: packages that are BOTH shipped AND whitelisted
 - Reports inconsistencies
 
-**Example:**
+**Examples:**
 ```bash
+# Check whitelist with automatic config discovery
 bugowner whitelist-check -v 16.1
+
+# Check whitelist with explicit config
+bugowner whitelist-check -v 16.1 --config /path/to/config.yaml
 ```
 
 **Exit codes:**
@@ -221,7 +297,51 @@ Packages (5):
 
 ## Configuration
 
-Create `validate_maintainership.yaml` in project root:
+### Config File Location
+
+The tool uses a **standard search hierarchy** to find configuration:
+
+**Search order (highest to lowest priority):**
+1. **CLI flag:** `--config /path/to/config.yaml` (explicit override)
+2. **Environment variable:** `BUGOWNER_CONFIG=/path/to/config.yaml`
+3. **Project-local:** `./validate_maintainership.yaml` (current directory)
+4. **User config:** `~/.config/bugownership/config.yaml` (recommended)
+5. **System config:** `/etc/bugownership/config.yaml` (system-wide)
+
+**XDG Base Directory support:**
+- Respects `XDG_CONFIG_HOME` environment variable
+- Default user config: `$XDG_CONFIG_HOME/bugownership/config.yaml`
+- Fallback: `~/.config/bugownership/config.yaml`
+
+**Best practices:**
+- **First-time users:** Run `bugowner init` to create user config
+- **Project-specific:** Use `bugowner init --location local` for per-project configs
+- **CI/CD:** Use `--config` flag or `BUGOWNER_CONFIG` env var for explicit control
+- **System-wide:** Use `sudo bugowner init --location system` for shared config
+
+**Examples:**
+```bash
+# Let tool find config automatically (searches hierarchy)
+bugowner validate -v 16.1
+
+# Explicit config (highest priority, skips search)
+bugowner validate -v 16.1 --config /ci/config.yaml
+
+# Environment variable (second priority)
+export BUGOWNER_CONFIG=/team/shared-config.yaml
+bugowner validate -v 16.1
+
+# Create user config (recommended first step)
+bugowner init
+```
+
+**Error handling:**
+- If explicit `--config` or `BUGOWNER_CONFIG` is set but file doesn't exist → **hard error**
+- If no config found in search hierarchy → **clear error showing all searched locations**
+
+### Config File Format
+
+Create config file manually or use `bugowner init` to generate from template:
 
 ```yaml
 # Cache directory for downloads (version-specific subdirs created automatically)
@@ -501,18 +621,55 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 | `validate_maintainership.py -v 16.1` | `bugowner validate -v 16.1` |
 | `create_whitelist_maintainership.py` | ~~`bugowner whitelist update`~~ (removed) |
 | `check_package_maintainer.py <pkg>` | `bugowner query package <pkg>` |
-| N/A | `bugowner query maintainer <user>` |
+| N/A | `bugowner query maintainer <user>` (new) |
 | N/A | `bugowner whitelist-check -v <version>` (new) |
+| N/A | `bugowner init` (new) |
 
 **Migration steps:**
 1. Install new CLI: `uv pip install -e .`
-2. Test new commands alongside old scripts
-3. Update scripts/automation to use `bugowner` CLI
-4. Remove old script calls once verified
+2. **Initialize config:** `bugowner init` (creates `~/.config/bugownership/config.yaml`)
+3. **Edit config:** Update `slfo_git_url` and `products` in generated config
+4. Test new commands alongside old scripts
+5. Update scripts/automation to use `bugowner` CLI
+6. Remove old script calls once verified
+
+**Configuration migration:**
+- Old: Required `validate_maintainership.yaml` in current directory
+- New: Supports **config search hierarchy** (CLI flag → env var → project → user → system)
+- **Backward compatible:** Project-local config (`./validate_maintainership.yaml`) still works
+- **Recommended:** Use `bugowner init` to create user config for global access
 
 **Compatibility:** All functionality preserved. Data files (`_maintainership.json`, `false_positives.json`, etc.) shared between old and new.
 
 ## Troubleshooting
+
+**"Config file not found"**
+```bash
+# Option 1: Create user config (recommended)
+bugowner init
+
+# Option 2: Create project-local config
+bugowner init --location local
+
+# Option 3: Explicitly specify config location
+bugowner validate -v 16.1 --config /path/to/config.yaml
+
+# Option 4: Use environment variable
+export BUGOWNER_CONFIG=/path/to/config.yaml
+bugowner validate -v 16.1
+
+# View search locations (error message shows all paths checked)
+bugowner validate -v 16.1  # If no config found, shows search hierarchy
+```
+
+**"Config file exists" (when running init)**
+```bash
+# Overwrite existing config
+bugowner init --force
+
+# Or manually edit existing config
+vim ~/.config/bugownership/config.yaml
+```
 
 **"ModuleNotFoundError"**
 ```bash
