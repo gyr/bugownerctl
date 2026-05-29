@@ -87,12 +87,16 @@ def find_config_file(explicit_path: Path | None = None) -> Path:
 
 
 def load_config(
-    config_file: str | Path = Path("validate_maintainership.yaml"),
+    config_file: str | Path | None = None,
 ) -> dict[str, Any] | None:
     """Load YAML configuration file.
 
+    If config_file is None, searches standard locations via find_config_file().
+    If config_file is provided, loads that file directly (no search).
+
     Args:
-        config_file: Path to YAML config (str or Path, default: validate_maintainership.yaml)
+        config_file: Optional explicit path to YAML config (str, Path, or None)
+                    If None, searches standard locations
 
     Returns:
         Configuration dictionary, or None if file is empty
@@ -101,7 +105,13 @@ def load_config(
         FileNotFoundError: If config file not found
         yaml.YAMLError: If invalid YAML
     """
-    config_path = Path(config_file) if isinstance(config_file, str) else config_file
+    # If no config file specified, search for it
+    if config_file is None:
+        config_path = find_config_file()
+    else:
+        # Explicit path provided - use it directly (backward compatibility)
+        config_path = Path(config_file) if isinstance(config_file, str) else config_file
+
     with open(config_path, encoding="utf-8") as f:
         config: dict[str, Any] | None = yaml.safe_load(f)
         return config

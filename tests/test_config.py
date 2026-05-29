@@ -98,3 +98,25 @@ class TestLoadConfig:
             assert result == {"version": "16.1"}
         finally:
             Path(temp_path_str).unlink()
+
+    def test_load_config_with_none_triggers_search(self, tmp_path, monkeypatch):
+        """Should call find_config_file() when config_file is None."""
+        monkeypatch.chdir(tmp_path)
+        config_file = tmp_path / "validate_maintainership.yaml"
+        config_file.write_text("products:\n  - version: '16.0'\n")
+
+        result = load_config(None)
+
+        assert result is not None
+        assert result["products"][0]["version"] == "16.0"
+
+    def test_load_config_with_explicit_path_skips_search(self, tmp_path):
+        """Should use explicit path directly without triggering search."""
+        # Create config in non-standard location
+        custom_config = tmp_path / "custom" / "my_config.yaml"
+        custom_config.parent.mkdir()
+        custom_config.write_text("test:\n  explicit: true\n")
+
+        result = load_config(custom_config)
+
+        assert result == {"test": {"explicit": True}}
