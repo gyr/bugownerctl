@@ -151,3 +151,6 @@ temp/
 # Cache
 .cache/
 *.cache
+
+# Stray CWD false-positives cache (should live in ~/.cache/bugownership/)
+/false_positives.json
