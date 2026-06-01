@@ -9,6 +9,7 @@ import pytest
 from bugowner.commands.whitelist import run
 from bugowner.domain.ref_type import RefType
 from bugowner.services.whitelist_service import WhitelistCheckResult
+from bugowner.utils.seed import FALSE_POSITIVES_CACHE_FILENAME
 
 
 class TestWhitelistCheckCommand:
@@ -20,7 +21,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -71,7 +71,9 @@ class TestWhitelistCheckCommand:
         mock_git_repo.list_submodules.return_value = ["pkg1"]
 
         # Mock Path operations
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
@@ -90,7 +92,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -147,7 +148,9 @@ class TestWhitelistCheckCommand:
         mock_metadata_repo.parse_source_packages.return_value = {"pkg1"}
         mock_git_repo.list_submodules.return_value = ["pkg1"]
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
@@ -164,7 +167,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -214,7 +216,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=metadata_repo_instance),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
@@ -229,7 +233,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -271,7 +274,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=mock_metadata_repo),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
@@ -283,8 +288,11 @@ class TestWhitelistCheckCommand:
         assert call_args["whitelist_file"] == Path("/cache/slfo/whitelist_maintainership.json")
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert call_args["submodules"] == ["pkg1", "pkg2"]
-        # false_positives_file should come from current directory (persistent cache)
-        assert call_args["false_positives_file"] == Path("/test/false_positives.json")
+        # false_positives_file should come from cache_dir (XDG user cache)
+        expected_cache_dir = Path("~/.cache/bugownership").expanduser()
+        assert (
+            call_args["false_positives_file"] == expected_cache_dir / FALSE_POSITIVES_CACHE_FILENAME
+        )
 
     def test_run_returns_zero_when_no_inconsistencies_found(
         self, monkeypatch: pytest.MonkeyPatch
@@ -293,7 +301,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -340,7 +347,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=metadata_repo_instance),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
@@ -354,7 +363,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -401,7 +409,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=metadata_repo_instance),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
@@ -415,7 +425,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -462,7 +471,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=metadata_repo_instance),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
@@ -480,7 +491,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -527,7 +537,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=metadata_repo_instance),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
@@ -544,7 +556,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -564,7 +575,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1"}],  # Missing branch and commit
         }
@@ -582,7 +592,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": ""}],  # Empty branch
         }
@@ -602,7 +611,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             # Missing slfo_git_url
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -620,7 +628,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "commit": "abc123def"}],  # Commit instead of branch
         }
@@ -662,7 +669,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=mock_metadata_repo),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
@@ -679,7 +688,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -724,7 +732,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=metadata_repo_instance),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         # Test with explicit config path
         config_path = Path("/custom/config.yaml")
@@ -741,7 +751,6 @@ class TestWhitelistCheckCommand:
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "slfo_git_url": "https://github.com/example/slfo.git",
             "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
         }
@@ -786,7 +795,9 @@ class TestWhitelistCheckCommand:
             Mock(return_value=metadata_repo_instance),
         )
 
-        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         # Test without config (should default to None)
         args = argparse.Namespace(version="16.1", config=None)

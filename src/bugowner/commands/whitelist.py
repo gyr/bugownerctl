@@ -17,6 +17,11 @@ from bugowner.services.validation_service import ValidationService
 from bugowner.services.whitelist_service import WhitelistService
 from bugowner.utils.config import load_config
 from bugowner.utils.file_utils import validate_file_within_directory
+from bugowner.utils.seed import (
+    FALSE_POSITIVES_CACHE_FILENAME,
+    bootstrap_cache_from_seed,
+    get_seed_file_path,
+)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -35,7 +40,6 @@ def run(args: argparse.Namespace) -> int:
     # Get paths from config
     cache_dir = Path(config.get("cache_dir", "~/.cache/bugownership")).expanduser()
     whitelist_file_name = config.get("whitelist_file", "whitelist_maintainership.json")
-    false_positives_file_name = config.get("false_positives_file", "false_positives.json")
 
     # Find product config for requested version
     products = config.get("products", [])
@@ -107,7 +111,8 @@ def run(args: argparse.Namespace) -> int:
     whitelist_file = validate_file_within_directory(
         slfo_repo_path, whitelist_file_name, "Whitelist file"
     )
-    false_positives_file = Path.cwd() / false_positives_file_name
+    false_positives_file = cache_dir / FALSE_POSITIVES_CACHE_FILENAME
+    bootstrap_cache_from_seed(false_positives_file, get_seed_file_path(config))
 
     # Execute whitelist check
     result = whitelist_service.check_whitelist(
