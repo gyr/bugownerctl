@@ -8,6 +8,7 @@ import pytest
 
 from bugowner.commands.validate import run
 from bugowner.services.validation_service import ValidationResult
+from bugowner.utils.seed import FALSE_POSITIVES_CACHE_FILENAME
 
 
 class TestValidateCommand:
@@ -20,7 +21,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         mock_load_config = Mock(return_value=mock_config)
@@ -61,7 +61,9 @@ class TestValidateCommand:
         monkeypatch.setattr("bugowner.commands.validate.ValidationService", mock_service_cls)
 
         # Mock Path operations
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
@@ -79,7 +81,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
@@ -124,7 +125,9 @@ class TestValidateCommand:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugowner.commands.validate.ValidationService", mock_service_cls)
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
@@ -146,7 +149,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
@@ -185,7 +187,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
@@ -200,8 +204,12 @@ class TestValidateCommand:
         call_args = mock_service.validate_all.call_args[1]
         assert isinstance(call_args["maintainership_file"], Path)
         assert isinstance(call_args["repo_metadata_file"], Path)
-        assert isinstance(call_args["false_positives_file"], Path)
         assert isinstance(call_args["git_dir"], Path)
+        # false_positives must come from cache_dir, NOT from CWD
+        expected_cache_dir = Path("~/.cache/bugownership").expanduser()
+        assert (
+            call_args["false_positives_file"] == expected_cache_dir / FALSE_POSITIVES_CACHE_FILENAME
+        )
 
     def test_run_returns_zero_when_no_issues_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return 0 exit code when validation finds no issues."""
@@ -209,7 +217,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
@@ -239,7 +246,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         result = run(args)
@@ -254,7 +263,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
@@ -284,7 +292,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         result = run(args)
@@ -299,7 +309,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
@@ -329,7 +338,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
@@ -347,7 +358,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
@@ -377,7 +387,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
@@ -414,7 +426,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         monkeypatch.setattr(
@@ -444,7 +455,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
@@ -468,7 +481,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         mock_load_config = Mock(return_value=mock_config)
@@ -497,7 +509,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         # Test with explicit config path
         config_path = Path("/custom/config.yaml")
@@ -515,7 +529,6 @@ class TestValidateCommand:
             "cache_dir": "~/.cache/bugownership",
             "slfo_git_url": "https://github.com/test/repo",
             "maintainership_file": "_maintainership.json",
-            "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "main"}],
         }
         mock_load_config = Mock(return_value=mock_config)
@@ -544,7 +557,9 @@ class TestValidateCommand:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+        monkeypatch.setattr(
+            "bugowner.commands.validate.bootstrap_cache_from_seed", Mock(return_value=0)
+        )
 
         # Test without config (should default to None)
         args = argparse.Namespace(version="16.1", debug=False, config=None)

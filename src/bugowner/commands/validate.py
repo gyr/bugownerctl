@@ -16,6 +16,11 @@ from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositor
 from bugowner.services.validation_service import ValidationService
 from bugowner.utils.config import load_config
 from bugowner.utils.file_utils import validate_file_within_directory
+from bugowner.utils.seed import (
+    FALSE_POSITIVES_CACHE_FILENAME,
+    bootstrap_cache_from_seed,
+    get_seed_file_path,
+)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -34,7 +39,6 @@ def run(args: argparse.Namespace) -> int:
     # Get paths from config
     cache_dir = Path(config.get("cache_dir", "~/.cache/bugownership")).expanduser()
     maintainership_file_name = config.get("maintainership_file", "_maintainership.json")
-    false_positives_file_name = config.get("false_positives_file", "false_positives.json")
 
     # Find product config for requested version
     products = config.get("products", [])
@@ -90,7 +94,8 @@ def run(args: argparse.Namespace) -> int:
     maintainership_file = validate_file_within_directory(
         slfo_repo_path, maintainership_file_name, "Maintainership file"
     )
-    false_positives_file = Path.cwd() / false_positives_file_name
+    false_positives_file = cache_dir / FALSE_POSITIVES_CACHE_FILENAME
+    bootstrap_cache_from_seed(false_positives_file, get_seed_file_path(config))
     repo_path = slfo_repo_path
 
     # Create validation service

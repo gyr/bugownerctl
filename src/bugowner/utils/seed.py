@@ -6,6 +6,8 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
+FALSE_POSITIVES_CACHE_FILENAME = "false_positives.json"
+
 
 def get_seed_file_path(config: dict[str, Any] | None = None) -> Path:
     """Locate the false-positives seed file.
