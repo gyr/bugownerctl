@@ -89,6 +89,21 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handle_exception(exception: Exception, debug: bool) -> None:
+    """Handle exception by printing to stderr with optional traceback.
+
+    Args:
+        exception: The exception to handle
+        debug: Whether to show full traceback (True) or clean message (False)
+    """
+    if debug:
+        import traceback
+
+        traceback.print_exc()
+    else:
+        sys.stderr.write(f"ERROR: {exception}\n")
+
+
 def main() -> int:
     """Main CLI entry point.
 
@@ -104,9 +119,22 @@ def main() -> int:
         format="%(levelname)s: %(message)s",
     )
 
-    # Route to appropriate command handler
-    exit_code: int = args.func(args)
-    return exit_code
+    # Route to appropriate command handler with exception handling
+    try:
+        exit_code: int = args.func(args)
+        return exit_code
+    except KeyboardInterrupt:
+        # User pressed Ctrl+C - exit gracefully
+        sys.stderr.write("\nInterrupted\n")
+        return 130  # Standard exit code for SIGINT
+    except (FileNotFoundError, ValueError) as e:
+        # Expected errors - show friendly message
+        _handle_exception(e, args.debug)
+        return 1
+    except Exception as e:
+        # Unexpected errors
+        _handle_exception(e, args.debug)
+        return 1
 
 
 if __name__ == "__main__":

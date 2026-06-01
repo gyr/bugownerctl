@@ -282,3 +282,114 @@ class TestMain:
         result = main()
 
         assert result == 42
+
+
+class TestMainExceptionHandling:
+    """Tests for exception handling at CLI boundary."""
+
+    def test_main_catches_file_not_found_error_and_shows_friendly_message(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should catch FileNotFoundError and show user-friendly error message."""
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        # Mock command handler that raises FileNotFoundError
+        mock_handler = Mock(
+            side_effect=FileNotFoundError("Config file not found at /path/to/config.yaml")
+        )
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        # Should return error exit code
+        assert result == 1
+
+        # Should print friendly error message to stderr
+        captured = capsys.readouterr()
+        assert "ERROR: Config file not found at /path/to/config.yaml" in captured.err
+        # Should NOT show Python stack trace
+        assert "Traceback" not in captured.err
+
+    def test_main_catches_value_error_and_shows_friendly_message(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should catch ValueError and show user-friendly error message."""
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_handler = Mock(side_effect=ValueError("Version 16.1 not found in config"))
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "ERROR: Version 16.1 not found in config" in captured.err
+        assert "Traceback" not in captured.err
+
+    def test_main_shows_stack_trace_in_debug_mode(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should show full stack trace when --debug flag is set."""
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_handler = Mock(side_effect=FileNotFoundError("Config file not found"))
+        mock_parser = Mock()
+        mock_args = Mock(debug=True, func=mock_handler)  # debug=True
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        # In debug mode, should show stack trace
+        assert "Traceback" in captured.err
+        assert "FileNotFoundError" in captured.err
+
+    def test_main_catches_keyboard_interrupt_gracefully(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should handle Ctrl+C (KeyboardInterrupt) gracefully."""
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_handler = Mock(side_effect=KeyboardInterrupt())
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 130  # Standard exit code for SIGINT
+        captured = capsys.readouterr()
+        assert "Interrupted" in captured.err or captured.err == ""  # Allow silent exit
+
+    def test_main_catches_unexpected_exceptions(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should catch unexpected exceptions and show generic error."""
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_handler = Mock(side_effect=RuntimeError("Unexpected error"))
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "ERROR: Unexpected error" in captured.err
+        assert "Traceback" not in captured.err
