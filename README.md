@@ -351,8 +351,9 @@ cache_dir: ~/.cache/bugownership
 # Git repository URL
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
 
-# False positives cache file
-false_positives_file: false_positives.json
+# Optional: override the bundled false-positives seed file (for CI/testing)
+# Default: bundled src/bugowner/data/false_positives.seed.json
+# false_positives_seed: /custom/path/seed.json
 
 # Maintainership file name
 maintainership_file: _maintainership.json
@@ -414,7 +415,11 @@ Binary→source package mapping cache (auto-generated/updated):
 }
 ```
 
-**Purpose:** Avoid slow OBS queries on every run. Maps binary packages to source names, or `null` to ignore.
+**Location:** `~/.cache/bugownership/false_positives.json` (XDG user cache directory).
+
+**First run:** Automatically bootstrapped from the bundled seed file (`src/bugowner/data/false_positives.seed.json`, shipped in the wheel). No manual initialization needed.
+
+**Purpose:** Avoid slow OBS queries on every run. Maps binary packages to source names, or `null` to ignore. The cache name is fixed and derived from `cache_dir` — not user-configurable.
 
 ## Cache System
 
@@ -564,6 +569,20 @@ bandit -c .bandit -r src/
 pytest --cov=src/bugowner --cov-report=term-missing --cov-fail-under=90
 ```
 
+### Build & Wheel Verification
+
+```bash
+# Build the wheel
+uv build
+
+# Verify bundled data files are present in the wheel
+unzip -l dist/*.whl | grep -E "seed|example"
+```
+
+Expected output includes both:
+- `bugowner/data/config.example.yaml`
+- `bugowner/data/false_positives.seed.json`
+
 ### CI/CD Pipeline
 
 **GitHub Actions workflow runs on:**
@@ -639,7 +658,7 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 - **Backward compatible:** Project-local config (`./validate_maintainership.yaml`) still works
 - **Recommended:** Use `bugowner init` to create user config for global access
 
-**Compatibility:** All functionality preserved. Data files (`_maintainership.json`, `false_positives.json`, etc.) shared between old and new.
+**Compatibility:** All functionality preserved. `_maintainership.json` and other data files shared between old and new. Note: `false_positives.json` moved from CWD to `~/.cache/bugownership/` — bootstrapped automatically from the bundled seed on first run.
 
 ## Troubleshooting
 
@@ -761,7 +780,7 @@ ValueError: Whitelist file escapes base directory:
 
 - **Whitelist file:** Read from cloned SLFO repository (validated)
 - **Maintainership file:** Read from cloned SLFO repository (validated)
-- **False positives cache:** Read/write from current directory (not validated - persistent cache)
+- **False positives cache:** Read/write from `~/.cache/bugownership/false_positives.json`. Symlink writes rejected by repository layer; atomic temp+rename on save.
 
 ## Contributing
 
