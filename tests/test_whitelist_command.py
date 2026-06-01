@@ -73,7 +73,7 @@ class TestWhitelistCheckCommand:
         # Mock Path operations
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
         # Verify all repositories were instantiated
@@ -149,7 +149,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
         # Verify ValidationService created with all repositories
@@ -216,7 +216,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
         # Verify WhitelistService created with ValidationService
@@ -273,7 +273,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
         # Verify check_whitelist called with correct parameters
@@ -342,7 +342,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
 
         assert result == 0
@@ -403,7 +403,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
 
         assert result == 1
@@ -464,7 +464,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
         captured = capsys.readouterr()
@@ -529,7 +529,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
         captured = capsys.readouterr()
@@ -552,7 +552,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="99.9")  # Version not in config
+        args = argparse.Namespace(version="99.9", config=None)  # Version not in config
 
         with pytest.raises(ValueError, match="Version 99.9 not found in config"):
             run(args)
@@ -572,7 +572,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
 
         with pytest.raises(ValueError, match="has neither branch nor commit"):
             run(args)
@@ -590,7 +590,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
 
         with pytest.raises(ValueError, match="Empty git ref for version 16.1"):
             run(args)
@@ -610,7 +610,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
 
         with pytest.raises(ValueError, match="slfo_git_url not found in config"):
             run(args)
@@ -664,7 +664,7 @@ class TestWhitelistCheckCommand:
 
         monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1")
+        args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
 
         # Verify clone_or_update called with COMMIT ref type
@@ -673,3 +673,124 @@ class TestWhitelistCheckCommand:
         assert call_kwargs["git_ref"] == "abc123def"
         assert call_kwargs["ref_type"] == RefType.COMMIT
         assert result == 0
+
+    def test_run_passes_config_path_to_load_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should pass args.config to load_config() when provided."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "false_positives_file": "false_positives.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        mock_load_config = Mock(return_value=mock_config)
+        monkeypatch.setattr("bugowner.commands.whitelist.load_config", mock_load_config)
+
+        # Mock repositories
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+
+        # Mock ValidationService
+        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
+
+        # Mock WhitelistService
+        mock_whitelist_service = Mock()
+        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
+            inconsistent_packages=[], new_false_positives={}
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.WhitelistService",
+            Mock(return_value=mock_whitelist_service),
+        )
+
+        # Mock repository operations
+        git_repo_instance = Mock()
+        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
+        git_repo_instance.list_submodules.return_value = ["pkg1"]
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
+        )
+
+        metadata_repo_instance = Mock()
+        metadata_repo_instance.download_primary_metadata.return_value = Path(
+            "/cache/primary.xml.gz"
+        )
+        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
+            Mock(return_value=metadata_repo_instance),
+        )
+
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+
+        # Test with explicit config path
+        config_path = Path("/custom/config.yaml")
+        args = argparse.Namespace(version="16.1", config=config_path)
+        run(args)
+
+        # Verify load_config was called with explicit config path
+        mock_load_config.assert_called_once_with(config_path)
+
+    def test_run_passes_none_to_load_config_when_no_config_provided(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should pass None to load_config() when args.config is None (triggers search)."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "false_positives_file": "false_positives.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        mock_load_config = Mock(return_value=mock_config)
+        monkeypatch.setattr("bugowner.commands.whitelist.load_config", mock_load_config)
+
+        # Mock repositories
+        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+
+        # Mock ValidationService
+        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
+
+        # Mock WhitelistService
+        mock_whitelist_service = Mock()
+        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
+            inconsistent_packages=[], new_false_positives={}
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.WhitelistService",
+            Mock(return_value=mock_whitelist_service),
+        )
+
+        # Mock repository operations
+        git_repo_instance = Mock()
+        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
+        git_repo_instance.list_submodules.return_value = ["pkg1"]
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
+        )
+
+        metadata_repo_instance = Mock()
+        metadata_repo_instance.download_primary_metadata.return_value = Path(
+            "/cache/primary.xml.gz"
+        )
+        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
+            Mock(return_value=metadata_repo_instance),
+        )
+
+        monkeypatch.setattr("bugowner.commands.whitelist.Path.cwd", lambda: Path("/test"))
+
+        # Test without config (should default to None)
+        args = argparse.Namespace(version="16.1", config=None)
+        run(args)
+
+        # Verify load_config was called with None (triggers search)
+        mock_load_config.assert_called_once_with(None)

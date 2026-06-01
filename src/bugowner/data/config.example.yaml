@@ -1,0 +1,30 @@
+# Example configuration for bugowner
+# This file is bundled with the bugowner package as a template
+#
+# Copy this file to one of:
+#   - ./validate_maintainership.yaml (project-local)
+#   - ~/.config/bugownership/config.yaml (user config, recommended)
+#   - /etc/bugownership/config.yaml (system-wide)
+#
+# Or use: bugowner init [--location user|local|system]
+
+# SLFO git repository URL
+# REQUIRED: Update for your environment
+slfo_git_url: gitea@src.suse.de:products/SLFO.git
+
+# Cache directory for downloads, clones, persistent data
+# Optional: defaults to ~/.cache/bugownership
+# cache_dir: ~/.cache/bugownership
+
+# False positives cache file (binary→source mapping)
+# Optional: defaults to false_positives.json
+# false_positives_file: false_positives.json
+
+# Product versions to validate
+# REQUIRED: Update with versions you need to test
+products:
+  - version: "16.0"
+    commit: 9d679ed  # Specific commit for reproducibility
+
+  - version: "16.1"
+    branch: slfo-main  # Track latest main branch

@@ -7,15 +7,16 @@ validating maintainership data, checking whitelists, and querying packages.
 import argparse
 import logging
 import sys
+from pathlib import Path
 
-from bugowner.commands import query, validate, whitelist
+from bugowner.commands import init, query, validate, whitelist
 
 
 def create_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser with subcommands.
 
     Returns:
-        Configured ArgumentParser with validate, whitelist-check, and query subcommands.
+        Configured ArgumentParser with init, validate, whitelist-check, and query subcommands.
     """
     parser = argparse.ArgumentParser(
         prog="bugowner", description="Bug ownership and package maintainership validation tool"
@@ -24,6 +25,17 @@ def create_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # bugowner init
+    init_parser = subparsers.add_parser("init", help="Create initial configuration file")
+    init_parser.add_argument(
+        "--location",
+        choices=["user", "local", "system"],
+        default="user",
+        help="Config location: user (default), local, or system",
+    )
+    init_parser.add_argument("--force", action="store_true", help="Overwrite existing config")
+    init_parser.set_defaults(func=init.run)
+
     # bugowner validate
     validate_parser = subparsers.add_parser(
         "validate",
@@ -31,6 +43,13 @@ def create_parser() -> argparse.ArgumentParser:
     )
     validate_parser.add_argument(
         "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+    )
+    validate_parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (default: search standard locations)",
     )
     validate_parser.set_defaults(func=validate.run)
 
@@ -41,6 +60,13 @@ def create_parser() -> argparse.ArgumentParser:
     )
     whitelist_check_parser.add_argument(
         "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+    )
+    whitelist_check_parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (default: search standard locations)",
     )
     whitelist_check_parser.set_defaults(func=whitelist.run)
 
@@ -63,6 +89,21 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _handle_exception(exception: Exception, debug: bool) -> None:
+    """Handle exception by printing to stderr with optional traceback.
+
+    Args:
+        exception: The exception to handle
+        debug: Whether to show full traceback (True) or clean message (False)
+    """
+    if debug:
+        import traceback
+
+        traceback.print_exc()
+    else:
+        sys.stderr.write(f"ERROR: {exception}\n")
+
+
 def main() -> int:
     """Main CLI entry point.
 
@@ -78,9 +119,22 @@ def main() -> int:
         format="%(levelname)s: %(message)s",
     )
 
-    # Route to appropriate command handler
-    exit_code: int = args.func(args)
-    return exit_code
+    # Route to appropriate command handler with exception handling
+    try:
+        exit_code: int = args.func(args)
+        return exit_code
+    except KeyboardInterrupt:
+        # User pressed Ctrl+C - exit gracefully
+        sys.stderr.write("\nInterrupted\n")
+        return 130  # Standard exit code for SIGINT
+    except (FileNotFoundError, ValueError) as e:
+        # Expected errors - show friendly message
+        _handle_exception(e, args.debug)
+        return 1
+    except Exception as e:
+        # Unexpected errors
+        _handle_exception(e, args.debug)
+        return 1
 
 
 if __name__ == "__main__":

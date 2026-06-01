@@ -63,7 +63,7 @@ class TestValidateCommand:
         # Mock Path operations
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
 
         # Verify all repositories were instantiated
@@ -126,7 +126,7 @@ class TestValidateCommand:
 
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
 
         # Verify ValidationService was created with all repositories
@@ -187,7 +187,7 @@ class TestValidateCommand:
 
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
 
         # Verify download_primary_metadata called with version
@@ -241,7 +241,7 @@ class TestValidateCommand:
 
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         result = run(args)
 
         assert result == 0
@@ -286,7 +286,7 @@ class TestValidateCommand:
 
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         result = run(args)
 
         assert result == 1
@@ -331,7 +331,7 @@ class TestValidateCommand:
 
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
 
         captured = capsys.readouterr()
@@ -379,7 +379,7 @@ class TestValidateCommand:
 
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
 
         captured = capsys.readouterr()
@@ -446,7 +446,7 @@ class TestValidateCommand:
 
         monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
 
-        args = argparse.Namespace(version="16.1", debug=False)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
         run(args)
 
         captured = capsys.readouterr()
@@ -461,3 +461,94 @@ class TestValidateCommand:
         # Verify no emoji
         assert "✅" not in output
         assert "❌" not in output
+
+    def test_run_passes_config_path_to_load_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should pass args.config to load_config() when provided."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "slfo_git_url": "https://github.com/test/repo",
+            "maintainership_file": "_maintainership.json",
+            "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
+        mock_load_config = Mock(return_value=mock_config)
+        monkeypatch.setattr("bugowner.commands.validate.load_config", mock_load_config)
+
+        # Mock repositories
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
+        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+
+        # Mock ValidationService
+        mock_service = Mock()
+        mock_service.validate_all.return_value = ValidationResult(
+            orphan_packages=[],
+            maintained_packages_without_submodule=[],
+            shipped_not_in_submodule=[],
+            new_false_positives={},
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+        )
+
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+
+        # Test with explicit config path
+        config_path = Path("/custom/config.yaml")
+        args = argparse.Namespace(version="16.1", debug=False, config=config_path)
+        run(args)
+
+        # Verify load_config was called with explicit config path
+        mock_load_config.assert_called_once_with(config_path)
+
+    def test_run_passes_none_to_load_config_when_no_config_provided(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should pass None to load_config() when args.config is None (triggers search)."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "slfo_git_url": "https://github.com/test/repo",
+            "maintainership_file": "_maintainership.json",
+            "false_positives_file": "false_positives.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
+        mock_load_config = Mock(return_value=mock_config)
+        monkeypatch.setattr("bugowner.commands.validate.load_config", mock_load_config)
+
+        # Mock repositories
+        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        mock_git_repo = Mock()
+        mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
+        monkeypatch.setattr(
+            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+        )
+        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+
+        # Mock ValidationService
+        mock_service = Mock()
+        mock_service.validate_all.return_value = ValidationResult(
+            orphan_packages=[],
+            maintained_packages_without_submodule=[],
+            shipped_not_in_submodule=[],
+            new_false_positives={},
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+        )
+
+        monkeypatch.setattr("bugowner.commands.validate.Path.cwd", lambda: Path("/test"))
+
+        # Test without config (should default to None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        run(args)
+
+        # Verify load_config was called with None (triggers search)
+        mock_load_config.assert_called_once_with(None)
