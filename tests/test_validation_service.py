@@ -1,9 +1,11 @@
 """Tests for validation_service module - orchestrates validation workflow."""
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import Mock
 
+from bugowner.domain.bulk_map import BulkMap
 from bugowner.domain.maintainer import MaintainershipData
 from bugowner.services.validation_service import ValidationResult, ValidationService
 
@@ -977,3 +979,466 @@ class TestValidateAll:
         assert result.maintained_packages_without_submodule == ["pkg2", "pkg3"]
         git_repo.list_submodules.assert_called_once()
         false_positives_repo.load.assert_called_once()
+
+
+def _make_bulk_map(mapping: dict[str, str], project: str = "SUSE:SLFO:Main") -> BulkMap:
+    """Build a BulkMap value object for tests."""
+    return BulkMap(
+        mapping=mapping,
+        project=project,
+        fetched_at=datetime(2026, 6, 8, tzinfo=timezone.utc),
+    )
+
+
+class TestFindShippedNewPipeline:
+    """Test ValidationService.find_shipped_without_submodule new pipeline.
+
+    The new pipeline (bulk_map + overrides) is gated on bulk_map_repo and
+    overrides_repo being supplied to the constructor and on overrides_file +
+    cache_dir being supplied to the method. When all four are present, the
+    legacy obs_repo + false_positives_repo path is bypassed entirely.
+    """
+
+    def test_resolves_shipped_via_bulk_map(self):
+        """Should resolve binary names to source names via the bulk map."""
+        bulk_map_repo = Mock()
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        shipped = {"apache2-devel"}
+        submodules = ["apache2"]
+        fp_file = Path("/tmp/fp.json")
+        overrides_file = Path("/tmp/overrides.json")
+        cache_dir = Path("/tmp/cache")
+        bulk_map = _make_bulk_map({"apache2-devel": "apache2", "apache2": "apache2"})
+
+        valid, residue, new_fps = service.find_shipped_without_submodule(
+            shipped,
+            submodules,
+            fp_file,
+            overrides_file=overrides_file,
+            cache_dir=cache_dir,
+            bulk_map=bulk_map,
+        )
+
+        assert valid == {"apache2"}
+        assert residue == []
+        assert new_fps == {}
+
+    def test_override_takes_priority_over_bulk_map(self):
+        """Should prefer overrides over bulk_map when both have an entry."""
+        bulk_map_repo = Mock()
+        overrides_repo = Mock()
+        # Override says kernel-azure → kernel-source-azure
+        overrides_repo.load.return_value = {"kernel-azure": "kernel-source-azure"}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        shipped = {"kernel-azure"}
+        submodules = ["kernel-source-azure"]
+        # Bulk_map says kernel-azure → kernel-azure-base (different from override).
+        bulk_map = _make_bulk_map({"kernel-azure": "kernel-azure-base"})
+
+        valid, residue, new_fps = service.find_shipped_without_submodule(
+            shipped,
+            submodules,
+            Path("/tmp/fp.json"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            bulk_map=bulk_map,
+        )
+
+        # Override wins: resolved to kernel-source-azure, which IS a submodule.
+        assert valid == {"kernel-source-azure"}
+        assert residue == []
+        assert new_fps == {}
+
+    def test_override_null_drops_name_from_residue(self):
+        """Should drop names explicitly mapped to None in overrides."""
+        bulk_map_repo = Mock()
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {"SLES-release": None}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        shipped = {"SLES-release"}
+        submodules: list[str] = []  # empty
+        bulk_map = _make_bulk_map({})
+
+        valid, residue, new_fps = service.find_shipped_without_submodule(
+            shipped,
+            submodules,
+            Path("/tmp/fp.json"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            bulk_map=bulk_map,
+        )
+
+        # SLES-release explicitly suppressed: NOT in valid, NOT in residue.
+        assert valid == set()
+        assert residue == []
+        assert "SLES-release" not in residue
+        assert new_fps == {}
+
+    def test_unmapped_name_falls_through_to_residue(self):
+        """Should treat unmapped names as their own source and report residue."""
+        bulk_map_repo = Mock()
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        shipped = {"orphan-pkg"}
+        submodules: list[str] = []  # no submodules
+        bulk_map = _make_bulk_map({})  # no entry for orphan-pkg
+
+        valid, residue, new_fps = service.find_shipped_without_submodule(
+            shipped,
+            submodules,
+            Path("/tmp/fp.json"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            bulk_map=bulk_map,
+        )
+
+        # Passthrough: orphan-pkg → orphan-pkg, not in submodules → residue.
+        assert valid == set()
+        assert residue == ["orphan-pkg"]
+        assert new_fps == {}
+
+    def test_no_subprocess_invoked_when_bulk_map_preloaded(self):
+        """Should NOT call bulk_map_repo.load_bulk_map when bulk_map passed in.
+
+        Performance contract: when validate_all has already loaded the bulk
+        map once, find_shipped_without_submodule must reuse it rather than
+        triggering a second (potentially network-bound) load.
+        """
+        bulk_map_repo = Mock()
+        bulk_map_repo.load_bulk_map.side_effect = AssertionError("must not be called")
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        bulk_map = _make_bulk_map({"pkg1": "pkg1"})
+
+        # Must not raise.
+        valid, residue, new_fps = service.find_shipped_without_submodule(
+            {"pkg1"},
+            ["pkg1"],
+            Path("/tmp/fp.json"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            bulk_map=bulk_map,
+        )
+
+        assert valid == {"pkg1"}
+        bulk_map_repo.load_bulk_map.assert_not_called()
+
+    def test_validate_all_loads_bulk_map_exactly_once(self):
+        """validate_all should fetch bulk_map a single time per invocation."""
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(packages={"pkg1": ["user1"]})
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1"]
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1"}
+
+        bulk_map_repo = Mock()
+        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map({"pkg1": "pkg1"})
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+        )
+
+        assert bulk_map_repo.load_bulk_map.call_count == 1
+
+    def test_new_pipeline_returns_empty_new_false_positives_dict(self):
+        """New pipeline always returns {} as 3rd tuple element (shim contract).
+
+        4b removes new_false_positives entirely. Until then, the shim must
+        keep returning {} to preserve the legacy 3-tuple shape.
+        """
+        bulk_map_repo = Mock()
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        bulk_map = _make_bulk_map({"pkg1": "pkg1"})
+        result = service.find_shipped_without_submodule(
+            {"pkg1"},
+            ["pkg1"],
+            Path("/tmp/fp.json"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            bulk_map=bulk_map,
+        )
+
+        assert result[2] == {}
+
+    def test_validate_all_populates_unresolved_names_from_new_pipeline(self):
+        """validate_all should set ValidationResult.unresolved_names to the
+        sorted residue under the new pipeline; legacy path leaves it []."""
+        # --- New pipeline branch ---
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(packages={})
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1"]
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "orphan-z", "orphan-a"}
+
+        bulk_map_repo = Mock()
+        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map({"pkg1": "pkg1"})
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {}
+
+        service_new = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        result_new = service_new.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+        )
+
+        # Residue is sorted: orphan-a, orphan-z
+        assert result_new.unresolved_names == ["orphan-a", "orphan-z"]
+        assert result_new.shipped_not_in_submodule == ["orphan-a", "orphan-z"]
+
+        # --- Legacy branch (no new deps): unresolved_names stays [] ---
+        legacy_fp_repo = Mock()
+        legacy_fp_repo.load.return_value = {}
+        legacy_obs_repo = Mock()
+        legacy_obs_repo.query_source_packages.return_value = {}
+
+        service_legacy = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=legacy_obs_repo,
+            false_positives_repo=legacy_fp_repo,
+        )
+
+        result_legacy = service_legacy.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+        )
+
+        assert result_legacy.unresolved_names == []
+
+    def test_validate_all_uses_valid_packages_for_orphan_check(self):
+        """Orphan check must use valid_packages, not raw shipped_packages.
+
+        New-pipeline mirror of the legacy invariant: pkg3 is shipped but
+        neither in submodules nor mapped by overrides/bulk_map, so it must
+        NOT appear in orphan_packages even though it lacks a maintainer.
+        Only pkg2 (valid via submodule, no maintainer) is an orphan.
+        """
+        maintainership_repo = Mock()
+        maintainership_repo.load.return_value = MaintainershipData(
+            packages={
+                "pkg1": ["user1"],
+                # pkg2 missing (orphan, but in submodules)
+                # pkg3 missing AND not valid → must NOT be flagged orphan
+            }
+        )
+        git_repo = Mock()
+        git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
+        metadata_repo = Mock()
+        metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
+
+        bulk_map_repo = Mock()
+        # bulk_map only knows pkg1/pkg2 → passthrough; pkg3 unmapped → residue
+        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map({"pkg1": "pkg1", "pkg2": "pkg2"})
+        overrides_repo = Mock()
+        overrides_repo.load.return_value = {}
+
+        service = ValidationService(
+            maintainership_repo=maintainership_repo,
+            git_repo=git_repo,
+            metadata_repo=metadata_repo,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        result = service.validate_all(
+            Path("/tmp/maintainership.json"),
+            Path("/tmp/primary.xml.gz"),
+            Path("/tmp/fp.json"),
+            Path("/tmp/repo"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+        )
+
+        assert result.orphan_packages == ["pkg2"]
+        assert result.shipped_not_in_submodule == ["pkg3"]
+        assert result.unresolved_names == ["pkg3"]
+
+    def test_override_target_not_in_submodules_lands_in_residue(self):
+        """Override target must land in residue when not a submodule.
+
+        When overrides[shipped] maps to a value that is NOT a submodule,
+        the override's resolved value lands in residue. The bulk_map's
+        competing answer for the same shipped name MUST be ignored
+        entirely (no silent leak into valid via the bulk_map branch).
+        """
+        bulk_map_repo = Mock()
+        overrides_repo = Mock()
+        # Override says X → Y.
+        overrides_repo.load.return_value = {"X": "Y"}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        shipped = {"X"}
+        # Submodules contain Z (bulk_map's answer), NOT Y (override's answer).
+        submodules = ["Z"]
+        # Bulk_map says X → Z, but override must win and bulk_map answer
+        # must NOT leak through.
+        bulk_map = _make_bulk_map({"X": "Z"})
+
+        valid, residue, new_fps = service.find_shipped_without_submodule(
+            shipped,
+            submodules,
+            Path("/tmp/fp.json"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            bulk_map=bulk_map,
+        )
+
+        # Override wins: resolved to Y. Y is not a submodule → residue.
+        # Z (bulk_map's answer) must NOT be in valid.
+        assert valid == set()
+        assert residue == ["Y"]
+        assert new_fps == {}
+
+    def test_overrides_keyed_on_shipped_name_not_resolved_value(self):
+        """Overrides must be consulted on the shipped name, not the resolved value.
+
+        If bulk_map resolves shipped name N to value X, and overrides has
+        an entry for X (NOT for N), the override on X must NOT apply.
+        Only direct overrides on shipped names take effect.
+        """
+        bulk_map_repo = Mock()
+        overrides_repo = Mock()
+        # Override is keyed on X (the resolved value), NOT on N (the shipped name).
+        overrides_repo.load.return_value = {"X": None}
+
+        service = ValidationService(
+            maintainership_repo=None,
+            git_repo=None,
+            metadata_repo=None,
+            obs_repo=Mock(),
+            false_positives_repo=Mock(),
+            bulk_map_repo=bulk_map_repo,
+            overrides_repo=overrides_repo,
+        )
+
+        shipped = {"N"}
+        submodules: list[str] = []
+        # Bulk_map resolves N → X. The override on X is irrelevant because
+        # lookup is overrides["N"], not overrides["X"].
+        bulk_map = _make_bulk_map({"N": "X"})
+
+        valid, residue, new_fps = service.find_shipped_without_submodule(
+            shipped,
+            submodules,
+            Path("/tmp/fp.json"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            bulk_map=bulk_map,
+        )
+
+        # X falls through bulk_map and lands in residue (override on X ignored).
+        assert valid == set()
+        assert residue == ["X"]
+        assert new_fps == {}
