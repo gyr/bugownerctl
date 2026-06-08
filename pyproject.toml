@@ -36,7 +36,6 @@ packages = ["src/bugowner"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/bugowner/data/config.example.yaml" = "bugowner/data/config.example.yaml"
-"src/bugowner/data/false_positives.seed.json" = "bugowner/data/false_positives.seed.json"
 "src/bugowner/data/false_positives_overrides.json" = "bugowner/data/false_positives_overrides.json"
 
 [tool.ruff]

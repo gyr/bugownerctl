@@ -57,8 +57,7 @@ class ObsBulkSourceInfoRepository(Protocol):
     """Fetch and parse OBS bulk source-info into a binary→source name map.
 
     One HTTP round-trip per cache-miss run; on cache hit the on-disk XML is
-    re-parsed (no network). Replaces the per-package `osc bse` fan-out in
-    the previous ObsRepository.
+    re-parsed (no network).
     """
 
     def load_bulk_map(
