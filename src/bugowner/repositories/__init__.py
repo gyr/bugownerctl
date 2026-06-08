@@ -9,6 +9,10 @@ from .maintainership_repository import (
     MaintainershipRepository,
     MaintainershipRepositoryImpl,
 )
+from .name_overrides_repository import (
+    NameOverridesRepository,
+    NameOverridesRepositoryImpl,
+)
 from .obs_repository import ObsRepository, ObsRepositoryImpl
 from .repo_metadata_repository import RepoMetadataRepository, RepoMetadataRepositoryImpl
 
@@ -19,6 +23,8 @@ __all__ = [
     "GitRepositoryImpl",
     "MaintainershipRepository",
     "MaintainershipRepositoryImpl",
+    "NameOverridesRepository",
+    "NameOverridesRepositoryImpl",
     "ObsRepository",
     "ObsRepositoryImpl",
     "RepoMetadataRepository",
