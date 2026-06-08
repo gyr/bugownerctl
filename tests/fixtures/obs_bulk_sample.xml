@@ -1,0 +1,63 @@
+<sourceinfolist>
+  <!-- Pattern 1: Identity source (no subpacks alias) -->
+  <sourceinfo package="apache2">
+    <subpacks>apache2</subpacks>
+  </sourceinfo>
+
+  <!-- Pattern 2: Source with binary subpack alias -->
+  <sourceinfo package="nginx">
+    <subpacks>nginx</subpacks>
+    <subpacks>nginx-devel</subpacks>
+  </sourceinfo>
+
+  <!-- Pattern 3: Multiple subpacks -->
+  <sourceinfo package="389-ds">
+    <subpacks>389-ds</subpacks>
+    <subpacks>389-ds-devel</subpacks>
+    <subpacks>lib389</subpacks>
+  </sourceinfo>
+
+  <!-- Pattern 4: <originpackage> multibuild chain -->
+  <sourceinfo package="kernel-source-azure-base">
+    <subpacks>kernel-source-azure-base</subpacks>
+    <subpacks>kernel-azure</subpacks>
+  </sourceinfo>
+  <sourceinfo package="kernel-azure">
+    <originpackage>kernel-source-azure-base</originpackage>
+    <subpacks>kernel-azure</subpacks>
+  </sourceinfo>
+
+  <!-- Pattern 5: <linked> cross-project (parser tolerates and ignores) -->
+  <sourceinfo package="cross-linked-example">
+    <linked project="OTHER:Project" package="upstream-pkg"/>
+    <subpacks>cross-linked-example</subpacks>
+  </sourceinfo>
+
+  <!-- Pattern 6: Name appearing only as <subpacks> of something else -->
+  <sourceinfo package="apache2-doc-source">
+    <subpacks>apache2-doc-source</subpacks>
+    <subpacks>apache2-doc</subpacks>
+  </sourceinfo>
+
+  <!-- Pattern 7: Collision: identity vs subpack of another source -->
+  <sourceinfo package="collision-pkg">
+    <subpacks>collision-pkg</subpacks>
+  </sourceinfo>
+  <sourceinfo package="other-source">
+    <subpacks>other-source</subpacks>
+    <subpacks>collision-pkg</subpacks>
+  </sourceinfo>
+
+  <!-- 3-level originpackage chain for test #12 -->
+  <sourceinfo package="chain-c">
+    <subpacks>chain-c</subpacks>
+  </sourceinfo>
+  <sourceinfo package="chain-b">
+    <originpackage>chain-c</originpackage>
+    <subpacks>chain-b</subpacks>
+  </sourceinfo>
+  <sourceinfo package="chain-a">
+    <originpackage>chain-b</originpackage>
+    <subpacks>chain-a</subpacks>
+  </sourceinfo>
+</sourceinfolist>
