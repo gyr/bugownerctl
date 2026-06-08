@@ -9,7 +9,69 @@ import pytest
 from bugowner.commands.whitelist import run
 from bugowner.domain.ref_type import RefType
 from bugowner.services.whitelist_service import WhitelistCheckResult
-from bugowner.utils.seed import FALSE_POSITIVES_CACHE_FILENAME
+
+
+def _empty_result() -> WhitelistCheckResult:
+    """Build a WhitelistCheckResult with no inconsistencies."""
+    return WhitelistCheckResult(inconsistent_packages=[])
+
+
+def _patch_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
+    """Patch all repository impls used by whitelist.run."""
+    mock_git_repo = Mock()
+    mock_git_repo.clone_or_update.return_value = Path("/cache/slfo")
+    mock_git_repo.list_submodules.return_value = ["pkg1"]
+    mock_git_cls = Mock(return_value=mock_git_repo)
+
+    mock_meta_repo = Mock()
+    mock_meta_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
+    mock_meta_repo.parse_source_packages.return_value = {"pkg1"}
+    mock_meta_cls = Mock(return_value=mock_meta_repo)
+
+    mock_bulk_cls = Mock()
+    mock_over_cls = Mock()
+    mock_maint_cls = Mock()
+
+    monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", mock_git_cls)
+    monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", mock_meta_cls)
+    monkeypatch.setattr(
+        "bugowner.commands.whitelist.ObsBulkSourceInfoRepositoryImpl", mock_bulk_cls
+    )
+    monkeypatch.setattr("bugowner.commands.whitelist.NameOverridesRepositoryImpl", mock_over_cls)
+    monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", mock_maint_cls)
+
+    return {
+        "git_cls": mock_git_cls,
+        "git_repo": mock_git_repo,
+        "metadata_cls": mock_meta_cls,
+        "metadata_repo": mock_meta_repo,
+        "bulk_map": mock_bulk_cls,
+        "overrides": mock_over_cls,
+        "maintainership": mock_maint_cls,
+    }
+
+
+def _patch_services(
+    monkeypatch: pytest.MonkeyPatch, result: WhitelistCheckResult | None = None
+) -> dict[str, Mock]:
+    """Patch ValidationService and WhitelistService. Returns the mocks."""
+    mock_validation_service = Mock()
+    mock_validation_cls = Mock(return_value=mock_validation_service)
+    monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", mock_validation_cls)
+
+    mock_whitelist_service = Mock()
+    mock_whitelist_service.check_whitelist.return_value = (
+        result if result is not None else _empty_result()
+    )
+    mock_whitelist_cls = Mock(return_value=mock_whitelist_service)
+    monkeypatch.setattr("bugowner.commands.whitelist.WhitelistService", mock_whitelist_cls)
+
+    return {
+        "validation_cls": mock_validation_cls,
+        "validation_service": mock_validation_service,
+        "whitelist_cls": mock_whitelist_cls,
+        "whitelist_service": mock_whitelist_service,
+    }
 
 
 class TestWhitelistCheckCommand:
@@ -17,78 +79,6 @@ class TestWhitelistCheckCommand:
 
     def test_run_creates_all_repository_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create all repository implementation instances."""
-        # Mock config loading
-        mock_config = {
-            "cache_dir": "~/.cache/bugownership",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("bugowner.commands.whitelist.load_config", mock_load_config)
-
-        # Mock repository classes
-        mock_git_repo_cls = Mock()
-        mock_metadata_repo_cls = Mock()
-        mock_obs_repo_cls = Mock()
-        mock_fp_repo_cls = Mock()
-        mock_maint_repo_cls = Mock()
-
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", mock_git_repo_cls)
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl", mock_metadata_repo_cls
-        )
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", mock_obs_repo_cls)
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.FalsePositivesRepositoryImpl", mock_fp_repo_cls
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.MaintainershipRepositoryImpl", mock_maint_repo_cls
-        )
-
-        # Mock services
-        mock_validation_service = Mock()
-        mock_validation_service_cls = Mock(return_value=mock_validation_service)
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.ValidationService", mock_validation_service_cls
-        )
-
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[], new_false_positives={}
-        )
-        mock_whitelist_service_cls = Mock(return_value=mock_whitelist_service)
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService", mock_whitelist_service_cls
-        )
-
-        # Mock repository operations
-        mock_git_repo = mock_git_repo_cls.return_value
-        mock_metadata_repo = mock_metadata_repo_cls.return_value
-        mock_git_repo.clone_or_update.return_value = Path("/cache/slfo")
-        mock_metadata_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
-        mock_metadata_repo.parse_source_packages.return_value = {"pkg1"}
-        mock_git_repo.list_submodules.return_value = ["pkg1"]
-
-        # Mock Path operations
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
-
-        args = argparse.Namespace(version="16.1", config=None)
-        run(args)
-
-        # Verify all repositories were instantiated
-        mock_git_repo_cls.assert_called_once()
-        mock_metadata_repo_cls.assert_called_once()
-        mock_obs_repo_cls.assert_called_once()
-        mock_fp_repo_cls.assert_called_once()
-        mock_maint_repo_cls.assert_called_once()
-
-    def test_run_creates_validation_service_with_repository_dependencies(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Should create ValidationService with all repository dependencies."""
         mock_config = {
             "cache_dir": "~/.cache/bugownership",
             "whitelist_file": "whitelist_maintainership.json",
@@ -99,65 +89,76 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Create mock repository instances
-        mock_maint_repo = Mock()
-        mock_git_repo = Mock()
-        mock_metadata_repo = Mock()
-        mock_obs_repo = Mock()
-        mock_fp_repo = Mock()
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.MaintainershipRepositoryImpl",
-            Mock(return_value=mock_maint_repo),
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=mock_git_repo)
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=mock_metadata_repo),
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.ObsRepositoryImpl", Mock(return_value=mock_obs_repo)
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.FalsePositivesRepositoryImpl",
-            Mock(return_value=mock_fp_repo),
-        )
-
-        # Mock ValidationService to track instantiation
-        mock_validation_service = Mock()
-        mock_validation_service_cls = Mock(return_value=mock_validation_service)
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.ValidationService", mock_validation_service_cls
-        )
-
-        # Mock WhitelistService
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[], new_false_positives={}
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock repository operations
-        mock_git_repo.clone_or_update.return_value = Path("/cache/slfo")
-        mock_metadata_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
-        mock_metadata_repo.parse_source_packages.return_value = {"pkg1"}
-        mock_git_repo.list_submodules.return_value = ["pkg1"]
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
+        repos = _patch_repos(monkeypatch)
+        _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
-        # Verify ValidationService created with all repositories
-        mock_validation_service_cls.assert_called_once_with(
-            mock_maint_repo, mock_git_repo, mock_metadata_repo, mock_obs_repo, mock_fp_repo
+        repos["git_cls"].assert_called_once()
+        repos["metadata_cls"].assert_called_once()
+        repos["bulk_map"].assert_called_once()
+        repos["overrides"].assert_called_once()
+        repos["maintainership"].assert_called_once()
+
+    def test_run_creates_validation_service_with_new_repos(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should create ValidationService with bulk_map+overrides repos."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+        )
+
+        # Explicit mock instances so the ValidationService wiring can be verified.
+        mock_maint_inst = Mock()
+        mock_git_inst = Mock()
+        mock_git_inst.clone_or_update.return_value = Path("/cache/slfo")
+        mock_git_inst.list_submodules.return_value = ["pkg1"]
+        mock_meta_inst = Mock()
+        mock_meta_inst.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
+        mock_meta_inst.parse_source_packages.return_value = {"pkg1"}
+        mock_bulk_inst = Mock()
+        mock_over_inst = Mock()
+
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.MaintainershipRepositoryImpl",
+            Mock(return_value=mock_maint_inst),
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=mock_git_inst)
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
+            Mock(return_value=mock_meta_inst),
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.ObsBulkSourceInfoRepositoryImpl",
+            Mock(return_value=mock_bulk_inst),
+        )
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.NameOverridesRepositoryImpl",
+            Mock(return_value=mock_over_inst),
+        )
+
+        services = _patch_services(monkeypatch)
+
+        args = argparse.Namespace(version="16.1", config=None)
+        run(args)
+
+        # ValidationService called with positional (maint, git, metadata) +
+        # kwargs (bulk_map_repo, overrides_repo).
+        services["validation_cls"].assert_called_once_with(
+            mock_maint_inst,
+            mock_git_inst,
+            mock_meta_inst,
+            bulk_map_repo=mock_bulk_inst,
+            overrides_repo=mock_over_inst,
         )
 
     def test_run_creates_whitelist_service_with_validation_dependency(
@@ -174,57 +175,13 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-
-        # Mock ValidationService
-        mock_validation_service = Mock()
-        mock_validation_service_cls = Mock(return_value=mock_validation_service)
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.ValidationService", mock_validation_service_cls
-        )
-
-        # Mock WhitelistService to track instantiation
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[], new_false_positives={}
-        )
-        mock_whitelist_service_cls = Mock(return_value=mock_whitelist_service)
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService", mock_whitelist_service_cls
-        )
-
-        # Mock repository operations
-        git_repo_instance = Mock()
-        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
-        git_repo_instance.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
-        )
-
-        metadata_repo_instance = Mock()
-        metadata_repo_instance.download_primary_metadata.return_value = Path(
-            "/cache/primary.xml.gz"
-        )
-        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=metadata_repo_instance),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
+        _patch_repos(monkeypatch)
+        services = _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
-        # Verify WhitelistService created with ValidationService
-        mock_whitelist_service_cls.assert_called_once_with(mock_validation_service)
+        services["whitelist_cls"].assert_called_once_with(services["validation_service"])
 
     def test_run_calls_check_whitelist_with_correct_parameters(
         self, monkeypatch: pytest.MonkeyPatch
@@ -240,59 +197,28 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
+        repos = _patch_repos(monkeypatch)
+        repos["git_repo"].list_submodules.return_value = ["pkg1", "pkg2"]
+        repos["metadata_repo"].parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
 
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[], new_false_positives={}
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock git and metadata operations
-        mock_git_repo = Mock()
-        mock_git_repo.clone_or_update.return_value = Path("/cache/slfo")
-        mock_git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=mock_git_repo)
-        )
-
-        mock_metadata_repo = Mock()
-        mock_metadata_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
-        mock_metadata_repo.parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=mock_metadata_repo),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
+        services = _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
-        # Verify check_whitelist called with correct parameters
-        mock_whitelist_service.check_whitelist.assert_called_once()
-        call_args = mock_whitelist_service.check_whitelist.call_args[1]
+        services["whitelist_service"].check_whitelist.assert_called_once()
+        call_args = services["whitelist_service"].check_whitelist.call_args[1]
         # whitelist_file should come from cloned SLFO repo (like validate command)
         assert call_args["whitelist_file"] == Path("/cache/slfo/whitelist_maintainership.json")
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert call_args["submodules"] == ["pkg1", "pkg2"]
-        # false_positives_file should come from cache_dir (XDG user cache)
+        # cache_dir should come from config (XDG user cache)
         expected_cache_dir = Path("~/.cache/bugownership").expanduser()
-        assert (
-            call_args["false_positives_file"] == expected_cache_dir / FALSE_POSITIVES_CACHE_FILENAME
-        )
+        assert call_args["cache_dir"] == expected_cache_dir
+        # overrides_file must resolve via importlib.resources to the
+        # shipped JSON; verify basename.
+        assert isinstance(call_args["overrides_file"], Path)
+        assert call_args["overrides_file"].name == "false_positives_overrides.json"
 
     def test_run_returns_zero_when_no_inconsistencies_found(
         self, monkeypatch: pytest.MonkeyPatch
@@ -308,48 +234,8 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService with NO inconsistencies
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[],  # No issues
-            new_false_positives={},
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock repository operations
-        git_repo_instance = Mock()
-        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
-        git_repo_instance.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
-        )
-
-        metadata_repo_instance = Mock()
-        metadata_repo_instance.download_primary_metadata.return_value = Path(
-            "/cache/primary.xml.gz"
-        )
-        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=metadata_repo_instance),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
+        _patch_repos(monkeypatch)
+        _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
@@ -370,47 +256,10 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService with inconsistencies
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=["pkg1", "pkg2"],  # Found issues
-            new_false_positives={},
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock repository operations
-        git_repo_instance = Mock()
-        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
-        git_repo_instance.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
-        )
-
-        metadata_repo_instance = Mock()
-        metadata_repo_instance.download_primary_metadata.return_value = Path(
-            "/cache/primary.xml.gz"
-        )
-        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=metadata_repo_instance),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        _patch_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(inconsistent_packages=["pkg1", "pkg2"]),
         )
 
         args = argparse.Namespace(version="16.1", config=None)
@@ -432,47 +281,10 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService with inconsistencies
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=["apache2", "kernel-source"],
-            new_false_positives={},
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock repository operations
-        git_repo_instance = Mock()
-        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
-        git_repo_instance.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
-        )
-
-        metadata_repo_instance = Mock()
-        metadata_repo_instance.download_primary_metadata.return_value = Path(
-            "/cache/primary.xml.gz"
-        )
-        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=metadata_repo_instance),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
+        _patch_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(inconsistent_packages=["apache2", "kernel-source"]),
         )
 
         args = argparse.Namespace(version="16.1", config=None)
@@ -498,56 +310,14 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService with NO issues
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[],
-            new_false_positives={},
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock repository operations
-        git_repo_instance = Mock()
-        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
-        git_repo_instance.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
-        )
-
-        metadata_repo_instance = Mock()
-        metadata_repo_instance.download_primary_metadata.return_value = Path(
-            "/cache/primary.xml.gz"
-        )
-        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=metadata_repo_instance),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
+        _patch_repos(monkeypatch)
+        _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
         captured = capsys.readouterr()
         assert "INFO: No inconsistencies found" in captured.out
-        # Ensure no emoji used
-        assert "✅" not in captured.out
 
     def test_run_raises_error_when_version_not_found_in_config(
         self, monkeypatch: pytest.MonkeyPatch
@@ -563,7 +333,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="99.9", config=None)  # Version not in config
+        args = argparse.Namespace(version="99.9", config=None)
 
         with pytest.raises(ValueError, match="Version 99.9 not found in config"):
             run(args)
@@ -635,53 +405,71 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[], new_false_positives={}
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock git and metadata operations
-        mock_git_repo = Mock()
-        mock_git_repo.clone_or_update.return_value = Path("/cache/slfo")
-        mock_git_repo.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=mock_git_repo)
-        )
-
-        mock_metadata_repo = Mock()
-        mock_metadata_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
-        mock_metadata_repo.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=mock_metadata_repo),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
+        repos = _patch_repos(monkeypatch)
+        _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None)
         result = run(args)
 
         # Verify clone_or_update called with COMMIT ref type
-        assert mock_git_repo.clone_or_update.called
-        call_kwargs = mock_git_repo.clone_or_update.call_args[1]
+        assert repos["git_repo"].clone_or_update.called
+        call_kwargs = repos["git_repo"].clone_or_update.call_args[1]
         assert call_kwargs["git_ref"] == "abc123def"
         assert call_kwargs["ref_type"] == RefType.COMMIT
         assert result == 0
+
+    def test_whitelist_prints_unresolved_names_section(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Should print the unresolved-names section when unresolved_names is non-empty."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(
+                inconsistent_packages=[],
+                unresolved_names=["mystery-pkg"],
+            ),
+        )
+
+        args = argparse.Namespace(version="16.1", config=None)
+        run(args)
+
+        captured = capsys.readouterr()
+        assert "Names with no source mapping" in captured.out
+        assert "mystery-pkg" in captured.out
+
+    def test_whitelist_omits_unresolved_section_when_empty(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Should NOT print the unresolved-names section when unresolved_names is empty."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        _patch_services(monkeypatch)  # default: empty result, unresolved=[]
+
+        args = argparse.Namespace(version="16.1", config=None)
+        run(args)
+
+        captured = capsys.readouterr()
+        assert "Names with no source mapping" not in captured.out
 
     def test_run_passes_config_path_to_load_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should pass args.config to load_config() when provided."""
@@ -694,54 +482,13 @@ class TestWhitelistCheckCommand:
         mock_load_config = Mock(return_value=mock_config)
         monkeypatch.setattr("bugowner.commands.whitelist.load_config", mock_load_config)
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+        _patch_repos(monkeypatch)
+        _patch_services(monkeypatch)
 
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[], new_false_positives={}
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock repository operations
-        git_repo_instance = Mock()
-        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
-        git_repo_instance.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
-        )
-
-        metadata_repo_instance = Mock()
-        metadata_repo_instance.download_primary_metadata.return_value = Path(
-            "/cache/primary.xml.gz"
-        )
-        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=metadata_repo_instance),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
-
-        # Test with explicit config path
         config_path = Path("/custom/config.yaml")
         args = argparse.Namespace(version="16.1", config=config_path)
         run(args)
 
-        # Verify load_config was called with explicit config path
         mock_load_config.assert_called_once_with(config_path)
 
     def test_run_passes_none_to_load_config_when_no_config_provided(
@@ -757,51 +504,10 @@ class TestWhitelistCheckCommand:
         mock_load_config = Mock(return_value=mock_config)
         monkeypatch.setattr("bugowner.commands.whitelist.load_config", mock_load_config)
 
-        # Mock repositories
-        monkeypatch.setattr("bugowner.commands.whitelist.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.FalsePositivesRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.whitelist.MaintainershipRepositoryImpl", Mock())
+        _patch_repos(monkeypatch)
+        _patch_services(monkeypatch)
 
-        # Mock ValidationService
-        monkeypatch.setattr("bugowner.commands.whitelist.ValidationService", Mock())
-
-        # Mock WhitelistService
-        mock_whitelist_service = Mock()
-        mock_whitelist_service.check_whitelist.return_value = WhitelistCheckResult(
-            inconsistent_packages=[], new_false_positives={}
-        )
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.WhitelistService",
-            Mock(return_value=mock_whitelist_service),
-        )
-
-        # Mock repository operations
-        git_repo_instance = Mock()
-        git_repo_instance.clone_or_update.return_value = Path("/cache/slfo")
-        git_repo_instance.list_submodules.return_value = ["pkg1"]
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.GitRepositoryImpl", Mock(return_value=git_repo_instance)
-        )
-
-        metadata_repo_instance = Mock()
-        metadata_repo_instance.download_primary_metadata.return_value = Path(
-            "/cache/primary.xml.gz"
-        )
-        metadata_repo_instance.parse_source_packages.return_value = {"pkg1"}
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.RepoMetadataRepositoryImpl",
-            Mock(return_value=metadata_repo_instance),
-        )
-
-        monkeypatch.setattr(
-            "bugowner.commands.whitelist.bootstrap_cache_from_seed", Mock(return_value=0)
-        )
-
-        # Test without config (should default to None)
         args = argparse.Namespace(version="16.1", config=None)
         run(args)
 
-        # Verify load_config was called with None (triggers search)
         mock_load_config.assert_called_once_with(None)

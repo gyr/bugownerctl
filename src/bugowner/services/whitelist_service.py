@@ -7,7 +7,7 @@ Design Notes:
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,7 +20,9 @@ class WhitelistCheckResult:
     """Results from whitelist check operation."""
 
     inconsistent_packages: list[str]  # Packages BOTH shipped AND whitelisted (sorted)
-    new_false_positives: dict[str, str]  # New binary→source mappings from validation
+    # Names that fell through the bulk_map/overrides pipeline to identity
+    # AND are not submodules. Mirrors ValidationResult.unresolved_names.
+    unresolved_names: list[str] = field(default_factory=list)
 
 
 class WhitelistService:
@@ -84,7 +86,8 @@ class WhitelistService:
         whitelist_file: Path,
         shipped_packages: set[str],
         submodules: list[str],
-        false_positives_file: Path,
+        overrides_file: Path,
+        cache_dir: Path,
         obs_project: str = "SUSE:SLFO:Main",
     ) -> WhitelistCheckResult:
         """Check whitelist for inconsistencies with shipped packages.
@@ -96,11 +99,12 @@ class WhitelistService:
             whitelist_file: Path to whitelist JSON file
             shipped_packages: Set of shipped package names from metadata
             submodules: List of git submodule names
-            false_positives_file: Path to false positives cache
+            overrides_file: Path to hand-curated binary→source overrides JSON
+            cache_dir: Cache directory for the OBS bulk-map XML
             obs_project: OBS project to query for package resolution
 
         Returns:
-            WhitelistCheckResult with inconsistent packages and new false positives
+            WhitelistCheckResult with inconsistent packages
 
         Raises:
             FileNotFoundError: If whitelist file doesn't exist
@@ -113,13 +117,15 @@ class WhitelistService:
         # Load whitelist
         whitelist = self.load_whitelist(whitelist_file)
 
-        # Get validated shipped packages using validation pipeline
-        (
-            valid_packages,
-            _,
-            new_false_positives,
-        ) = self.validation_service.find_shipped_without_submodule(
-            shipped_packages, submodules, false_positives_file, obs_project
+        # Get validated shipped packages using validation pipeline.
+        # Residue is dropped — the whitelist consistency check only cares
+        # about valid packages — but unresolved_names is surfaced so the
+        # command layer can warn operators about names with no source
+        # mapping (same UX as the validate command).
+        valid_packages, _, unresolved_names = (
+            self.validation_service.find_shipped_without_submodule(
+                shipped_packages, submodules, overrides_file, cache_dir, obs_project
+            )
         )
 
         # Find intersection: packages BOTH shipped AND whitelisted (inconsistency)
@@ -127,5 +133,5 @@ class WhitelistService:
 
         return WhitelistCheckResult(
             inconsistent_packages=sorted(inconsistent_packages),
-            new_false_positives=new_false_positives,
+            unresolved_names=unresolved_names,
         )

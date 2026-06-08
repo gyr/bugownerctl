@@ -45,8 +45,8 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
-        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         # Mock ValidationService
         mock_service = Mock()
@@ -54,7 +54,6 @@ class TestValidateSLFORepo:
             orphan_packages=[],
             maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
-            new_false_positives={},
         )
         monkeypatch.setattr(
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
@@ -102,8 +101,8 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
-        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         # Mock ValidationService
         mock_service = Mock()
@@ -111,7 +110,6 @@ class TestValidateSLFORepo:
             orphan_packages=[],
             maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
-            new_false_positives={},
         )
         monkeypatch.setattr(
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
@@ -159,8 +157,8 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
-        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         # Mock ValidationService to track validate_all call
         mock_service = Mock()
@@ -168,7 +166,6 @@ class TestValidateSLFORepo:
             orphan_packages=[],
             maintained_packages_without_submodule=[],
             shipped_not_in_submodule=[],
-            new_false_positives={},
         )
         monkeypatch.setattr(
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
@@ -210,8 +207,8 @@ class TestValidateSLFORepo:
         monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         args = argparse.Namespace(version="99.9", debug=False, config=None)
 
@@ -239,8 +236,8 @@ class TestValidateSLFORepo:
         monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
 
@@ -270,8 +267,8 @@ class TestValidateSLFORepo:
         monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.ObsRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.FalsePositivesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         args = argparse.Namespace(version="16.1", debug=False, config=None)
 

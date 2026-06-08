@@ -5,22 +5,20 @@ and packages shipped but not in submodules.
 """
 
 import argparse
+from importlib.resources import as_file, files
 from pathlib import Path
 
 from bugowner.domain.ref_type import RefType
-from bugowner.repositories.false_positives_repository import FalsePositivesRepositoryImpl
 from bugowner.repositories.git_repository import GitRepositoryImpl
 from bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
-from bugowner.repositories.obs_repository import ObsRepositoryImpl
+from bugowner.repositories.name_overrides_repository import NameOverridesRepositoryImpl
+from bugowner.repositories.obs_bulk_source_info_repository import (
+    ObsBulkSourceInfoRepositoryImpl,
+)
 from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
 from bugowner.services.validation_service import ValidationService
 from bugowner.utils.config import load_config
 from bugowner.utils.file_utils import validate_file_within_directory
-from bugowner.utils.seed import (
-    FALSE_POSITIVES_CACHE_FILENAME,
-    bootstrap_cache_from_seed,
-    get_seed_file_path,
-)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -74,8 +72,8 @@ def run(args: argparse.Namespace) -> int:
     maintainership_repo = MaintainershipRepositoryImpl()
     git_repo = GitRepositoryImpl()
     metadata_repo = RepoMetadataRepositoryImpl()
-    obs_repo = ObsRepositoryImpl()
-    false_positives_repo = FalsePositivesRepositoryImpl()
+    bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
+    overrides_repo = NameOverridesRepositoryImpl()
 
     # Download and prepare metadata
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -94,8 +92,6 @@ def run(args: argparse.Namespace) -> int:
     maintainership_file = validate_file_within_directory(
         slfo_repo_path, maintainership_file_name, "Maintainership file"
     )
-    false_positives_file = cache_dir / FALSE_POSITIVES_CACHE_FILENAME
-    bootstrap_cache_from_seed(false_positives_file, get_seed_file_path(config))
     repo_path = slfo_repo_path
 
     # Create validation service
@@ -103,17 +99,21 @@ def run(args: argparse.Namespace) -> int:
         maintainership_repo,
         git_repo,
         metadata_repo,
-        obs_repo,
-        false_positives_repo,
+        bulk_map_repo=bulk_map_repo,
+        overrides_repo=overrides_repo,
     )
 
-    # Execute validation
-    result = service.validate_all(
-        maintainership_file=maintainership_file,
-        repo_metadata_file=repo_metadata_file,
-        false_positives_file=false_positives_file,
-        git_dir=repo_path,
-    )
+    # Resolve the shipped overrides JSON via importlib.resources so it
+    # works whether the package is installed as a wheel or run from source.
+    overrides_resource = files("bugowner.data").joinpath("false_positives_overrides.json")
+    with as_file(overrides_resource) as overrides_file:
+        result = service.validate_all(
+            maintainership_file=maintainership_file,
+            repo_metadata_file=repo_metadata_file,
+            overrides_file=overrides_file,
+            cache_dir=cache_dir,
+            git_dir=repo_path,
+        )
 
     # Print results matching old script format (INFO prefix, SET labels)
 
@@ -139,6 +139,17 @@ def run(args: argparse.Namespace) -> int:
         for pkg in result.shipped_not_in_submodule:
             print(f"INFO: - {pkg}")
 
+    # SET 3b: Names with no source mapping (strict subset of SET 3 — names
+    # that hit the identity fallthrough: not in overrides, not in bulk_map).
+    if result.unresolved_names:
+        print(
+            f"INFO: Found {len(result.unresolved_names)} "
+            "names with no source mapping (neither in overrides nor bulk_map)."
+        )
+        print("INFO: Names with no source mapping:")
+        for pkg in result.unresolved_names:
+            print(f"INFO: - {pkg}")
+
     # SET 4: Orphan packages
     if result.orphan_packages:
         print(f"INFO: Found {len(result.orphan_packages)} orphan packages.")
@@ -147,10 +158,6 @@ def run(args: argparse.Namespace) -> int:
             print(f"INFO: - {pkg}")
     else:
         print("INFO: No orphan packages found.")
-
-    # New false-positives discovered
-    if result.new_false_positives:
-        print(f"INFO: Discovered {len(result.new_false_positives)} new binary→source mappings.")
 
     # Determine exit code
     has_issues = bool(result.orphan_packages or result.shipped_not_in_submodule)
