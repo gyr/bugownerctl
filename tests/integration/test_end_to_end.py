@@ -5,9 +5,11 @@ using real fixtures and minimal mocking.
 """
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from bugowner.cli import main
+from bugowner.domain.bulk_map import BulkMap
 
 
 class TestValidateWorkflow:
@@ -20,7 +22,7 @@ class TestValidateWorkflow:
         1. Load maintainership data
         2. List git submodules
         3. Download and parse repo metadata
-        4. Apply false positives cache
+        4. Resolve binary→source via bulk-map + overrides pipeline
         5. Report validation results
         """
         # Change to test directory
@@ -34,7 +36,6 @@ class TestValidateWorkflow:
             }
         }
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
-        (tmp_path / "false_positives.json").write_text(json.dumps({}))
 
         # Create minimal config file with new format
         config_data = {
@@ -58,12 +59,20 @@ class TestValidateWorkflow:
             patch(
                 "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
+            patch(
+                "bugowner.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
+            ) as mock_bulk_map,
             patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["test-package", "another-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"test-package", "another-package"}
+            mock_bulk_map.return_value = BulkMap(
+                mapping={},
+                project="test-project",
+                fetched_at=datetime.now(timezone.utc),
+            )
 
             # Execute
             exit_code = main()
@@ -82,7 +91,6 @@ class TestValidateWorkflow:
             "packages": {"maintained-package": {"users": ["user1"], "groups": []}}
         }
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
-        (tmp_path / "false_positives.json").write_text(json.dumps({}))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -104,12 +112,20 @@ class TestValidateWorkflow:
             patch(
                 "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
+            patch(
+                "bugowner.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
+            ) as mock_bulk_map,
             patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["maintained-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"maintained-package", "orphan-package"}
+            mock_bulk_map.return_value = BulkMap(
+                mapping={},
+                project="test-project",
+                fetched_at=datetime.now(timezone.utc),
+            )
 
             # Execute
             exit_code = main()
