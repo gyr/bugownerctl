@@ -448,6 +448,72 @@ class TestWhitelistCheckCommand:
         assert "Names with no source mapping" in captured.out
         assert "mystery-pkg" in captured.out
 
+    def test_verdict_printed_after_unresolved_section_when_no_inconsistencies(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Verdict line must be printed LAST, after the unresolved-names diagnostic."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(
+                inconsistent_packages=[],
+                unresolved_names=["mystery-pkg"],
+            ),
+        )
+
+        args = argparse.Namespace(version="16.1", config=None)
+        run(args)
+
+        captured = capsys.readouterr()
+        unresolved_idx = captured.out.index("Names with no source mapping")
+        verdict_idx = captured.out.index("No inconsistencies found")
+        assert unresolved_idx < verdict_idx, (
+            f"Verdict must come AFTER unresolved-names section, got:\n{captured.out}"
+        )
+
+    def test_verdict_printed_after_unresolved_section_when_inconsistencies_present(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Inconsistency verdict block must come LAST, after the unresolved-names diagnostic."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(
+                inconsistent_packages=["apache2"],
+                unresolved_names=["mystery-pkg"],
+            ),
+        )
+
+        args = argparse.Namespace(version="16.1", config=None)
+        run(args)
+
+        captured = capsys.readouterr()
+        unresolved_idx = captured.out.index("Names with no source mapping")
+        verdict_idx = captured.out.index("BOTH shipped AND whitelisted")
+        assert unresolved_idx < verdict_idx, (
+            f"Verdict must come AFTER unresolved-names section, got:\n{captured.out}"
+        )
+
     def test_whitelist_omits_unresolved_section_when_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:

@@ -123,7 +123,17 @@ def run(args: argparse.Namespace) -> int:
             cache_dir=cache_dir,
         )
 
-    # Print results (INFO prefix, matching validate format)
+    # Names with no source mapping (mirrors validate command's SET 3b).
+    if result.unresolved_names:
+        print(
+            f"INFO: Found {len(result.unresolved_names)} "
+            "names with no source mapping (neither in overrides nor bulk_map)."
+        )
+        print("INFO: Names with no source mapping:")
+        for pkg in result.unresolved_names:
+            print(f"INFO: - {pkg}")
+
+    # Final verdict — printed last so it remains the takeaway line of output.
     if result.inconsistent_packages:
         print(
             f"INFO: Found {len(result.inconsistent_packages)} "
@@ -134,16 +144,6 @@ def run(args: argparse.Namespace) -> int:
             print(f"INFO: - {pkg}")
     else:
         print("INFO: No inconsistencies found. All whitelisted packages are NOT shipped.")
-
-    # Names with no source mapping (mirrors validate command's SET 3b).
-    if result.unresolved_names:
-        print(
-            f"INFO: Found {len(result.unresolved_names)} "
-            "names with no source mapping (neither in overrides nor bulk_map)."
-        )
-        print("INFO: Names with no source mapping:")
-        for pkg in result.unresolved_names:
-            print(f"INFO: - {pkg}")
 
     # Determine exit code
     has_issues = bool(result.inconsistent_packages)
