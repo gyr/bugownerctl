@@ -16,10 +16,6 @@ slfo_git_url: gitea@src.suse.de:products/SLFO.git
 # Optional: defaults to ~/.cache/bugownership
 # cache_dir: ~/.cache/bugownership
 
-# Optional: override the bundled false-positives seed file (for CI/testing)
-# Default: bundled src/bugowner/data/false_positives.seed.json
-# false_positives_seed: /custom/path/seed.json
-
 # Product versions to validate
 # REQUIRED: Update with versions you need to test
 products:

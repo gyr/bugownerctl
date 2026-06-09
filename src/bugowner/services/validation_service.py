@@ -3,20 +3,24 @@
 Design Notes:
     - Service layer coordinates between repositories
     - Business logic for finding orphans, mismatches, etc.
-    - Extracted from validate_maintainership.py
+    - Resolves shipped binary names to canonical source names via the
+      OBS bulk source-info map, with hand-curated overrides taking
+      priority over the bulk map.
 """
 
 import logging
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from bugowner.domain.bulk_map import BulkMap
 from bugowner.domain.maintainer import MaintainershipData
-from bugowner.repositories.false_positives_repository import (
-    FalsePositivesRepository,
-)
 from bugowner.repositories.git_repository import GitRepository
 from bugowner.repositories.maintainership_repository import MaintainershipRepository
-from bugowner.repositories.obs_repository import ObsRepository
+from bugowner.repositories.name_overrides_repository import NameOverridesRepository
+from bugowner.repositories.obs_bulk_source_info_repository import (
+    ObsBulkSourceInfoRepository,
+)
 from bugowner.repositories.repo_metadata_repository import RepoMetadataRepository
 
 logger = logging.getLogger(__name__)
@@ -29,7 +33,7 @@ class ValidationResult:
     orphan_packages: list[str]
     maintained_packages_without_submodule: list[str]
     shipped_not_in_submodule: list[str]
-    new_false_positives: dict[str, str]
+    unresolved_names: list[str] = field(default_factory=list)
 
 
 class ValidationService:
@@ -40,14 +44,15 @@ class ValidationService:
         maintainership_repo: MaintainershipRepository,
         git_repo: GitRepository,
         metadata_repo: RepoMetadataRepository,
-        obs_repo: ObsRepository,
-        false_positives_repo: FalsePositivesRepository,
+        *,
+        bulk_map_repo: ObsBulkSourceInfoRepository,
+        overrides_repo: NameOverridesRepository,
     ) -> None:
         self.maintainership_repo = maintainership_repo
         self.git_repo = git_repo
         self.metadata_repo = metadata_repo
-        self.obs_repo = obs_repo
-        self.false_positives_repo = false_positives_repo
+        self.bulk_map_repo = bulk_map_repo
+        self.overrides_repo = overrides_repo
 
     def find_orphan_packages(
         self, shipped_packages: set[str], maintainership_data: MaintainershipData
@@ -85,113 +90,123 @@ class ValidationService:
         self,
         shipped_packages: set[str],
         submodules: list[str],
-        false_positives_file: Path,
+        overrides_file: Path,
+        cache_dir: Path,
         obs_project: str = "SUSE:SLFO:Main",
-        cache: dict[str, str | None] | None = None,
-    ) -> tuple[set[str], list[str], dict[str, str]]:
-        """Find shipped packages not in submodules (with OBS fallback).
+        *,
+        bulk_map: BulkMap | None = None,
+        overrides: Mapping[str, str | None] | None = None,
+    ) -> tuple[set[str], list[str], list[str]]:
+        """Find shipped packages not in submodules using the bulk-map pipeline.
+
+        Resolution order per shipped name N:
+            1. N in overrides: value None drops N entirely; str value wins.
+            2. N in bulk_map: use bulk_map[N].
+            3. Else: passthrough (N is its own source name = identity).
 
         Args:
             shipped_packages: Set of package names from repo metadata
             submodules: List of git submodule names
-            false_positives_file: Path to cache file
+            overrides_file: Path to hand-curated overrides JSON
+            cache_dir: Cache directory for bulk-map XML
             obs_project: OBS project to query
-            cache: Optional pre-loaded cache (avoids redundant I/O)
+            bulk_map: Preloaded BulkMap value object (avoids re-fetching when
+                validate_all already loaded it)
+            overrides: Preloaded overrides mapping
 
         Returns:
-            Tuple of (valid_packages, shipped_not_in_submodule, new_false_positives)
-            - valid_packages: Packages found in submodules or resolved via OBS
-            - shipped_not_in_submodule: Packages not found in submodules or OBS
-            - new_false_positives: New binary→source mappings discovered
+            Tuple of (valid_packages, shipped_not_in_submodule, unresolved_names)
+            - valid_packages: Resolved names that ARE submodules.
+            - shipped_not_in_submodule: Sorted residue — resolved names that
+              are NOT submodules (regardless of which branch resolved them).
+            - unresolved_names: STRICT SUBSET of residue. Names that hit
+              the identity fallthrough branch (no override, no bulk_map
+              entry) AND are not submodules. Semantically: "shipped names
+              we have no clue what they are."
         """
-        # Load cache if not provided
-        if cache is None:
-            cache = self.false_positives_repo.load(false_positives_file)
+        # Caller may pre-load (validate_all does); otherwise hit the repos.
+        if overrides is None:
+            overrides = self.overrides_repo.load(overrides_file)
+        if bulk_map is None:
+            bulk_map = self.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
 
-        # Apply remapping (binary → source), filter out None values
-        remapped_packages: set[str] = set()
-        for pkg in shipped_packages:
-            remapped = cache.get(pkg, pkg)
-            if remapped is not None:
-                remapped_packages.add(remapped)
-
-        # Find packages in submodules
         submodules_set = set(submodules)
-        valid_packages = remapped_packages & submodules_set
-
-        # Find unknowns (not in submodules after remapping)
-        unknowns = remapped_packages - submodules_set
-
-        # Query OBS for unknowns if any
-        new_false_positives: dict[str, str] = {}
-        shipped_not_in_submodule: list[str] = []
-
-        if unknowns:
-            logger.info(f"Found {len(unknowns)} unknown packages. Querying OBS in parallel...")
-            new_false_positives = self.obs_repo.query_source_packages(unknowns, obs_project)
-
-            # Check if OBS-resolved packages are in submodules
-            for source_pkg in new_false_positives.values():
-                if source_pkg in submodules_set:
-                    valid_packages.add(source_pkg)
-
-            # Packages where OBS query failed (not found)
-            shipped_not_in_submodule = sorted(unknowns - set(new_false_positives.keys()))
-
-            # Merge and save cache if there are new discoveries
-            if new_false_positives:
-                logger.info(f"Found {len(new_false_positives)} false-positives packages.")
-                cache.update(new_false_positives)
-                self.false_positives_repo.save(false_positives_file, cache)
+        resolved_names: set[str] = set()
+        unresolved_set: set[str] = set()
+        for name in shipped_packages:
+            if name in overrides:
+                value = overrides[name]
+                if value is None:
+                    continue  # explicitly suppressed
+                resolved_names.add(value)
+            elif name in bulk_map.mapping:
+                resolved_names.add(bulk_map.mapping[name])
             else:
-                logger.info("No false-positives packages found.")
+                # Identity fallthrough: no mapping at all.
+                resolved_names.add(name)
+                if name not in submodules_set:
+                    unresolved_set.add(name)
 
-        return (valid_packages, shipped_not_in_submodule, new_false_positives)
+        valid = {r for r in resolved_names if r in submodules_set}
+        residue = sorted(r for r in resolved_names if r not in submodules_set)
+        unresolved = sorted(unresolved_set)
+        return (valid, residue, unresolved)
 
     def validate_all(
         self,
         maintainership_file: Path,
         repo_metadata_file: Path,
-        false_positives_file: Path,
+        overrides_file: Path,
+        cache_dir: Path,
         git_dir: Path,
+        obs_project: str = "SUSE:SLFO:Main",
     ) -> ValidationResult:
         """Orchestrate all validation checks.
 
         Args:
             maintainership_file: Path to _maintainership.json
             repo_metadata_file: Path to primary.xml.gz (downloaded metadata)
-            false_positives_file: Path to false positives cache
+            overrides_file: Path to hand-curated overrides JSON
+            cache_dir: Cache dir for the OBS bulk-map XML
             git_dir: Path to git repository
+            obs_project: OBS project to query
 
         Returns:
-            ValidationResult with all validation findings
+            ValidationResult with all validation findings.
         """
         # Load all data
         maintainership_data = self.maintainership_repo.load(maintainership_file)
         shipped_packages = self.metadata_repo.parse_source_packages(repo_metadata_file)
         submodules = self.git_repo.list_submodules(git_dir)
-        cache = self.false_positives_repo.load(false_positives_file)
 
-        # Run all validation checks
         maintained_packages_without_submodule = self.find_maintained_packages_without_submodule(
             maintainership_data, submodules
         )
 
-        # IMPORTANT: Get valid packages first, then check orphans only for valid packages
+        # Pre-load bulk_map and overrides exactly once here so
+        # find_shipped_without_submodule reuses them.
+        overrides = self.overrides_repo.load(overrides_file)
+        bulk_map = self.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
         (
             valid_packages,
             shipped_not_in_submodule,
-            new_false_positives,
+            unresolved_names,
         ) = self.find_shipped_without_submodule(
-            shipped_packages, submodules, false_positives_file, cache=cache
+            shipped_packages,
+            submodules,
+            overrides_file,
+            cache_dir,
+            obs_project=obs_project,
+            bulk_map=bulk_map,
+            overrides=overrides,
         )
 
-        # Check orphans only for valid packages (in submodules or OBS-resolved)
+        # Check orphans only for valid packages (in submodules or resolved)
         orphan_packages = self.find_orphan_packages(valid_packages, maintainership_data)
 
         return ValidationResult(
             orphan_packages=orphan_packages,
             maintained_packages_without_submodule=maintained_packages_without_submodule,
             shipped_not_in_submodule=shipped_not_in_submodule,
-            new_false_positives=new_false_positives,
+            unresolved_names=unresolved_names,
         )

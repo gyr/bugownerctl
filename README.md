@@ -351,10 +351,6 @@ cache_dir: ~/.cache/bugownership
 # Git repository URL
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
 
-# Optional: override the bundled false-positives seed file (for CI/testing)
-# Default: bundled src/bugowner/data/false_positives.seed.json
-# false_positives_seed: /custom/path/seed.json
-
 # Maintainership file name
 maintainership_file: _maintainership.json
 
@@ -403,23 +399,30 @@ Manually maintained whitelist for packages expected to be NOT shipped:
 
 **Note:** This file is no longer auto-generated. It serves as a reference list for validation via `bugowner whitelist-check`.
 
-### `false_positives.json`
+### `false_positives_overrides.json`
 
-Binary→source package mapping cache (auto-generated/updated):
+Hand-curated mapping of binary/subpackage names to canonical source package names. Used to correct cases the OBS bulk map gets wrong:
 
 ```json
 {
-  "apache2-devel": "apache2",
-  "apache2-utils": "apache2",
-  "SLES-release": null
+  "kernel-azure": "kernel-source-azure"
 }
 ```
 
-**Location:** `~/.cache/bugownership/false_positives.json` (XDG user cache directory).
+**Location:** `bugowner/data/false_positives_overrides.json`, shipped inside the wheel. Resolved at runtime via `importlib.resources` — there is no separate file to deploy.
 
-**First run:** Automatically bootstrapped from the bundled seed file (`src/bugowner/data/false_positives.seed.json`, shipped in the wheel). No manual initialization needed.
+**Editing:** Send a PR against `src/bugowner/data/false_positives_overrides.json` in this repo. Schema is `{"binary_or_subpkg_name": "source_pkg_name" | null}` — `null` means "treat as not-shipped, do not flag".
 
-**Purpose:** Avoid slow OBS queries on every run. Maps binary packages to source names, or `null` to ignore. The cache name is fixed and derived from `cache_dir` — not user-configurable.
+**Why a file, not a cache:** Earlier versions auto-populated `~/.cache/bugownership/false_positives.json` from OBS lookups. That cache silently shadowed real bugs (a stale entry could hide a missing maintainership row). Hand-curated overrides put a human in the loop and make every entry diff-reviewable. Full rationale, alternatives considered, and consequences are recorded in `docs/adr/0001-source-name-resolution.md`.
+
+### How `bugowner validate` resolves source names
+
+For every shipped binary name `n` found in the SLES repo, the resolver picks the first hit from this pipeline:
+
+1. **Overrides file** — `false_positives_overrides.json` lookup. Wins outright; `null` means "skip this name".
+2. **OBS bulk map** — single `osc api /source/SUSE:SLFO:Main?view=info&parse=1` fetched once per run and cached on disk for 7 days. Maps subpackage → source.
+3. **Identity fallthrough** — assume `n` is itself the source name.
+4. **Residue** — if the resolved name is not present in SLFO submodules, the name lands in `shipped_not_in_submodule`. Names that fell through step 3 AND aren't a submodule are additionally surfaced under "Names with no source mapping" so reviewers can decide whether to add an override.
 
 ## Cache System
 
@@ -576,12 +579,12 @@ pytest --cov=src/bugowner --cov-report=term-missing --cov-fail-under=90
 uv build
 
 # Verify bundled data files are present in the wheel
-unzip -l dist/*.whl | grep -E "seed|example"
+unzip -l dist/*.whl | grep -E "example|overrides"
 ```
 
 Expected output includes both:
 - `bugowner/data/config.example.yaml`
-- `bugowner/data/false_positives.seed.json`
+- `bugowner/data/false_positives_overrides.json`
 
 ### CI/CD Pipeline
 
@@ -658,7 +661,7 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 - **Backward compatible:** Project-local config (`./validate_maintainership.yaml`) still works
 - **Recommended:** Use `bugowner init` to create user config for global access
 
-**Compatibility:** All functionality preserved. `_maintainership.json` and other data files shared between old and new. Note: `false_positives.json` moved from CWD to `~/.cache/bugownership/` — bootstrapped automatically from the bundled seed on first run.
+**Compatibility:** `_maintainership.json` and other data files shared between old and new. **Breaking:** the runtime `false_positives.json` cache is no longer used. Source-name overrides now ship in the wheel at `bugowner/data/false_positives_overrides.json` and are edited via PR. Any leftover `~/.cache/bugownership/false_positives.json` from a previous version is harmless and can be removed with `rm ~/.cache/bugownership/false_positives.json`. See `docs/adr/0001-source-name-resolution.md`.
 
 ## Troubleshooting
 
@@ -780,7 +783,8 @@ ValueError: Whitelist file escapes base directory:
 
 - **Whitelist file:** Read from cloned SLFO repository (validated)
 - **Maintainership file:** Read from cloned SLFO repository (validated)
-- **False positives cache:** Read/write from `~/.cache/bugownership/false_positives.json`. Symlink writes rejected by repository layer; atomic temp+rename on save.
+- **Source-name overrides:** Read-only from `bugowner/data/false_positives_overrides.json` (wheel-resident). Loader caps body at 1 MiB, treats missing or non-regular paths as `{}` (no overrides), requires a JSON object root with `str | None` values, tolerates a UTF-8 BOM.
+- **OBS bulk source-info cache:** Read/write at `{cache_dir}/obs_bulk_map.xml` plus a `obs_bulk_map.meta.json` sidecar (`{project, fetched_at, sha256}`). Symlinks rejected; atomic temp+rename on write; SHA-256 integrity check on read; 7-day TTL; cache files chmod 0o600 (parent dir 0o700). Filenames are constant — switching projects triggers a re-fetch via the meta `project` cross-check, not a per-project filename.
 
 ## Contributing
 

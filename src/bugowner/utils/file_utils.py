@@ -3,7 +3,7 @@
 Design Notes:
     - Simple wrappers, NOT security-hardened
     - For security-critical use (validation, size limits, atomic writes),
-      use FalsePositivesRepository or similar hardened implementations
+      use a repository implementation with those guarantees instead
     - Accepts str | Path for backward compatibility with legacy code
 """
 

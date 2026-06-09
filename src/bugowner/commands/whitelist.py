@@ -5,23 +5,21 @@ whitelist against validated shipped packages from repository metadata.
 """
 
 import argparse
+from importlib.resources import as_file, files
 from pathlib import Path
 
 from bugowner.domain.ref_type import RefType
-from bugowner.repositories.false_positives_repository import FalsePositivesRepositoryImpl
 from bugowner.repositories.git_repository import GitRepositoryImpl
 from bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
-from bugowner.repositories.obs_repository import ObsRepositoryImpl
+from bugowner.repositories.name_overrides_repository import NameOverridesRepositoryImpl
+from bugowner.repositories.obs_bulk_source_info_repository import (
+    ObsBulkSourceInfoRepositoryImpl,
+)
 from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
 from bugowner.services.validation_service import ValidationService
 from bugowner.services.whitelist_service import WhitelistService
 from bugowner.utils.config import load_config
 from bugowner.utils.file_utils import validate_file_within_directory
-from bugowner.utils.seed import (
-    FALSE_POSITIVES_CACHE_FILENAME,
-    bootstrap_cache_from_seed,
-    get_seed_file_path,
-)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -74,8 +72,8 @@ def run(args: argparse.Namespace) -> int:
     # Create repository implementations
     git_repo = GitRepositoryImpl()
     metadata_repo = RepoMetadataRepositoryImpl()
-    obs_repo = ObsRepositoryImpl()
-    false_positives_repo = FalsePositivesRepositoryImpl()
+    bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
+    overrides_repo = NameOverridesRepositoryImpl()
     maintainership_repo = MaintainershipRepositoryImpl()
 
     # Create validation service
@@ -83,8 +81,8 @@ def run(args: argparse.Namespace) -> int:
         maintainership_repo,
         git_repo,
         metadata_repo,
-        obs_repo,
-        false_positives_repo,
+        bulk_map_repo=bulk_map_repo,
+        overrides_repo=overrides_repo,
     )
 
     # Create whitelist service
@@ -106,23 +104,36 @@ def run(args: argparse.Namespace) -> int:
     shipped_packages = metadata_repo.parse_source_packages(repo_metadata_file)
     submodules = git_repo.list_submodules(slfo_repo_path)
 
-    # Use paths from cloned SLFO repository (whitelist) and current directory (cache)
+    # Use paths from cloned SLFO repository (whitelist) and cache_dir (XDG)
     # Validate to prevent path traversal via config
     whitelist_file = validate_file_within_directory(
         slfo_repo_path, whitelist_file_name, "Whitelist file"
     )
-    false_positives_file = cache_dir / FALSE_POSITIVES_CACHE_FILENAME
-    bootstrap_cache_from_seed(false_positives_file, get_seed_file_path(config))
 
-    # Execute whitelist check
-    result = whitelist_service.check_whitelist(
-        whitelist_file=whitelist_file,
-        shipped_packages=shipped_packages,
-        submodules=submodules,
-        false_positives_file=false_positives_file,
-    )
+    # Resolve the shipped overrides JSON via importlib.resources so it
+    # works whether the package is installed as a wheel or run from source.
+    overrides_resource = files("bugowner.data").joinpath("false_positives_overrides.json")
+    with as_file(overrides_resource) as overrides_file:
+        # Execute whitelist check
+        result = whitelist_service.check_whitelist(
+            whitelist_file=whitelist_file,
+            shipped_packages=shipped_packages,
+            submodules=submodules,
+            overrides_file=overrides_file,
+            cache_dir=cache_dir,
+        )
 
-    # Print results (INFO prefix, matching validate format)
+    # Names with no source mapping (mirrors validate command's SET 3b).
+    if result.unresolved_names:
+        print(
+            f"INFO: Found {len(result.unresolved_names)} "
+            "names with no source mapping (neither in overrides nor bulk_map)."
+        )
+        print("INFO: Names with no source mapping:")
+        for pkg in result.unresolved_names:
+            print(f"INFO: - {pkg}")
+
+    # Final verdict — printed last so it remains the takeaway line of output.
     if result.inconsistent_packages:
         print(
             f"INFO: Found {len(result.inconsistent_packages)} "
@@ -133,10 +144,6 @@ def run(args: argparse.Namespace) -> int:
             print(f"INFO: - {pkg}")
     else:
         print("INFO: No inconsistencies found. All whitelisted packages are NOT shipped.")
-
-    # New false-positives discovered
-    if result.new_false_positives:
-        print(f"INFO: Discovered {len(result.new_false_positives)} new binary→source mappings.")
 
     # Determine exit code
     has_issues = bool(result.inconsistent_packages)
