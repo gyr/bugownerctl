@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Version is now derived from git tags via `hatch-vcs`. The static `version =` field has been removed from `pyproject.toml`; tagging a commit is the only step needed to cut a release. Untagged commits get an automatic PEP 440 dev suffix (e.g. `0.2.0.dev3+gabcdef1`).
+
 ## [0.2.0] - 2026-06-10
 
 ### Added

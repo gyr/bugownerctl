@@ -1,6 +1,6 @@
 [project]
 name = "bugowner"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Bug ownership and package maintainership validation tool"
 authors = [
     {name = "Gustavo Yokoyama Ribeiro", email = "gyribeiro@suse.com"}
@@ -28,8 +28,12 @@ dev = [
 bugowner = "bugowner.cli:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0+unknown"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bugowner"]

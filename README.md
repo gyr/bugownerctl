@@ -586,6 +586,24 @@ Expected output includes both:
 - `bugowner/data/config.example.yaml`
 - `bugowner/data/false_positives_overrides.json`
 
+### Releasing
+
+Version is derived automatically from git tags via `hatch-vcs` — there is no `version =` field in `pyproject.toml` to edit manually.
+
+```bash
+# 1. Ensure master is clean and all changes are committed
+git status -sb
+
+# 2. Annotated tag (add -s to GPG-sign)
+git tag -a v0.3.0 -m "Release 0.3.0 — <summary>"
+
+# 3. Push commit and tag
+git push origin master
+git push origin v0.3.0
+```
+
+Untagged commits produce a PEP 440 dev version automatically (e.g. `0.2.0.dev3+gabcdef1`). The `fallback-version = "0.0.0+unknown"` in `pyproject.toml` applies only when no git history is available (e.g. a tarball export with no `.git/`).
+
 ### CI/CD Pipeline
 
 **GitHub Actions workflow runs on:**
