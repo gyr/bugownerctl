@@ -1,6 +1,6 @@
 [project]
 name = "bugowner"
-version = "0.1.0"
+version = "0.2.0"
 description = "Bug ownership and package maintainership validation tool"
 authors = [
     {name = "Gustavo Yokoyama Ribeiro", email = "gyribeiro@suse.com"}

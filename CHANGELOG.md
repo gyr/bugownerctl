@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-10
+
+### Added
+
+- `--refresh-bulk-map` flag on both `validate` and `whitelist-check` subcommands. Bypasses the 7-day on-disk OBS bulk-source-info cache and forces an immediate re-fetch from the OBS API. Useful after an OBS project restructure or when you know the cached map is stale.
+
+### Fixed
+
+- `whitelist-check` verdict line ("No inconsistencies found." / "Found N inconsistent packages") is now the final output line, printed after the "Names with no source mapping" diagnostic block. Previously the verdict was buried mid-output on the new pipeline because the diagnostic block came after it. (`src/bugowner/commands/whitelist.py`)
+
 ### Changed
 
 - **Breaking.** Source-name resolution rewritten. The per-package `osc bse` subprocess fan-out and the auto-mutating `~/.cache/bugownership/false_positives.json` cache are removed. They are replaced by:
