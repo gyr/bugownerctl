@@ -420,7 +420,7 @@ Hand-curated mapping of binary/subpackage names to canonical source package name
 For every shipped binary name `n` found in the SLES repo, the resolver picks the first hit from this pipeline:
 
 1. **Overrides file** — `false_positives_overrides.json` lookup. Wins outright; `null` means "skip this name".
-2. **OBS bulk map** — single `osc api /source/SUSE:SLFO:Main?view=info&parse=1` fetched once per run and cached on disk for 7 days. Maps subpackage → source.
+2. **OBS bulk map** — single `osc api /source/SUSE:SLFO:Main?view=info&parse=1` fetched once per run and cached on disk for 7 days (`{cache_dir}/obs_bulk_map.xml`). Maps subpackage → source. Pass `--refresh-bulk-map` to force an immediate re-fetch without waiting for the TTL to expire.
 3. **Identity fallthrough** — assume `n` is itself the source name.
 4. **Residue** — if the resolved name is not present in SLFO submodules, the name lands in `shipped_not_in_submodule`. Names that fell through step 3 AND aren't a submodule are additionally surfaced under "Names with no source mapping" so reviewers can decide whether to add an override.
 
@@ -742,6 +742,15 @@ rm -rf ~/.cache/bugownership/repodata/
 rm -rf ~/.cache/bugownership/repodata/16.0/
 
 # Cache rebuilds automatically on next run
+```
+
+**"OBS bulk map is stale or corrupt"**
+```bash
+# Force re-fetch without touching repodata cache
+bugowner validate -v 16.1 --refresh-bulk-map
+
+# Or delete the cache files manually (re-fetched on next run)
+rm -f ~/.cache/bugownership/obs_bulk_map.xml ~/.cache/bugownership/obs_bulk_map.meta.json
 ```
 
 **"Disk space issues"**

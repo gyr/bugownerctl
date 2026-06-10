@@ -121,6 +121,7 @@ def run(args: argparse.Namespace) -> int:
             submodules=submodules,
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            force_refresh=args.refresh_bulk_map,
         )
 
     # Names with no source mapping (mirrors validate command's SET 3b).

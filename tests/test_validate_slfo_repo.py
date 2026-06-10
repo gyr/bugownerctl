@@ -59,7 +59,7 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         # Verify clone_or_update called with correct parameters
@@ -115,7 +115,7 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(version="16.0", debug=False, config=None)
+        args = argparse.Namespace(version="16.0", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         # Verify clone_or_update called with commit ref
@@ -171,7 +171,7 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         # Verify validate_all called with paths from cloned repo
@@ -210,7 +210,7 @@ class TestValidateSLFORepo:
         monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
-        args = argparse.Namespace(version="99.9", debug=False, config=None)
+        args = argparse.Namespace(version="99.9", debug=False, config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="Version 99.9 not found in config"):
             run(args)
@@ -239,7 +239,7 @@ class TestValidateSLFORepo:
         monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
 
         with pytest.raises(
             ValueError, match="Product config for version 16.1 has neither branch nor commit"
@@ -270,7 +270,7 @@ class TestValidateSLFORepo:
         monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
         monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="slfo_git_url not found in config"):
             run(args)
@@ -292,7 +292,7 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="Empty git ref for version 16.1"):
             run(args)
@@ -312,7 +312,7 @@ class TestValidateSLFORepo:
             "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="Empty git ref for version 16.1"):
             run(args)

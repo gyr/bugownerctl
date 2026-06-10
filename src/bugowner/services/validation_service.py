@@ -104,6 +104,10 @@ class ValidationService:
             2. N in bulk_map: use bulk_map[N].
             3. Else: passthrough (N is its own source name = identity).
 
+        Callers that need cache refresh must pre-load the bulk_map themselves
+        (with force_refresh=True on bulk_map_repo.load_bulk_map) before
+        passing it here.  validate_all and check_whitelist both do this.
+
         Args:
             shipped_packages: Set of package names from repo metadata
             submodules: List of git submodule names
@@ -160,6 +164,8 @@ class ValidationService:
         cache_dir: Path,
         git_dir: Path,
         obs_project: str = "SUSE:SLFO:Main",
+        *,
+        force_refresh: bool = False,
     ) -> ValidationResult:
         """Orchestrate all validation checks.
 
@@ -170,6 +176,7 @@ class ValidationService:
             cache_dir: Cache dir for the OBS bulk-map XML
             git_dir: Path to git repository
             obs_project: OBS project to query
+            force_refresh: If True, bypass cache and re-fetch from OBS.
 
         Returns:
             ValidationResult with all validation findings.
@@ -186,7 +193,9 @@ class ValidationService:
         # Pre-load bulk_map and overrides exactly once here so
         # find_shipped_without_submodule reuses them.
         overrides = self.overrides_repo.load(overrides_file)
-        bulk_map = self.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
+        bulk_map = self.bulk_map_repo.load_bulk_map(
+            obs_project, cache_dir, force_refresh=force_refresh
+        )
         (
             valid_packages,
             shipped_not_in_submodule,

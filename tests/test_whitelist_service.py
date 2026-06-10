@@ -127,8 +127,15 @@ class TestCheckWhitelist:
     def test_check_whitelist_calls_validation_service_with_correct_parameters(
         self, tmp_path: Path
     ) -> None:
-        """Should call validation service with correct parameters."""
+        """Should pre-load bulk_map then call find_shipped_without_submodule with bulk_map=.
+
+        After Fix 1, check_whitelist pre-loads bulk_map (via bulk_map_repo.load_bulk_map)
+        and passes it as bulk_map= to find_shipped_without_submodule.  force_refresh
+        lives at load_bulk_map, not at find_shipped_without_submodule.
+        """
+        mock_bulk_map = Mock(name="bulk_map")
         mock_validation_service = Mock()
+        mock_validation_service.bulk_map_repo.load_bulk_map.return_value = mock_bulk_map
         mock_validation_service.find_shipped_without_submodule.return_value = (
             {"pkg1"},  # valid_packages
             [],  # shipped_not_in_submodule
@@ -157,9 +164,18 @@ class TestCheckWhitelist:
             obs_project=obs_project,
         )
 
-        # Verify validation service was called with correct parameters
+        # bulk_map loaded at orchestration layer with default force_refresh=False
+        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
+            obs_project, cache_dir, force_refresh=False
+        )
+        # find_shipped_without_submodule receives bulk_map=, never force_refresh=
         mock_validation_service.find_shipped_without_submodule.assert_called_once_with(
-            shipped_packages, submodules, overrides_file, cache_dir, obs_project
+            shipped_packages,
+            submodules,
+            overrides_file,
+            cache_dir,
+            obs_project,
+            bulk_map=mock_bulk_map,
         )
 
     def test_check_whitelist_propagates_unresolved_names(self, tmp_path: Path) -> None:
@@ -192,6 +208,73 @@ class TestCheckWhitelist:
         )
 
         assert result.unresolved_names == ["mystery-pkg"]
+
+    def test_check_whitelist_force_refresh_defaults_to_false(self, tmp_path: Path) -> None:
+        """check_whitelist should pass force_refresh=False to bulk_map_repo.load_bulk_map
+        by default when the flag is not provided.
+
+        After Fix 1, force_refresh is honoured at the load_bulk_map call in
+        check_whitelist, NOT forwarded to find_shipped_without_submodule.
+        """
+        mock_validation_service = Mock()
+        mock_validation_service.find_shipped_without_submodule.return_value = (
+            {"pkg1"},
+            [],
+            [],
+        )
+        service = WhitelistService(mock_validation_service)
+
+        whitelist_file = tmp_path / "whitelist.json"
+        whitelist_file.write_text('["pkg2"]')
+
+        overrides_file = tmp_path / "overrides.json"
+        cache_dir = tmp_path / "cache"
+
+        service.check_whitelist(
+            whitelist_file=whitelist_file,
+            shipped_packages={"pkg1"},
+            submodules=["pkg1"],
+            overrides_file=overrides_file,
+            cache_dir=cache_dir,
+        )
+
+        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
+            "SUSE:SLFO:Main", cache_dir, force_refresh=False
+        )
+
+    def test_check_whitelist_passes_force_refresh_true_when_requested(self, tmp_path: Path) -> None:
+        """check_whitelist should pass force_refresh=True to bulk_map_repo.load_bulk_map
+        when the caller sets force_refresh=True.
+
+        After Fix 1, force_refresh is honoured at the load_bulk_map call in
+        check_whitelist, NOT forwarded to find_shipped_without_submodule.
+        """
+        mock_validation_service = Mock()
+        mock_validation_service.find_shipped_without_submodule.return_value = (
+            {"pkg1"},
+            [],
+            [],
+        )
+        service = WhitelistService(mock_validation_service)
+
+        whitelist_file = tmp_path / "whitelist.json"
+        whitelist_file.write_text('["pkg2"]')
+
+        overrides_file = tmp_path / "overrides.json"
+        cache_dir = tmp_path / "cache"
+
+        service.check_whitelist(
+            whitelist_file=whitelist_file,
+            shipped_packages={"pkg1"},
+            submodules=["pkg1"],
+            overrides_file=overrides_file,
+            cache_dir=cache_dir,
+            force_refresh=True,
+        )
+
+        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
+            "SUSE:SLFO:Main", cache_dir, force_refresh=True
+        )
 
     def test_check_whitelist_returns_sorted_inconsistent_packages(self, tmp_path: Path) -> None:
         """Should return inconsistent packages in sorted order."""

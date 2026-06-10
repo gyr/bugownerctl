@@ -151,6 +151,30 @@ class TestCreateParser:
         args = parser.parse_args(["whitelist-check", "-v", "16.1"])
         assert args.config is None
 
+    def test_validate_refresh_bulk_map_defaults_to_false(self) -> None:
+        """Validate subcommand --refresh-bulk-map should default to False."""
+        parser = create_parser()
+        args = parser.parse_args(["validate", "-v", "16.1"])
+        assert args.refresh_bulk_map is False
+
+    def test_validate_accepts_refresh_bulk_map_flag(self) -> None:
+        """Validate subcommand should accept --refresh-bulk-map flag."""
+        parser = create_parser()
+        args = parser.parse_args(["validate", "-v", "16.1", "--refresh-bulk-map"])
+        assert args.refresh_bulk_map is True
+
+    def test_whitelist_check_refresh_bulk_map_defaults_to_false(self) -> None:
+        """Whitelist-check subcommand --refresh-bulk-map should default to False."""
+        parser = create_parser()
+        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
+        assert args.refresh_bulk_map is False
+
+    def test_whitelist_check_accepts_refresh_bulk_map_flag(self) -> None:
+        """Whitelist-check subcommand should accept --refresh-bulk-map flag."""
+        parser = create_parser()
+        args = parser.parse_args(["whitelist-check", "-v", "16.1", "--refresh-bulk-map"])
+        assert args.refresh_bulk_map is True
+
     def test_parser_has_init_subcommand(self) -> None:
         """Parser should have 'init' subcommand."""
         parser = create_parser()

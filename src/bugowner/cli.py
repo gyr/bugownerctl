@@ -51,6 +51,12 @@ def create_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to config file (default: search standard locations)",
     )
+    validate_parser.add_argument(
+        "--refresh-bulk-map",
+        action="store_true",
+        default=False,
+        help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
+    )
     validate_parser.set_defaults(func=validate.run)
 
     # bugowner whitelist-check
@@ -67,6 +73,12 @@ def create_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Path to config file (default: search standard locations)",
+    )
+    whitelist_check_parser.add_argument(
+        "--refresh-bulk-map",
+        action="store_true",
+        default=False,
+        help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
     )
     whitelist_check_parser.set_defaults(func=whitelist.run)
 

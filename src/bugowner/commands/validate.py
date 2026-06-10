@@ -113,6 +113,7 @@ def run(args: argparse.Namespace) -> int:
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             git_dir=repo_path,
+            force_refresh=args.refresh_bulk_map,
         )
 
     # Print results matching old script format (INFO prefix, SET labels)

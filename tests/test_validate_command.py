@@ -78,7 +78,7 @@ class TestValidateCommand:
         repos = _patch_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         repos["maintainership"].assert_called_once()
@@ -131,7 +131,7 @@ class TestValidateCommand:
 
         cls_mock, _ = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         # ValidationService called with positional (maint, git, metadata) +
@@ -165,7 +165,7 @@ class TestValidateCommand:
 
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         # Verify download_primary_metadata called with version
@@ -203,7 +203,7 @@ class TestValidateCommand:
         _patch_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         result = run(args)
 
         assert result == 0
@@ -232,7 +232,7 @@ class TestValidateCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         result = run(args)
 
         assert result == 1
@@ -261,7 +261,7 @@ class TestValidateCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -293,7 +293,7 @@ class TestValidateCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -335,7 +335,7 @@ class TestValidateCommand:
         _patch_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -371,7 +371,7 @@ class TestValidateCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -395,7 +395,7 @@ class TestValidateCommand:
         _patch_repos(monkeypatch)
         _patch_validation_service(monkeypatch)  # default: empty result, unresolved=[]
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -416,10 +416,58 @@ class TestValidateCommand:
         _patch_validation_service(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
-        args = argparse.Namespace(version="16.1", debug=False, config=config_path)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=config_path, refresh_bulk_map=False
+        )
         run(args)
 
         mock_load_config.assert_called_once_with(config_path)
+
+    def test_run_passes_force_refresh_false_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should pass force_refresh=False to validate_all when --refresh-bulk-map not set."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "slfo_git_url": "https://github.com/test/repo",
+            "maintainership_file": "_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        _, instance = _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        run(args)
+
+        call_kwargs = instance.validate_all.call_args[1]
+        assert call_kwargs.get("force_refresh") is False
+
+    def test_run_passes_force_refresh_true_when_flag_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should pass force_refresh=True to validate_all when --refresh-bulk-map is set."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "slfo_git_url": "https://github.com/test/repo",
+            "maintainership_file": "_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        _, instance = _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=True)
+        run(args)
+
+        call_kwargs = instance.validate_all.call_args[1]
+        assert call_kwargs.get("force_refresh") is True
 
     def test_run_passes_none_to_load_config_when_no_config_provided(
         self, monkeypatch: pytest.MonkeyPatch
@@ -437,7 +485,7 @@ class TestValidateCommand:
         _patch_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None)
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         mock_load_config.assert_called_once_with(None)

@@ -92,7 +92,7 @@ class TestWhitelistCheckCommand:
         repos = _patch_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         repos["git_cls"].assert_called_once()
@@ -148,7 +148,7 @@ class TestWhitelistCheckCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         # ValidationService called with positional (maint, git, metadata) +
@@ -178,7 +178,7 @@ class TestWhitelistCheckCommand:
         _patch_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         services["whitelist_cls"].assert_called_once_with(services["validation_service"])
@@ -203,7 +203,7 @@ class TestWhitelistCheckCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         services["whitelist_service"].check_whitelist.assert_called_once()
@@ -237,7 +237,7 @@ class TestWhitelistCheckCommand:
         _patch_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         result = run(args)
 
         assert result == 0
@@ -262,7 +262,7 @@ class TestWhitelistCheckCommand:
             WhitelistCheckResult(inconsistent_packages=["pkg1", "pkg2"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         result = run(args)
 
         assert result == 1
@@ -287,7 +287,7 @@ class TestWhitelistCheckCommand:
             WhitelistCheckResult(inconsistent_packages=["apache2", "kernel-source"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -313,7 +313,7 @@ class TestWhitelistCheckCommand:
         _patch_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -333,7 +333,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="99.9", config=None)
+        args = argparse.Namespace(version="99.9", config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="Version 99.9 not found in config"):
             run(args)
@@ -352,7 +352,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="has neither branch nor commit"):
             run(args)
@@ -369,7 +369,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="Empty git ref for version 16.1"):
             run(args)
@@ -388,7 +388,7 @@ class TestWhitelistCheckCommand:
             "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
 
         with pytest.raises(ValueError, match="slfo_git_url not found in config"):
             run(args)
@@ -408,7 +408,7 @@ class TestWhitelistCheckCommand:
         repos = _patch_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         result = run(args)
 
         # Verify clone_or_update called with COMMIT ref type
@@ -441,7 +441,7 @@ class TestWhitelistCheckCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -471,7 +471,7 @@ class TestWhitelistCheckCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -504,7 +504,7 @@ class TestWhitelistCheckCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -531,7 +531,7 @@ class TestWhitelistCheckCommand:
         _patch_repos(monkeypatch)
         _patch_services(monkeypatch)  # default: empty result, unresolved=[]
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         captured = capsys.readouterr()
@@ -552,10 +552,56 @@ class TestWhitelistCheckCommand:
         _patch_services(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
-        args = argparse.Namespace(version="16.1", config=config_path)
+        args = argparse.Namespace(version="16.1", config=config_path, refresh_bulk_map=False)
         run(args)
 
         mock_load_config.assert_called_once_with(config_path)
+
+    def test_run_passes_force_refresh_false_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should pass force_refresh=False to check_whitelist when --refresh-bulk-map not set."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        services = _patch_services(monkeypatch)
+
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        run(args)
+
+        call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
+        assert call_kwargs.get("force_refresh") is False
+
+    def test_run_passes_force_refresh_true_when_flag_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should pass force_refresh=True to check_whitelist when --refresh-bulk-map is set."""
+        mock_config = {
+            "cache_dir": "~/.cache/bugownership",
+            "whitelist_file": "whitelist_maintainership.json",
+            "slfo_git_url": "https://github.com/example/slfo.git",
+            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
+        }
+        monkeypatch.setattr(
+            "bugowner.commands.whitelist.load_config", Mock(return_value=mock_config)
+        )
+
+        _patch_repos(monkeypatch)
+        services = _patch_services(monkeypatch)
+
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=True)
+        run(args)
+
+        call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
+        assert call_kwargs.get("force_refresh") is True
 
     def test_run_passes_none_to_load_config_when_no_config_provided(
         self, monkeypatch: pytest.MonkeyPatch
@@ -573,7 +619,7 @@ class TestWhitelistCheckCommand:
         _patch_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
         mock_load_config.assert_called_once_with(None)
