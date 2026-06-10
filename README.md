@@ -37,6 +37,14 @@ bugowner query maintainer user1
 
 ## Commands
 
+### Global flags
+
+```bash
+bugowner --version   # print installed version and exit
+bugowner --help      # show subcommands
+bugowner --debug … # enable debug logging for any subcommand
+```
+
 ### `bugowner init`
 
 Create initial configuration file from bundled template.

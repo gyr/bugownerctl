@@ -7,6 +7,7 @@ validating maintainership data, checking whitelists, and querying packages.
 import argparse
 import logging
 import sys
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 
 from bugowner.commands import init, query, validate, whitelist
@@ -20,6 +21,11 @@ def create_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="bugowner", description="Bug ownership and package maintainership validation tool"
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {pkg_version('bugowner')}",
     )
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
 

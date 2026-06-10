@@ -11,6 +11,15 @@ from bugowner.cli import create_parser, main
 class TestCreateParser:
     """Tests for argument parser creation."""
 
+    def test_parser_has_version_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Parser should support --version flag and print version to stdout."""
+        parser = create_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["--version"])
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "bugowner" in captured.out
+
     def test_parser_has_debug_flag(self) -> None:
         """Parser should support --debug flag."""
         parser = create_parser()
