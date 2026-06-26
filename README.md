@@ -1,6 +1,6 @@
 # Bugownership CLI
 
-[![CI](https://github.com/gyr/bugownership/actions/workflows/ci.yml/badge.svg)](https://github.com/gyr/bugownership/actions/workflows/ci.yml)
+[![CI](https://github.com/gyr/bugownerctl/actions/workflows/ci.yml/badge.svg)](https://github.com/gyr/bugownerctl/actions/workflows/ci.yml)
 
 Package maintainership validation and management tool for SUSE Linux Enterprise.
 
@@ -20,19 +20,19 @@ pip install -e .
 
 ```bash
 # First time: Initialize config file (recommended)
-bugowner init
+bugownerctl init
 
 # Validate maintainership for SLES 16.1
-bugowner validate -v 16.1
+bugownerctl validate -v 16.1
 
 # Check whitelist against shipped packages
-bugowner whitelist-check -v 16.1
+bugownerctl whitelist-check -v 16.1
 
 # Check package maintainership
-bugowner query package apache2
+bugownerctl query package apache2
 
 # List packages maintained by user
-bugowner query maintainer user1
+bugownerctl query maintainer user1
 ```
 
 ## Commands
@@ -40,40 +40,40 @@ bugowner query maintainer user1
 ### Global flags
 
 ```bash
-bugowner --version   # print installed version and exit
-bugowner --help      # show subcommands
-bugowner --debug … # enable debug logging for any subcommand
+bugownerctl --version   # print installed version and exit
+bugownerctl --help      # show subcommands
+bugownerctl --debug … # enable debug logging for any subcommand
 ```
 
-### `bugowner init`
+### `bugownerctl init`
 
 Create initial configuration file from bundled template.
 
 **Usage:**
 ```bash
-bugowner init [--location {user,local,system}] [--force]
+bugownerctl init [--location {user,local,system}] [--force]
 ```
 
 **Options:**
 - `--location` - Where to create config (default: `user`)
-  - `user` - `~/.config/bugownership/config.yaml` (recommended)
+  - `user` - `~/.config/bugownerctl/config.yaml` (recommended)
   - `local` - `./validate_maintainership.yaml` (project-specific)
-  - `system` - `/etc/bugownership/config.yaml` (system-wide, requires sudo)
+  - `system` - `/etc/bugownerctl/config.yaml` (system-wide, requires sudo)
 - `--force` - Overwrite existing config file
 
 **Examples:**
 ```bash
 # Create user config (recommended for first-time setup)
-bugowner init
+bugownerctl init
 
 # Create project-local config
-bugowner init --location local
+bugownerctl init --location local
 
 # Create system-wide config
-sudo bugowner init --location system
+sudo bugownerctl init --location system
 
 # Overwrite existing config
-bugowner init --force
+bugownerctl init --force
 ```
 
 **What it does:**
@@ -89,23 +89,23 @@ bugowner init --force
 **Output:**
 ```
 ✓ Created user config
-  Location: /home/user/.config/bugownership/config.yaml
+  Location: /home/user/.config/bugownerctl/config.yaml
 
 Next steps:
-  1. Edit config: /home/user/.config/bugownership/config.yaml
+  1. Edit config: /home/user/.config/bugownerctl/config.yaml
   2. Update slfo_git_url and products
-  3. Run: bugowner validate -v 16.1
+  3. Run: bugownerctl validate -v 16.1
 ```
 
 ---
 
-### `bugowner validate`
+### `bugownerctl validate`
 
 Validates package maintainership data for consistency.
 
 **Usage:**
 ```bash
-bugowner validate -v <version> [--config <path>] [--debug]
+bugownerctl validate -v <version> [--config <path>] [--debug]
 ```
 
 **Options:**
@@ -128,17 +128,17 @@ bugowner validate -v <version> [--config <path>] [--debug]
 **Examples:**
 ```bash
 # Validate SLES 16.1 (uses config search hierarchy)
-bugowner validate -v 16.1
+bugownerctl validate -v 16.1
 
 # Validate with explicit config file
-bugowner validate -v 16.1 --config /custom/config.yaml
+bugownerctl validate -v 16.1 --config /custom/config.yaml
 
 # Validate with debug logging
-bugowner validate -v 16.0 --debug
+bugownerctl validate -v 16.0 --debug
 
 # Use environment variable for config
-export BUGOWNER_CONFIG=/path/to/config.yaml
-bugowner validate -v 16.1
+export BUGOWNERCTL_CONFIG=/path/to/config.yaml
+bugownerctl validate -v 16.1
 ```
 
 **Exit codes:**
@@ -153,7 +153,7 @@ bugowner validate -v 16.1
 
 ---
 
-### `bugowner whitelist-check`
+### `bugownerctl whitelist-check`
 
 Validates that whitelisted packages are NOT shipped in the distribution.
 
@@ -161,7 +161,7 @@ Validates that whitelisted packages are NOT shipped in the distribution.
 
 **Usage:**
 ```bash
-bugowner whitelist-check -v <version> [--config <path>]
+bugownerctl whitelist-check -v <version> [--config <path>]
 ```
 
 **Options:**
@@ -179,10 +179,10 @@ bugowner whitelist-check -v <version> [--config <path>]
 **Examples:**
 ```bash
 # Check whitelist with automatic config discovery
-bugowner whitelist-check -v 16.1
+bugownerctl whitelist-check -v 16.1
 
 # Check whitelist with explicit config
-bugowner whitelist-check -v 16.1 --config /path/to/config.yaml
+bugownerctl whitelist-check -v 16.1 --config /path/to/config.yaml
 ```
 
 **Exit codes:**
@@ -209,7 +209,7 @@ INFO: Discovered 5 new binary→source mappings.
 
 The whitelist file is read from the **cloned SLFO git repository**, not the current working directory.
 
-Example path: `~/.cache/bugownership/SLFO/whitelist_maintainership.json`
+Example path: `~/.cache/bugownerctl/SLFO/whitelist_maintainership.json`
 
 **Whitelist File Format:**
 
@@ -229,26 +229,26 @@ Config file names are validated to prevent path traversal attacks. Invalid file 
 
 **Migration Note:**
 
-The old `bugowner whitelist update` command has been removed. The whitelist file is now manually maintained as a reference for validation.
+The old `bugownerctl whitelist update` command has been removed. The whitelist file is now manually maintained as a reference for validation.
 
 ---
 
-### `bugowner query package`
+### `bugownerctl query package`
 
 Check maintainership status of a package.
 
 **Usage:**
 ```bash
-bugowner query package <package_name>
+bugownerctl query package <package_name>
 ```
 
 **Examples:**
 ```bash
 # Check if apache2 is maintained
-bugowner query package apache2
+bugownerctl query package apache2
 
 # Check whitelisted package
-bugowner query package legacy-pkg
+bugownerctl query package legacy-pkg
 ```
 
 **Exit code:** Always `0`
@@ -270,22 +270,22 @@ Maintainers:
 
 ---
 
-### `bugowner query maintainer`
+### `bugownerctl query maintainer`
 
 List all packages maintained by a user or group.
 
 **Usage:**
 ```bash
-bugowner query maintainer <maintainer_name>
+bugownerctl query maintainer <maintainer_name>
 ```
 
 **Examples:**
 ```bash
 # List packages for user
-bugowner query maintainer user1
+bugownerctl query maintainer user1
 
 # List packages for group
-bugowner query maintainer team1
+bugownerctl query maintainer team1
 ```
 
 **Exit code:** Always `0`
@@ -311,50 +311,50 @@ The tool uses a **standard search hierarchy** to find configuration:
 
 **Search order (highest to lowest priority):**
 1. **CLI flag:** `--config /path/to/config.yaml` (explicit override)
-2. **Environment variable:** `BUGOWNER_CONFIG=/path/to/config.yaml`
+2. **Environment variable:** `BUGOWNERCTL_CONFIG=/path/to/config.yaml`
 3. **Project-local:** `./validate_maintainership.yaml` (current directory)
-4. **User config:** `~/.config/bugownership/config.yaml` (recommended)
-5. **System config:** `/etc/bugownership/config.yaml` (system-wide)
+4. **User config:** `~/.config/bugownerctl/config.yaml` (recommended)
+5. **System config:** `/etc/bugownerctl/config.yaml` (system-wide)
 
 **XDG Base Directory support:**
 - Respects `XDG_CONFIG_HOME` environment variable
-- Default user config: `$XDG_CONFIG_HOME/bugownership/config.yaml`
-- Fallback: `~/.config/bugownership/config.yaml`
+- Default user config: `$XDG_CONFIG_HOME/bugownerctl/config.yaml`
+- Fallback: `~/.config/bugownerctl/config.yaml`
 
 **Best practices:**
-- **First-time users:** Run `bugowner init` to create user config
-- **Project-specific:** Use `bugowner init --location local` for per-project configs
-- **CI/CD:** Use `--config` flag or `BUGOWNER_CONFIG` env var for explicit control
-- **System-wide:** Use `sudo bugowner init --location system` for shared config
+- **First-time users:** Run `bugownerctl init` to create user config
+- **Project-specific:** Use `bugownerctl init --location local` for per-project configs
+- **CI/CD:** Use `--config` flag or `BUGOWNERCTL_CONFIG` env var for explicit control
+- **System-wide:** Use `sudo bugownerctl init --location system` for shared config
 
 **Examples:**
 ```bash
 # Let tool find config automatically (searches hierarchy)
-bugowner validate -v 16.1
+bugownerctl validate -v 16.1
 
 # Explicit config (highest priority, skips search)
-bugowner validate -v 16.1 --config /ci/config.yaml
+bugownerctl validate -v 16.1 --config /ci/config.yaml
 
 # Environment variable (second priority)
-export BUGOWNER_CONFIG=/team/shared-config.yaml
-bugowner validate -v 16.1
+export BUGOWNERCTL_CONFIG=/team/shared-config.yaml
+bugownerctl validate -v 16.1
 
 # Create user config (recommended first step)
-bugowner init
+bugownerctl init
 ```
 
 **Error handling:**
-- If explicit `--config` or `BUGOWNER_CONFIG` is set but file doesn't exist → **hard error**
+- If explicit `--config` or `BUGOWNERCTL_CONFIG` is set but file doesn't exist → **hard error**
 - If no config found in search hierarchy → **clear error showing all searched locations**
 
 ### Config File Format
 
-Create config file manually or use `bugowner init` to generate from template:
+Create config file manually or use `bugownerctl init` to generate from template:
 
 ```yaml
 # Cache directory for downloads (version-specific subdirs created automatically)
 # Structure: {cache_dir}/repodata/{version}/
-cache_dir: ~/.cache/bugownership
+cache_dir: ~/.cache/bugownerctl
 
 # Git repository URL
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
@@ -405,7 +405,7 @@ Manually maintained whitelist for packages expected to be NOT shipped:
 ]
 ```
 
-**Note:** This file is no longer auto-generated. It serves as a reference list for validation via `bugowner whitelist-check`.
+**Note:** This file is no longer auto-generated. It serves as a reference list for validation via `bugownerctl whitelist-check`.
 
 ### `false_positives_overrides.json`
 
@@ -417,13 +417,13 @@ Hand-curated mapping of binary/subpackage names to canonical source package name
 }
 ```
 
-**Location:** `bugowner/data/false_positives_overrides.json`, shipped inside the wheel. Resolved at runtime via `importlib.resources` — there is no separate file to deploy.
+**Location:** `bugownerctl/data/false_positives_overrides.json`, shipped inside the wheel. Resolved at runtime via `importlib.resources` — there is no separate file to deploy.
 
-**Editing:** Send a PR against `src/bugowner/data/false_positives_overrides.json` in this repo. Schema is `{"binary_or_subpkg_name": "source_pkg_name" | null}` — `null` means "treat as not-shipped, do not flag".
+**Editing:** Send a PR against `src/bugownerctl/data/false_positives_overrides.json` in this repo. Schema is `{"binary_or_subpkg_name": "source_pkg_name" | null}` — `null` means "treat as not-shipped, do not flag".
 
-**Why a file, not a cache:** Earlier versions auto-populated `~/.cache/bugownership/false_positives.json` from OBS lookups. That cache silently shadowed real bugs (a stale entry could hide a missing maintainership row). Hand-curated overrides put a human in the loop and make every entry diff-reviewable. Full rationale, alternatives considered, and consequences are recorded in `docs/adr/0001-source-name-resolution.md`.
+**Why a file, not a cache:** Earlier versions auto-populated `~/.cache/bugownerctl/false_positives.json` from OBS lookups. That cache silently shadowed real bugs (a stale entry could hide a missing maintainership row). Hand-curated overrides put a human in the loop and make every entry diff-reviewable. Full rationale, alternatives considered, and consequences are recorded in `docs/adr/0001-source-name-resolution.md`.
 
-### How `bugowner validate` resolves source names
+### How `bugownerctl validate` resolves source names
 
 For every shipped binary name `n` found in the SLES repo, the resolver picks the first hit from this pipeline:
 
@@ -440,7 +440,7 @@ The tool caches repository metadata for performance and to support multiple SLES
 
 **Cache directory structure:**
 ```
-~/.cache/bugownership/repodata/
+~/.cache/bugownerctl/repodata/
 ├── 16.0/
 │   ├── repomd.xml                      # Repository metadata index
 │   └── {checksum}-primary.xml.gz       # Package metadata (20-50MB)
@@ -456,7 +456,7 @@ The tool caches repository metadata for performance and to support multiple SLES
 1. **Version-specific isolation** - Each SLES version has its own cache directory
    - Prevents data corruption when switching between versions
    - Allows parallel validation of multiple versions
-   - Example: `~/.cache/bugownership/repodata/16.1/`
+   - Example: `~/.cache/bugownerctl/repodata/16.1/`
 
 2. **Memory-efficient streaming** - Downloads use 8KB chunks instead of loading entire files
    - Reduces memory footprint from ~50MB to ~8KB
@@ -470,16 +470,16 @@ The tool caches repository metadata for performance and to support multiple SLES
 **Cache management:**
 ```bash
 # View cache contents
-ls -lh ~/.cache/bugownership/repodata/
+ls -lh ~/.cache/bugownerctl/repodata/
 
 # Clear cache for specific version
-rm -rf ~/.cache/bugownership/repodata/16.1/
+rm -rf ~/.cache/bugownerctl/repodata/16.1/
 
 # Clear all cached metadata
-rm -rf ~/.cache/bugownership/repodata/
+rm -rf ~/.cache/bugownerctl/repodata/
 
 # Cache will automatically rebuild on next run
-bugowner validate -v 16.1
+bugownerctl validate -v 16.1
 ```
 
 **Performance impact:**
@@ -542,7 +542,7 @@ uv pip install -e ".[dev]"
 pytest
 
 # Run with coverage
-pytest --cov=src/bugowner --cov-report=term-missing
+pytest --cov=src/bugownerctl --cov-report=term-missing
 
 # Run specific test file
 pytest tests/test_validation_service.py
@@ -577,7 +577,7 @@ mypy src/
 bandit -c .bandit -r src/
 
 # Tests with coverage
-pytest --cov=src/bugowner --cov-report=term-missing --cov-fail-under=90
+pytest --cov=src/bugownerctl --cov-report=term-missing --cov-fail-under=90
 ```
 
 ### Build & Wheel Verification
@@ -591,8 +591,8 @@ unzip -l dist/*.whl | grep -E "example|overrides"
 ```
 
 Expected output includes both:
-- `bugowner/data/config.example.yaml`
-- `bugowner/data/false_positives_overrides.json`
+- `bugownerctl/data/config.example.yaml`
+- `bugownerctl/data/false_positives_overrides.json`
 
 ### Releasing
 
@@ -666,57 +666,57 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 
 | Old Script | New Command |
 |------------|-------------|
-| `validate_maintainership.py -v 16.1` | `bugowner validate -v 16.1` |
-| `create_whitelist_maintainership.py` | ~~`bugowner whitelist update`~~ (removed) |
-| `check_package_maintainer.py <pkg>` | `bugowner query package <pkg>` |
-| N/A | `bugowner query maintainer <user>` (new) |
-| N/A | `bugowner whitelist-check -v <version>` (new) |
-| N/A | `bugowner init` (new) |
+| `validate_maintainership.py -v 16.1` | `bugownerctl validate -v 16.1` |
+| `create_whitelist_maintainership.py` | ~~`bugownerctl whitelist update`~~ (removed) |
+| `check_package_maintainer.py <pkg>` | `bugownerctl query package <pkg>` |
+| N/A | `bugownerctl query maintainer <user>` (new) |
+| N/A | `bugownerctl whitelist-check -v <version>` (new) |
+| N/A | `bugownerctl init` (new) |
 
 **Migration steps:**
 1. Install new CLI: `uv pip install -e .`
-2. **Initialize config:** `bugowner init` (creates `~/.config/bugownership/config.yaml`)
+2. **Initialize config:** `bugownerctl init` (creates `~/.config/bugownerctl/config.yaml`)
 3. **Edit config:** Update `slfo_git_url` and `products` in generated config
 4. Test new commands alongside old scripts
-5. Update scripts/automation to use `bugowner` CLI
+5. Update scripts/automation to use `bugownerctl` CLI
 6. Remove old script calls once verified
 
 **Configuration migration:**
 - Old: Required `validate_maintainership.yaml` in current directory
 - New: Supports **config search hierarchy** (CLI flag → env var → project → user → system)
 - **Backward compatible:** Project-local config (`./validate_maintainership.yaml`) still works
-- **Recommended:** Use `bugowner init` to create user config for global access
+- **Recommended:** Use `bugownerctl init` to create user config for global access
 
-**Compatibility:** `_maintainership.json` and other data files shared between old and new. **Breaking:** the runtime `false_positives.json` cache is no longer used. Source-name overrides now ship in the wheel at `bugowner/data/false_positives_overrides.json` and are edited via PR. Any leftover `~/.cache/bugownership/false_positives.json` from a previous version is harmless and can be removed with `rm ~/.cache/bugownership/false_positives.json`. See `docs/adr/0001-source-name-resolution.md`.
+**Compatibility:** `_maintainership.json` and other data files shared between old and new. **Breaking:** the runtime `false_positives.json` cache is no longer used. Source-name overrides now ship in the wheel at `bugownerctl/data/false_positives_overrides.json` and are edited via PR. Any leftover `~/.cache/bugownerctl/false_positives.json` from a previous version is harmless and can be removed with `rm ~/.cache/bugownerctl/false_positives.json`. See `docs/adr/0001-source-name-resolution.md`.
 
 ## Troubleshooting
 
 **"Config file not found"**
 ```bash
 # Option 1: Create user config (recommended)
-bugowner init
+bugownerctl init
 
 # Option 2: Create project-local config
-bugowner init --location local
+bugownerctl init --location local
 
 # Option 3: Explicitly specify config location
-bugowner validate -v 16.1 --config /path/to/config.yaml
+bugownerctl validate -v 16.1 --config /path/to/config.yaml
 
 # Option 4: Use environment variable
-export BUGOWNER_CONFIG=/path/to/config.yaml
-bugowner validate -v 16.1
+export BUGOWNERCTL_CONFIG=/path/to/config.yaml
+bugownerctl validate -v 16.1
 
 # View search locations (error message shows all paths checked)
-bugowner validate -v 16.1  # If no config found, shows search hierarchy
+bugownerctl validate -v 16.1  # If no config found, shows search hierarchy
 ```
 
 **"Config file exists" (when running init)**
 ```bash
 # Overwrite existing config
-bugowner init --force
+bugownerctl init --force
 
 # Or manually edit existing config
-vim ~/.config/bugownership/config.yaml
+vim ~/.config/bugownerctl/config.yaml
 ```
 
 **"ModuleNotFoundError"**
@@ -740,7 +740,7 @@ ssh -T gitea@src.suse.de
 **"Coverage below 90%"**
 ```bash
 # Run full test suite
-pytest --cov=src/bugowner --cov-report=html
+pytest --cov=src/bugownerctl --cov-report=html
 firefox htmlcov/index.html
 ```
 
@@ -753,19 +753,19 @@ firefox htmlcov/index.html
 **"Download or parsing errors"**
 ```bash
 # Clear cache for affected version
-rm -rf ~/.cache/bugownership/repodata/16.1/
+rm -rf ~/.cache/bugownerctl/repodata/16.1/
 
 # Retry validation (will re-download)
-bugowner validate -v 16.1
+bugownerctl validate -v 16.1
 ```
 
 **"Cache corruption or stale data"**
 ```bash
 # Clear all cached metadata
-rm -rf ~/.cache/bugownership/repodata/
+rm -rf ~/.cache/bugownerctl/repodata/
 
 # Or clear specific version
-rm -rf ~/.cache/bugownership/repodata/16.0/
+rm -rf ~/.cache/bugownerctl/repodata/16.0/
 
 # Cache rebuilds automatically on next run
 ```
@@ -773,19 +773,19 @@ rm -rf ~/.cache/bugownership/repodata/16.0/
 **"OBS bulk map is stale or corrupt"**
 ```bash
 # Force re-fetch without touching repodata cache
-bugowner validate -v 16.1 --refresh-bulk-map
+bugownerctl validate -v 16.1 --refresh-bulk-map
 
 # Or delete the cache files manually (re-fetched on next run)
-rm -f ~/.cache/bugownership/obs_bulk_map.xml ~/.cache/bugownership/obs_bulk_map.meta.json
+rm -f ~/.cache/bugownerctl/obs_bulk_map.xml ~/.cache/bugownerctl/obs_bulk_map.meta.json
 ```
 
 **"Disk space issues"**
 ```bash
 # Check cache size (each version ~20-50MB)
-du -sh ~/.cache/bugownership/repodata/*/
+du -sh ~/.cache/bugownerctl/repodata/*/
 
 # Remove old/unused version caches
-rm -rf ~/.cache/bugownership/repodata/15.*/
+rm -rf ~/.cache/bugownerctl/repodata/15.*/
 ```
 
 ## Security
@@ -811,14 +811,14 @@ Uses `Path.resolve() + relative_to()` pattern to ensure config file names stay w
 ```
 ValueError: Whitelist file escapes base directory: 
 '../../../etc/passwd' resolves to /home/user/etc/passwd 
-(outside /home/user/.cache/bugownership/SLFO)
+(outside /home/user/.cache/bugownerctl/SLFO)
 ```
 
 ### File Location Security
 
 - **Whitelist file:** Read from cloned SLFO repository (validated)
 - **Maintainership file:** Read from cloned SLFO repository (validated)
-- **Source-name overrides:** Read-only from `bugowner/data/false_positives_overrides.json` (wheel-resident). Loader caps body at 1 MiB, treats missing or non-regular paths as `{}` (no overrides), requires a JSON object root with `str | None` values, tolerates a UTF-8 BOM.
+- **Source-name overrides:** Read-only from `bugownerctl/data/false_positives_overrides.json` (wheel-resident). Loader caps body at 1 MiB, treats missing or non-regular paths as `{}` (no overrides), requires a JSON object root with `str | None` values, tolerates a UTF-8 BOM.
 - **OBS bulk source-info cache:** Read/write at `{cache_dir}/obs_bulk_map.xml` plus a `obs_bulk_map.meta.json` sidecar (`{project, fetched_at, sha256}`). Symlinks rejected; atomic temp+rename on write; SHA-256 integrity check on read; 7-day TTL; cache files chmod 0o600 (parent dir 0o700). Filenames are constant — switching projects triggers a re-fetch via the meta `project` cross-check, not a per-project filename.
 
 ## Contributing
@@ -848,5 +848,5 @@ git commit
 
 - Issues: [GitHub Issues](link)
 - Documentation: See `IMPLEMENTATION_PLAN.md`
-- Help: `bugowner --help`
+- Help: `bugownerctl --help`
 - CI Status: Check GitHub Actions tab

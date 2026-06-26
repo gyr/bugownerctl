@@ -80,8 +80,8 @@ The resolver pipeline becomes: **overrides → bulk_map → identity fallthrough
 
 ## References
 
-- `src/bugowner/repositories/obs_bulk_source_info_repository.py` — bulk fetch + cache implementation.
-- `src/bugowner/repositories/name_overrides_repository.py` — overrides loader.
-- `src/bugowner/services/validation_service.py` (`find_shipped_without_submodule`) — pipeline assembly point.
+- `src/bugownerctl/repositories/obs_bulk_source_info_repository.py` — bulk fetch + cache implementation.
+- `src/bugownerctl/repositories/name_overrides_repository.py` — overrides loader.
+- `src/bugownerctl/services/validation_service.py` (`find_shipped_without_submodule`) — pipeline assembly point.
 - `CHANGELOG.md` — user-facing migration notes.
 - Git history `e9a7f67~6..e9a7f67` — the six rollout commits (domain → bulk repo → overrides repo → parallel-path pipeline → service cut-over → legacy deletion).

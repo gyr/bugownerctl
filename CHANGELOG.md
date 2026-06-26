@@ -6,13 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - Unreleased
+
 ### Added
 
-- `--version` flag on the top-level `bugowner` command. Prints the installed version (derived from the git tag via `hatch-vcs`) and exits.
+- `--version` flag on the top-level `bugownerctl` command. Prints the installed version (derived from the git tag via `hatch-vcs`) and exits.
 
 ### Changed
 
 - Version is now derived from git tags via `hatch-vcs`. The static `version =` field has been removed from `pyproject.toml`; tagging a commit is the only step needed to cut a release. Untagged commits get an automatic PEP 440 dev suffix (e.g. `0.2.0.dev3+gabcdef1`).
+- **BREAKING**: Python distribution renamed `bugowner` → `bugownerctl`; console script renamed `bugowner` → `bugownerctl`; import path is now `bugownerctl.*`.
+- **BREAKING**: env var `BUGOWNER_CONFIG` → `BUGOWNERCTL_CONFIG`.
+- **BREAKING**: config search paths `~/.config/bugownership/` & `/etc/bugownership/` → `~/.config/bugownerctl/` & `/etc/bugownerctl/`; default cache dir `~/.cache/bugownership` → `~/.cache/bugownerctl`.
+
+### Migration
+
+- `mv ~/.config/bugownership ~/.config/bugownerctl`; `mv ~/.cache/bugownership ~/.cache/bugownerctl`; replace `BUGOWNER_CONFIG` with `BUGOWNERCTL_CONFIG` in env files; uninstall old `bugowner`, install `bugownerctl`. No compatibility shim is provided.
 
 ## [0.2.0] - 2026-06-10
 
