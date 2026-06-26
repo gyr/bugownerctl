@@ -2,15 +2,43 @@
 
 import argparse
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
 from bugownerctl.commands.query import run_maintainer, run_package
+from bugownerctl.commands.repo_prep import SlfoRepoContext
 from bugownerctl.services.query_service import (
     PackageMaintainershipResult,
     PackageStatus,
 )
+
+_BASE_CONFIG: dict[str, Any] = {
+    "cache_dir": "~/.cache/bugownerctl",
+    "slfo_git_url": "https://github.com/test/repo",
+    "maintainership_file": "_maintainership.json",
+    "whitelist_file": "whitelist_maintainership.json",
+    "products": [{"version": "16.1", "branch": "main"}],
+}
+
+
+def _patch_prep(
+    monkeypatch: pytest.MonkeyPatch,
+    slfo_repo_path: Path = Path("/cache/SLFO"),
+    config: dict[str, Any] | None = None,
+) -> tuple[Mock, SlfoRepoContext]:
+    """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
+    cfg = config if config is not None else _BASE_CONFIG
+    fake_slfo_context = SlfoRepoContext(
+        config=cfg,
+        cache_dir=Path.home() / ".cache" / "bugownerctl",
+        slfo_repo_path=slfo_repo_path,
+        git_repo=Mock(),
+    )
+    mock_prep = Mock(return_value=fake_slfo_context)
+    monkeypatch.setattr("bugownerctl.commands.query.prepare_slfo_repo", mock_prep)
+    return mock_prep, fake_slfo_context
 
 
 class TestRunPackage:
@@ -18,13 +46,7 @@ class TestRunPackage:
 
     def test_creates_repository_instance(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create MaintainershipRepositoryImpl instance."""
-        # Mock config loading
-        mock_config = {
-            "maintainership_file": "_maintainership.json",
-            "whitelist_file": "whitelist_maintainership.json",
-        }
-        mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("bugownerctl.commands.query.load_config", mock_load_config)
+        _patch_prep(monkeypatch)
 
         # Mock repository class
         mock_maintainership_repo_cls = Mock()
@@ -43,10 +65,7 @@ class TestRunPackage:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        # Mock Path.cwd
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(package_name="test-pkg")
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
         run_package(args)
 
         # Verify repository was instantiated
@@ -54,13 +73,7 @@ class TestRunPackage:
 
     def test_creates_query_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create QueryService with repository instance."""
-        mock_config = {
-            "maintainership_file": "_maintainership.json",
-            "whitelist_file": "whitelist_maintainership.json",
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         # Create mock repository instance
         mock_maintainership_repo = Mock()
@@ -79,9 +92,7 @@ class TestRunPackage:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(package_name="test-pkg")
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
         run_package(args)
 
         # Verify QueryService created with repository
@@ -91,13 +102,7 @@ class TestRunPackage:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call QueryService.check_package_maintainership() with correct parameters."""
-        mock_config = {
-            "maintainership_file": "_maintainership.json",
-            "whitelist_file": "whitelist_maintainership.json",
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         # Mock repositories
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
@@ -113,9 +118,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(package_name="test-pkg")
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
         run_package(args)
 
         # Verify check_package_maintainership called with correct parameters
@@ -129,13 +132,7 @@ class TestRunPackage:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print MAINTAINED status with maintainers list."""
-        mock_config = {
-            "maintainership_file": "_maintainership.json",
-            "whitelist_file": "whitelist_maintainership.json",
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -150,9 +147,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(package_name="test-pkg")
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
         run_package(args)
 
         captured = capsys.readouterr()
@@ -165,13 +160,7 @@ class TestRunPackage:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print WHITELISTED status."""
-        mock_config = {
-            "maintainership_file": "_maintainership.json",
-            "whitelist_file": "whitelist_maintainership.json",
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -186,9 +175,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(package_name="test-pkg")
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
         run_package(args)
 
         captured = capsys.readouterr()
@@ -199,13 +186,7 @@ class TestRunPackage:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print NOT_FOUND status."""
-        mock_config = {
-            "maintainership_file": "_maintainership.json",
-            "whitelist_file": "whitelist_maintainership.json",
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -220,9 +201,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(package_name="test-pkg")
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
         run_package(args)
 
         captured = capsys.readouterr()
@@ -231,13 +210,7 @@ class TestRunPackage:
 
     def test_returns_zero_exit_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return 0 exit code after successful query."""
-        mock_config = {
-            "maintainership_file": "_maintainership.json",
-            "whitelist_file": "whitelist_maintainership.json",
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -251,12 +224,58 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(package_name="test-pkg")
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
         result = run_package(args)
 
         assert result == 0
+
+    def test_run_package_resolves_both_files_under_slfo_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should resolve both maintainership and whitelist files under slfo_repo_path."""
+        _patch_prep(monkeypatch, slfo_repo_path=Path("/cache/SLFO"))
+
+        monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
+
+        mock_service = Mock()
+        mock_service.check_package_maintainership.return_value = PackageMaintainershipResult(
+            package_name="test-pkg",
+            status=PackageStatus.MAINTAINED,
+            maintainers=["user@example.com"],
+        )
+        monkeypatch.setattr(
+            "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
+        )
+
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        run_package(args)
+
+        call_args = mock_service.check_package_maintainership.call_args[0]
+        assert call_args[1] == Path("/cache/SLFO/_maintainership.json")
+        assert call_args[2] == Path("/cache/SLFO/whitelist_maintainership.json")
+
+    def test_run_package_forwards_version_and_config_to_prepare_slfo_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should forward version and config args to prepare_slfo_repo."""
+        mock_prep, _ = _patch_prep(monkeypatch)
+
+        monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
+
+        mock_service = Mock()
+        mock_service.check_package_maintainership.return_value = PackageMaintainershipResult(
+            package_name="test-pkg",
+            status=PackageStatus.MAINTAINED,
+            maintainers=["user@example.com"],
+        )
+        monkeypatch.setattr(
+            "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
+        )
+
+        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        run_package(args)
+
+        mock_prep.assert_called_once_with("16.1", None)
 
 
 class TestRunMaintainer:
@@ -264,9 +283,7 @@ class TestRunMaintainer:
 
     def test_creates_repository_instance(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create MaintainershipRepositoryImpl instance."""
-        mock_config = {"maintainership_file": "_maintainership.json"}
-        mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("bugownerctl.commands.query.load_config", mock_load_config)
+        _patch_prep(monkeypatch)
 
         # Mock repository class
         mock_maintainership_repo_cls = Mock()
@@ -281,9 +298,7 @@ class TestRunMaintainer:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(maintainer_name="user@example.com")
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
         run_maintainer(args)
 
         # Verify repository was instantiated
@@ -291,10 +306,7 @@ class TestRunMaintainer:
 
     def test_creates_query_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create QueryService with repository instance."""
-        mock_config = {"maintainership_file": "_maintainership.json"}
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         # Create mock repository instance
         mock_maintainership_repo = Mock()
@@ -309,9 +321,7 @@ class TestRunMaintainer:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(maintainer_name="user@example.com")
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
         run_maintainer(args)
 
         # Verify QueryService created with repository
@@ -321,10 +331,7 @@ class TestRunMaintainer:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call QueryService.get_packages_by_maintainer() with correct parameters."""
-        mock_config = {"maintainership_file": "_maintainership.json"}
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -335,9 +342,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(maintainer_name="user@example.com")
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
         run_maintainer(args)
 
         # Verify get_packages_by_maintainer called with correct parameters
@@ -350,10 +355,7 @@ class TestRunMaintainer:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print packages list."""
-        mock_config = {"maintainership_file": "_maintainership.json"}
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -364,9 +366,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(maintainer_name="user@example.com")
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
         run_maintainer(args)
 
         captured = capsys.readouterr()
@@ -379,10 +379,7 @@ class TestRunMaintainer:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print 'No packages found' when maintainer has no packages."""
-        mock_config = {"maintainership_file": "_maintainership.json"}
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -393,9 +390,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(maintainer_name="user@example.com")
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
         run_maintainer(args)
 
         captured = capsys.readouterr()
@@ -403,10 +398,7 @@ class TestRunMaintainer:
 
     def test_returns_zero_exit_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return 0 exit code after successful query."""
-        mock_config = {"maintainership_file": "_maintainership.json"}
-        monkeypatch.setattr(
-            "bugownerctl.commands.query.load_config", Mock(return_value=mock_config)
-        )
+        _patch_prep(monkeypatch)
 
         monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
 
@@ -416,9 +408,46 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        monkeypatch.setattr("bugownerctl.commands.query.Path.cwd", lambda: Path("/test"))
-
-        args = argparse.Namespace(maintainer_name="user@example.com")
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
         result = run_maintainer(args)
 
         assert result == 0
+
+    def test_run_maintainer_resolves_only_maintainership_under_slfo_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should resolve maintainership file under slfo_repo_path."""
+        _patch_prep(monkeypatch, slfo_repo_path=Path("/cache/SLFO"))
+
+        monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
+
+        mock_service = Mock()
+        mock_service.get_packages_by_maintainer.return_value = ["pkg1"]
+        monkeypatch.setattr(
+            "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
+        )
+
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        run_maintainer(args)
+
+        call_args = mock_service.get_packages_by_maintainer.call_args[0]
+        assert call_args[1] == Path("/cache/SLFO/_maintainership.json")
+
+    def test_run_maintainer_forwards_version_and_config_to_prepare_slfo_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should forward version and config args to prepare_slfo_repo."""
+        mock_prep, _ = _patch_prep(monkeypatch)
+
+        monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
+
+        mock_service = Mock()
+        mock_service.get_packages_by_maintainer.return_value = ["pkg1"]
+        monkeypatch.setattr(
+            "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
+        )
+
+        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        run_maintainer(args)
+
+        mock_prep.assert_called_once_with("16.1", None)

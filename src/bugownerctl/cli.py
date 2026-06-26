@@ -96,12 +96,32 @@ def create_parser() -> argparse.ArgumentParser:
         "package", help="Check maintainership status of a package"
     )
     package_parser.add_argument("package_name", help="Package name to check")
+    package_parser.add_argument(
+        "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+    )
+    package_parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (default: search standard locations)",
+    )
     package_parser.set_defaults(func=query.run_package)
 
     maintainer_parser = query_subparsers.add_parser(
         "maintainer", help="List packages maintained by a user/group"
     )
     maintainer_parser.add_argument("maintainer_name", help="User or group name")
+    maintainer_parser.add_argument(
+        "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+    )
+    maintainer_parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (default: search standard locations)",
+    )
     maintainer_parser.set_defaults(func=query.run_maintainer)
 
     return parser
