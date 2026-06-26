@@ -28,9 +28,9 @@ def run(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = no issues, 1 = inconsistencies found)
     """
-    ctx = prepare_slfo_repo(args.version, args.config)
+    slfo_context = prepare_slfo_repo(args.version, args.config)
 
-    whitelist_file_name = ctx.config.get("whitelist_file", "whitelist_maintainership.json")
+    whitelist_file_name = slfo_context.config.get("whitelist_file", "whitelist_maintainership.json")
 
     maintainership_repo = MaintainershipRepositoryImpl()
     metadata_repo = RepoMetadataRepositoryImpl()
@@ -39,22 +39,24 @@ def run(args: argparse.Namespace) -> int:
 
     validation_service = ValidationService(
         maintainership_repo,
-        ctx.git_repo,
+        slfo_context.git_repo,
         metadata_repo,
         bulk_map_repo=bulk_map_repo,
         overrides_repo=overrides_repo,
     )
     whitelist_service = WhitelistService(validation_service)
 
-    repo_metadata_file = metadata_repo.download_primary_metadata(args.version, ctx.cache_dir)
+    repo_metadata_file = metadata_repo.download_primary_metadata(
+        args.version, slfo_context.cache_dir
+    )
 
     shipped_packages = metadata_repo.parse_source_packages(repo_metadata_file)
-    submodules = ctx.git_repo.list_submodules(ctx.slfo_repo_path)
+    submodules = slfo_context.git_repo.list_submodules(slfo_context.slfo_repo_path)
 
     # Use paths from cloned SLFO repository (whitelist) and cache_dir (XDG)
     # Validate to prevent path traversal via config
     whitelist_file = validate_file_within_directory(
-        ctx.slfo_repo_path, whitelist_file_name, "Whitelist file"
+        slfo_context.slfo_repo_path, whitelist_file_name, "Whitelist file"
     )
 
     # Resolve the shipped overrides JSON via importlib.resources so it
@@ -66,7 +68,7 @@ def run(args: argparse.Namespace) -> int:
             shipped_packages=shipped_packages,
             submodules=submodules,
             overrides_file=overrides_file,
-            cache_dir=ctx.cache_dir,
+            cache_dir=slfo_context.cache_dir,
             force_refresh=args.refresh_bulk_map,
         )
 

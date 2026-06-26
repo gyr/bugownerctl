@@ -33,17 +33,17 @@ def _patch_prep(
     slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
 ) -> tuple[Mock, SlfoRepoContext]:
-    """Patch prepare_slfo_repo and return (mock_func, fake_ctx)."""
+    """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
     cfg = config if config is not None else _BASE_CONFIG
-    fake_ctx = SlfoRepoContext(
+    fake_slfo_context = SlfoRepoContext(
         config=cfg,
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
     )
-    mock_prep = Mock(return_value=fake_ctx)
+    mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.validate.prepare_slfo_repo", mock_prep)
-    return mock_prep, fake_ctx
+    return mock_prep, fake_slfo_context
 
 
 def _patch_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
@@ -102,7 +102,7 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should create ValidationService with new bulk_map+overrides repos."""
-        mock_prep, fake_ctx = _patch_prep(monkeypatch)
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch)
 
         mock_maint_inst = Mock()
         mock_meta_inst = Mock()
@@ -133,7 +133,7 @@ class TestValidateCommand:
 
         cls_mock.assert_called_once_with(
             mock_maint_inst,
-            fake_ctx.git_repo,
+            fake_slfo_context.git_repo,
             mock_meta_inst,
             bulk_map_repo=mock_bulk_inst,
             overrides_repo=mock_over_inst,
@@ -143,7 +143,7 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call ValidationService.validate_all() with correct parameters."""
-        mock_prep, fake_ctx = _patch_prep(monkeypatch)
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch)
         repos = _patch_other_repos(monkeypatch)
         repos["metadata"].return_value.download_primary_metadata.return_value = Path(
             "/test/cache/primary.xml.gz"
@@ -386,7 +386,7 @@ class TestValidateCommand:
     ) -> None:
         """Should use _maintainership.json from cloned SLFO repo, not cwd."""
         slfo_repo_path = Path("/cache/bugownerctl/SLFO")
-        mock_prep, fake_ctx = _patch_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
         _patch_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 

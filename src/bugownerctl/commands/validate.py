@@ -27,24 +27,28 @@ def run(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success, 1 = validation failures found)
     """
-    ctx = prepare_slfo_repo(args.version, args.config)
+    slfo_context = prepare_slfo_repo(args.version, args.config)
 
-    maintainership_file_name = ctx.config.get("maintainership_file", "_maintainership.json")
+    maintainership_file_name = slfo_context.config.get(
+        "maintainership_file", "_maintainership.json"
+    )
 
     maintainership_repo = MaintainershipRepositoryImpl()
     metadata_repo = RepoMetadataRepositoryImpl()
     bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
 
-    repo_metadata_file = metadata_repo.download_primary_metadata(args.version, ctx.cache_dir)
+    repo_metadata_file = metadata_repo.download_primary_metadata(
+        args.version, slfo_context.cache_dir
+    )
 
     maintainership_file = validate_file_within_directory(
-        ctx.slfo_repo_path, maintainership_file_name, "Maintainership file"
+        slfo_context.slfo_repo_path, maintainership_file_name, "Maintainership file"
     )
 
     service = ValidationService(
         maintainership_repo,
-        ctx.git_repo,
+        slfo_context.git_repo,
         metadata_repo,
         bulk_map_repo=bulk_map_repo,
         overrides_repo=overrides_repo,
@@ -56,8 +60,8 @@ def run(args: argparse.Namespace) -> int:
             maintainership_file=maintainership_file,
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
-            cache_dir=ctx.cache_dir,
-            git_dir=ctx.slfo_repo_path,
+            cache_dir=slfo_context.cache_dir,
+            git_dir=slfo_context.slfo_repo_path,
             force_refresh=args.refresh_bulk_map,
         )
 

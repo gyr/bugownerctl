@@ -29,24 +29,24 @@ def _patch_prep(
     slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
 ) -> tuple[Mock, SlfoRepoContext]:
-    """Patch prepare_slfo_repo and return (mock_func, fake_ctx)."""
+    """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
     cfg = config if config is not None else _BASE_CONFIG
-    fake_ctx = SlfoRepoContext(
+    fake_slfo_context = SlfoRepoContext(
         config=cfg,
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
     )
-    mock_prep = Mock(return_value=fake_ctx)
+    mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.whitelist.prepare_slfo_repo", mock_prep)
-    return mock_prep, fake_ctx
+    return mock_prep, fake_slfo_context
 
 
 def _patch_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
     """Patch the 4 repos whitelist.py constructs directly.
 
     Returns a dict of mock classes. Note: whitelist.py does NOT construct
-    GitRepositoryImpl directly after the refactor — git_repo comes from ctx.
+    GitRepositoryImpl directly after the refactor — git_repo comes from slfo_context.
     """
     mock_maint_cls = Mock()
     mock_meta_cls = Mock()
@@ -117,8 +117,8 @@ class TestWhitelistCheckCommand:
     def test_run_creates_validation_service_with_new_repos(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should create ValidationService receiving fake_ctx.git_repo (P4 instance reuse)."""
-        mock_prep, fake_ctx = _patch_prep(monkeypatch)
+        """Should create ValidationService receiving fake_slfo_context.git_repo."""
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch)
 
         mock_maint_inst = Mock()
         mock_meta_inst = Mock()
@@ -149,10 +149,10 @@ class TestWhitelistCheckCommand:
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
-        # ValidationService called with ctx.git_repo (not a fresh GitRepositoryImpl).
+        # ValidationService called with slfo_context.git_repo (not a fresh GitRepositoryImpl).
         services["validation_cls"].assert_called_once_with(
             mock_maint_inst,
-            fake_ctx.git_repo,
+            fake_slfo_context.git_repo,
             mock_meta_inst,
             bulk_map_repo=mock_bulk_inst,
             overrides_repo=mock_over_inst,
@@ -176,7 +176,7 @@ class TestWhitelistCheckCommand:
     ) -> None:
         """Should call WhitelistService.check_whitelist() with correct parameters."""
         slfo_repo_path = Path("/cache/SLFO")
-        mock_prep, fake_ctx = _patch_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
 
         repos = _patch_other_repos(monkeypatch)
         repos["metadata"].return_value.parse_source_packages.return_value = {
@@ -184,7 +184,7 @@ class TestWhitelistCheckCommand:
             "pkg2",
             "pkg3",
         }
-        fake_ctx.git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
+        fake_slfo_context.git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
 
         services = _patch_services(monkeypatch)
 
@@ -197,8 +197,8 @@ class TestWhitelistCheckCommand:
         assert call_args["whitelist_file"] == slfo_repo_path / "whitelist_maintainership.json"
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert call_args["submodules"] == ["pkg1", "pkg2"]
-        # cache_dir must come from fake_ctx
-        assert call_args["cache_dir"] == fake_ctx.cache_dir
+        # cache_dir must come from fake_slfo_context
+        assert call_args["cache_dir"] == fake_slfo_context.cache_dir
         # overrides_file must resolve via importlib.resources to the shipped JSON
         assert isinstance(call_args["overrides_file"], Path)
         assert call_args["overrides_file"].name == "false_positives_overrides.json"
@@ -407,13 +407,15 @@ class TestWhitelistCheckCommand:
     def test_run_calls_list_submodules_on_ctx_git_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should call list_submodules on ctx.git_repo, not a fresh GitRepositoryImpl."""
-        mock_prep, fake_ctx = _patch_prep(monkeypatch)
+        """Should call list_submodules on slfo_context.git_repo, not a fresh GitRepositoryImpl."""
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch)
         _patch_other_repos(monkeypatch)
         _patch_services(monkeypatch)
-        fake_ctx.git_repo.list_submodules.return_value = ["submodule1"]
+        fake_slfo_context.git_repo.list_submodules.return_value = ["submodule1"]
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
-        fake_ctx.git_repo.list_submodules.assert_called_once_with(fake_ctx.slfo_repo_path)
+        fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
+            fake_slfo_context.slfo_repo_path
+        )
