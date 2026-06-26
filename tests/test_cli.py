@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from bugowner.cli import create_parser, main
+from bugownerctl.cli import create_parser, main
 
 
 class TestCreateParser:
@@ -18,7 +18,7 @@ class TestCreateParser:
             parser.parse_args(["--version"])
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
-        assert "bugowner" in captured.out
+        assert "bugownerctl" in captured.out
 
     def test_parser_has_debug_flag(self) -> None:
         """Parser should support --debug flag."""
@@ -72,7 +72,7 @@ class TestCreateParser:
 
     def test_whitelist_check_wires_correct_handler(self) -> None:
         """Whitelist-check should wire whitelist.run as handler."""
-        from bugowner.commands import whitelist
+        from bugownerctl.commands import whitelist
 
         parser = create_parser()
         args = parser.parse_args(["whitelist-check", "-v", "16.1"])
@@ -102,7 +102,7 @@ class TestCreateParser:
 
     def test_query_package_wires_correct_handler(self) -> None:
         """Query package should wire query.run_package as handler."""
-        from bugowner.commands import query
+        from bugownerctl.commands import query
 
         parser = create_parser()
         args = parser.parse_args(["query", "package", "test-pkg"])
@@ -110,7 +110,7 @@ class TestCreateParser:
 
     def test_query_maintainer_wires_correct_handler(self) -> None:
         """Query maintainer should wire query.run_maintainer as handler."""
-        from bugowner.commands import query
+        from bugownerctl.commands import query
 
         parser = create_parser()
         args = parser.parse_args(["query", "maintainer", "testuser"])
@@ -235,7 +235,7 @@ class TestCreateParser:
 
     def test_init_wires_correct_handler(self) -> None:
         """Init should wire init.run as handler."""
-        from bugowner.commands import init
+        from bugownerctl.commands import init
 
         parser = create_parser()
         args = parser.parse_args(["init"])
@@ -257,7 +257,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=Mock(return_value=0))
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         main()
 
@@ -278,7 +278,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=True, func=Mock(return_value=0))
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         main()
 
@@ -294,7 +294,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         result = main()
 
@@ -310,7 +310,7 @@ class TestMain:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         result = main()
 
@@ -334,7 +334,7 @@ class TestMainExceptionHandling:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         result = main()
 
@@ -358,7 +358,7 @@ class TestMainExceptionHandling:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         result = main()
 
@@ -378,7 +378,7 @@ class TestMainExceptionHandling:
         mock_parser = Mock()
         mock_args = Mock(debug=True, func=mock_handler)  # debug=True
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         result = main()
 
@@ -399,7 +399,7 @@ class TestMainExceptionHandling:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         result = main()
 
@@ -418,7 +418,7 @@ class TestMainExceptionHandling:
         mock_parser = Mock()
         mock_args = Mock(debug=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
-        monkeypatch.setattr("bugowner.cli.create_parser", lambda: mock_parser)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         result = main()
 

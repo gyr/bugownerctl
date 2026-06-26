@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from bugowner.services.validation_service import ValidationService
+    from bugownerctl.services.validation_service import ValidationService
 
 
 @dataclass

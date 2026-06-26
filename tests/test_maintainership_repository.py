@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
+from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 
 
 class TestMaintainershipRepositoryLoad:
@@ -152,7 +152,7 @@ class TestMaintainershipRepositoryGetPackages:
 
     def test_get_packages_returns_all_package_names(self):
         """Should return set of all package names."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(
             packages={
@@ -169,7 +169,7 @@ class TestMaintainershipRepositoryGetPackages:
 
     def test_get_packages_returns_empty_set_for_empty_data(self):
         """Should return empty set for empty packages."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(packages={})
 
@@ -184,7 +184,7 @@ class TestMaintainershipRepositoryGetMaintainers:
 
     def test_get_maintainers_returns_list_for_existing_package(self):
         """Should return maintainers list for existing package."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(
             packages={
@@ -200,7 +200,7 @@ class TestMaintainershipRepositoryGetMaintainers:
 
     def test_get_maintainers_returns_empty_list_for_nonexistent_package(self):
         """Should return empty list for non-existent package."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(packages={"apache2": ["user1"]})
 
@@ -211,7 +211,7 @@ class TestMaintainershipRepositoryGetMaintainers:
 
     def test_get_maintainers_returns_empty_list_for_orphan_package(self):
         """Should return empty list for package with no maintainers."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(packages={"orphan": []})
 
@@ -226,7 +226,7 @@ class TestMaintainershipRepositoryGetPackagesByMaintainer:
 
     def test_get_packages_by_maintainer_returns_user_packages(self):
         """Should return all packages maintained by user."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(
             packages={
@@ -244,7 +244,7 @@ class TestMaintainershipRepositoryGetPackagesByMaintainer:
 
     def test_get_packages_by_maintainer_returns_group_packages(self):
         """Should return all packages maintained by group."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(
             packages={
@@ -261,7 +261,7 @@ class TestMaintainershipRepositoryGetPackagesByMaintainer:
 
     def test_get_packages_by_maintainer_returns_empty_for_nonexistent(self):
         """Should return empty list for non-existent maintainer."""
-        from bugowner.domain.maintainer import MaintainershipData
+        from bugownerctl.domain.maintainer import MaintainershipData
 
         data = MaintainershipData(packages={"apache2": ["user1"]})
 

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from bugowner.repositories.name_overrides_repository import (
+from bugownerctl.repositories.name_overrides_repository import (
     MAX_OVERRIDES_BYTES,
     NameOverridesRepository,
     NameOverridesRepositoryImpl,
@@ -159,7 +159,7 @@ class TestLoad:
         Resolved via importlib.resources so it works from a source checkout
         and from an installed wheel alike.
         """
-        resource = files("bugowner.data") / "false_positives_overrides.json"
+        resource = files("bugownerctl.data") / "false_positives_overrides.json"
         # importlib.resources.files returns a Traversable; for a file in a
         # regular package it is backed by a real Path. as_file() handles
         # the zipped-wheel case too.

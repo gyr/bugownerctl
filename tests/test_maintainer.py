@@ -2,7 +2,7 @@
 
 import pytest
 
-from bugowner.domain.maintainer import Maintainer, MaintainershipData
+from bugownerctl.domain.maintainer import Maintainer, MaintainershipData
 
 
 class TestMaintainer:

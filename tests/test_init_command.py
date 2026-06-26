@@ -3,7 +3,7 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from bugowner.commands.init import run
+from bugownerctl.commands.init import run
 
 
 class TestInitCommand:
@@ -13,14 +13,14 @@ class TestInitCommand:
         """Should create config in user XDG config directory."""
         # Mock HOME to use tmp_path
         monkeypatch.setenv("HOME", str(tmp_path))
-        config_home = tmp_path / ".config" / "bugownership"
+        config_home = tmp_path / ".config" / "bugownerctl"
 
         # Mock bundled example
         example_content = "products:\n  - version: '16.0'\n"
         example_file = tmp_path / "example.yaml"
         example_file.write_text(example_content)
 
-        with patch("bugowner.commands.init.files") as mock_files:
+        with patch("bugownerctl.commands.init.files") as mock_files:
             mock_files.return_value.joinpath.return_value = example_file
 
             args = Mock(location="user", force=False)
@@ -39,7 +39,7 @@ class TestInitCommand:
         example_file = tmp_path / "example.yaml"
         example_file.write_text(example_content)
 
-        with patch("bugowner.commands.init.files") as mock_files:
+        with patch("bugownerctl.commands.init.files") as mock_files:
             mock_files.return_value.joinpath.return_value = example_file
 
             args = Mock(location="local", force=False)
@@ -52,16 +52,16 @@ class TestInitCommand:
     def test_init_system_location_creates_config(self, tmp_path, monkeypatch):
         """Should create config in /etc directory (mocked)."""
         # Mock the system config path to use tmp_path
-        system_config = tmp_path / "etc" / "bugownership" / "config.yaml"
+        system_config = tmp_path / "etc" / "bugownerctl" / "config.yaml"
 
         example_content = "products:\n  - version: '16.0'\n"
         example_file = tmp_path / "example.yaml"
         example_file.write_text(example_content)
 
-        with patch("bugowner.commands.init.files") as mock_files:
+        with patch("bugownerctl.commands.init.files") as mock_files:
             mock_files.return_value.joinpath.return_value = example_file
 
-            with patch("bugowner.commands.init.Path") as mock_path_class:
+            with patch("bugownerctl.commands.init.Path") as mock_path_class:
                 # Make Path("/etc/...") return our tmp_path version
                 def path_side_effect(path_str):
                     if str(path_str).startswith("/etc"):
@@ -78,7 +78,7 @@ class TestInitCommand:
 
     def test_init_refuses_overwrite_without_force(self, tmp_path, monkeypatch):
         """Should refuse to overwrite existing config without --force."""
-        config_home = tmp_path / ".config" / "bugownership"
+        config_home = tmp_path / ".config" / "bugownerctl"
         config_home.mkdir(parents=True)
         existing_config = config_home / "config.yaml"
         existing_config.write_text("existing content")
@@ -93,7 +93,7 @@ class TestInitCommand:
 
     def test_init_overwrites_with_force(self, tmp_path, monkeypatch):
         """Should overwrite existing config with --force."""
-        config_home = tmp_path / ".config" / "bugownership"
+        config_home = tmp_path / ".config" / "bugownerctl"
         config_home.mkdir(parents=True)
         existing_config = config_home / "config.yaml"
         existing_config.write_text("old content")
@@ -104,7 +104,7 @@ class TestInitCommand:
         example_file = tmp_path / "example.yaml"
         example_file.write_text(new_content)
 
-        with patch("bugowner.commands.init.files") as mock_files:
+        with patch("bugownerctl.commands.init.files") as mock_files:
             mock_files.return_value.joinpath.return_value = example_file
 
             args = Mock(location="user", force=True)
@@ -120,7 +120,7 @@ class TestInitCommand:
         example_file = tmp_path / "example.yaml"
         example_file.write_text("content")
 
-        with patch("bugowner.commands.init.files") as mock_files:
+        with patch("bugownerctl.commands.init.files") as mock_files:
             mock_files.return_value.joinpath.return_value = example_file
 
             with patch("shutil.copy2", side_effect=PermissionError("Access denied")):
@@ -136,7 +136,7 @@ class TestInitCommand:
         # Mock files() to return a path that doesn't exist
         missing_file = tmp_path / "nonexistent.yaml"
 
-        with patch("bugowner.commands.init.files") as mock_files:
+        with patch("bugownerctl.commands.init.files") as mock_files:
             mock_files.return_value.joinpath.return_value = missing_file
 
             args = Mock(location="user", force=False)
@@ -157,7 +157,7 @@ class TestInitCommand:
         """Should handle errors when locating bundled example."""
         monkeypatch.setenv("HOME", str(tmp_path))
 
-        with patch("bugowner.commands.init.files", side_effect=Exception("Import failed")):
+        with patch("bugownerctl.commands.init.files", side_effect=Exception("Import failed")):
             args = Mock(location="user", force=False)
             exit_code = run(args)
 
@@ -167,18 +167,18 @@ class TestInitCommand:
         """Should create parent directories if they don't exist."""
         monkeypatch.setenv("HOME", str(tmp_path))
 
-        # Don't create .config/bugownership directory - let init create it
+        # Don't create .config/bugownerctl directory - let init create it
         example_content = "products:\n  - version: '16.0'\n"
         example_file = tmp_path / "example.yaml"
         example_file.write_text(example_content)
 
-        with patch("bugowner.commands.init.files") as mock_files:
+        with patch("bugownerctl.commands.init.files") as mock_files:
             mock_files.return_value.joinpath.return_value = example_file
 
             args = Mock(location="user", force=False)
             exit_code = run(args)
 
             assert exit_code == 0
-            config_home = tmp_path / ".config" / "bugownership"
+            config_home = tmp_path / ".config" / "bugownerctl"
             assert config_home.exists()
             assert (config_home / "config.yaml").exists()

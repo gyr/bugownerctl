@@ -6,9 +6,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from bugowner.domain.bulk_map import BulkMap
-from bugowner.domain.maintainer import MaintainershipData
-from bugowner.services.validation_service import ValidationResult, ValidationService
+from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.domain.maintainer import MaintainershipData
+from bugownerctl.services.validation_service import ValidationResult, ValidationService
 
 
 def _make_bulk_map(mapping: dict[str, str], project: str = "SUSE:SLFO:Main") -> BulkMap:

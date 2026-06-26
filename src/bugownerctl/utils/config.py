@@ -19,10 +19,10 @@ def find_config_file(explicit_path: Path | None = None) -> Path:
 
     Precedence (highest to lowest):
     1. Explicit path (CLI --config argument)
-    2. BUGOWNER_CONFIG environment variable
+    2. BUGOWNERCTL_CONFIG environment variable
     3. ./validate_maintainership.yaml (project-local)
-    4. ~/.config/bugownership/config.yaml (XDG user config)
-    5. /etc/bugownership/config.yaml (system-wide)
+    4. ~/.config/bugownerctl/config.yaml (XDG user config)
+    5. /etc/bugownerctl/config.yaml (system-wide)
 
     Args:
         explicit_path: Optional explicit config path from CLI argument
@@ -40,12 +40,12 @@ def find_config_file(explicit_path: Path | None = None) -> Path:
             raise FileNotFoundError(f"Config file specified via --config not found: {resolved}")
         return resolved
 
-    # 2. BUGOWNER_CONFIG environment variable
-    env_config = os.getenv("BUGOWNER_CONFIG")
+    # 2. BUGOWNERCTL_CONFIG environment variable
+    env_config = os.getenv("BUGOWNERCTL_CONFIG")
     if env_config:
         env_path = Path(env_config).expanduser().resolve()
         if not env_path.exists():
-            raise FileNotFoundError(f"Config file from BUGOWNER_CONFIG not found: {env_path}")
+            raise FileNotFoundError(f"Config file from BUGOWNERCTL_CONFIG not found: {env_path}")
         return env_path
 
     # Track searched locations for error message
@@ -60,15 +60,15 @@ def find_config_file(explicit_path: Path | None = None) -> Path:
     # 4. User XDG config
     xdg_config_home = os.getenv("XDG_CONFIG_HOME")
     if xdg_config_home:
-        user_config = Path(xdg_config_home) / "bugownership" / "config.yaml"
+        user_config = Path(xdg_config_home) / "bugownerctl" / "config.yaml"
     else:
-        user_config = Path.home() / ".config" / "bugownership" / "config.yaml"
+        user_config = Path.home() / ".config" / "bugownerctl" / "config.yaml"
     searched_locations.append(f"User config (XDG): {user_config}")
     if user_config.exists():
         return user_config.resolve()
 
     # 5. System config
-    system_config = Path("/etc/bugownership/config.yaml")
+    system_config = Path("/etc/bugownerctl/config.yaml")
     searched_locations.append(f"System config: {system_config}")
     if system_config.exists():
         return system_config.resolve()
@@ -79,9 +79,9 @@ def find_config_file(explicit_path: Path | None = None) -> Path:
         "Searched locations:\n  " + "\n  ".join(searched_locations) + "\n\n"
         "Solutions:\n"
         "  1. Create config in project directory: ./validate_maintainership.yaml\n"
-        "  2. Create user config: ~/.config/bugownership/config.yaml\n"
+        "  2. Create user config: ~/.config/bugownerctl/config.yaml\n"
         "  3. Use --config flag to specify path\n"
-        "  4. Set BUGOWNER_CONFIG environment variable"
+        "  4. Set BUGOWNERCTL_CONFIG environment variable"
     )
     raise FileNotFoundError(error_msg)
 

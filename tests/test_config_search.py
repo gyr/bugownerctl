@@ -2,7 +2,7 @@
 
 import pytest
 
-from bugowner.utils.config import find_config_file
+from bugownerctl.utils.config import find_config_file
 
 
 class TestFindConfigFile:
@@ -25,26 +25,26 @@ class TestFindConfigFile:
             find_config_file(explicit_path=missing_file)
 
     def test_env_var_second_priority(self, tmp_path, monkeypatch):
-        """BUGOWNER_CONFIG env var overrides default locations."""
+        """BUGOWNERCTL_CONFIG env var overrides default locations."""
         config_file = tmp_path / "env-config.yaml"
         config_file.write_text("products: []")
-        monkeypatch.setenv("BUGOWNER_CONFIG", str(config_file))
+        monkeypatch.setenv("BUGOWNERCTL_CONFIG", str(config_file))
 
         result = find_config_file()
 
         assert result == config_file
 
     def test_env_var_not_found_raises(self, tmp_path, monkeypatch):
-        """Invalid BUGOWNER_CONFIG raises clear error."""
-        monkeypatch.setenv("BUGOWNER_CONFIG", "/nonexistent/config.yaml")
+        """Invalid BUGOWNERCTL_CONFIG raises clear error."""
+        monkeypatch.setenv("BUGOWNERCTL_CONFIG", "/nonexistent/config.yaml")
 
-        with pytest.raises(FileNotFoundError, match="BUGOWNER_CONFIG not found"):
+        with pytest.raises(FileNotFoundError, match="BUGOWNERCTL_CONFIG not found"):
             find_config_file()
 
     def test_project_local_third_priority(self, tmp_path, monkeypatch):
         """Project-local config found in CWD."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("BUGOWNER_CONFIG", raising=False)
+        monkeypatch.delenv("BUGOWNERCTL_CONFIG", raising=False)
         config_file = tmp_path / "validate_maintainership.yaml"
         config_file.write_text("products: []")
 
@@ -55,8 +55,8 @@ class TestFindConfigFile:
     def test_user_config_fourth_priority(self, tmp_path, monkeypatch):
         """User XDG config directory."""
         monkeypatch.chdir(tmp_path)  # No project-local config
-        monkeypatch.delenv("BUGOWNER_CONFIG", raising=False)
-        user_config_dir = tmp_path / ".config" / "bugownership"
+        monkeypatch.delenv("BUGOWNERCTL_CONFIG", raising=False)
+        user_config_dir = tmp_path / ".config" / "bugownerctl"
         user_config_dir.mkdir(parents=True)
         user_config = user_config_dir / "config.yaml"
         user_config.write_text("products: []")
@@ -69,7 +69,7 @@ class TestFindConfigFile:
     def test_no_config_found_clear_error(self, tmp_path, monkeypatch):
         """No config in any location shows helpful error."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("BUGOWNER_CONFIG", raising=False)
+        monkeypatch.delenv("BUGOWNERCTL_CONFIG", raising=False)
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
 
         with pytest.raises(FileNotFoundError) as exc_info:
@@ -83,25 +83,25 @@ class TestFindConfigFile:
         assert "Solutions:" in error_msg
 
     def test_explicit_path_overrides_env_var(self, tmp_path, monkeypatch):
-        """Explicit path has higher priority than BUGOWNER_CONFIG."""
+        """Explicit path has higher priority than BUGOWNERCTL_CONFIG."""
         explicit_file = tmp_path / "explicit.yaml"
         explicit_file.write_text("products: []")
 
         env_file = tmp_path / "env.yaml"
         env_file.write_text("products: []")
-        monkeypatch.setenv("BUGOWNER_CONFIG", str(env_file))
+        monkeypatch.setenv("BUGOWNERCTL_CONFIG", str(env_file))
 
         result = find_config_file(explicit_path=explicit_file)
 
         assert result == explicit_file.resolve()
 
     def test_env_var_overrides_project_local(self, tmp_path, monkeypatch):
-        """BUGOWNER_CONFIG has higher priority than project-local."""
+        """BUGOWNERCTL_CONFIG has higher priority than project-local."""
         monkeypatch.chdir(tmp_path)
 
         env_file = tmp_path / "env.yaml"
         env_file.write_text("products: []")
-        monkeypatch.setenv("BUGOWNER_CONFIG", str(env_file))
+        monkeypatch.setenv("BUGOWNERCTL_CONFIG", str(env_file))
 
         project_file = tmp_path / "validate_maintainership.yaml"
         project_file.write_text("products: []")
@@ -113,12 +113,12 @@ class TestFindConfigFile:
     def test_project_local_overrides_user_config(self, tmp_path, monkeypatch):
         """Project-local has higher priority than user XDG config."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("BUGOWNER_CONFIG", raising=False)
+        monkeypatch.delenv("BUGOWNERCTL_CONFIG", raising=False)
 
         project_file = tmp_path / "validate_maintainership.yaml"
         project_file.write_text("products: []")
 
-        user_config_dir = tmp_path / ".config" / "bugownership"
+        user_config_dir = tmp_path / ".config" / "bugownerctl"
         user_config_dir.mkdir(parents=True)
         user_config = user_config_dir / "config.yaml"
         user_config.write_text("products: []")
@@ -131,8 +131,8 @@ class TestFindConfigFile:
     def test_respects_xdg_config_home(self, tmp_path, monkeypatch):
         """Custom XDG_CONFIG_HOME is honored."""
         monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("BUGOWNER_CONFIG", raising=False)
-        custom_config_dir = tmp_path / "my_config" / "bugownership"
+        monkeypatch.delenv("BUGOWNERCTL_CONFIG", raising=False)
+        custom_config_dir = tmp_path / "my_config" / "bugownerctl"
         custom_config_dir.mkdir(parents=True)
         config_file = custom_config_dir / "config.yaml"
         config_file.write_text("products: []")

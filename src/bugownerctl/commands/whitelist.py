@@ -8,18 +8,18 @@ import argparse
 from importlib.resources import as_file, files
 from pathlib import Path
 
-from bugowner.domain.ref_type import RefType
-from bugowner.repositories.git_repository import GitRepositoryImpl
-from bugowner.repositories.maintainership_repository import MaintainershipRepositoryImpl
-from bugowner.repositories.name_overrides_repository import NameOverridesRepositoryImpl
-from bugowner.repositories.obs_bulk_source_info_repository import (
+from bugownerctl.domain.ref_type import RefType
+from bugownerctl.repositories.git_repository import GitRepositoryImpl
+from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
+from bugownerctl.repositories.name_overrides_repository import NameOverridesRepositoryImpl
+from bugownerctl.repositories.obs_bulk_source_info_repository import (
     ObsBulkSourceInfoRepositoryImpl,
 )
-from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
-from bugowner.services.validation_service import ValidationService
-from bugowner.services.whitelist_service import WhitelistService
-from bugowner.utils.config import load_config
-from bugowner.utils.file_utils import validate_file_within_directory
+from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
+from bugownerctl.services.validation_service import ValidationService
+from bugownerctl.services.whitelist_service import WhitelistService
+from bugownerctl.utils.config import load_config
+from bugownerctl.utils.file_utils import validate_file_within_directory
 
 
 def run(args: argparse.Namespace) -> int:
@@ -36,7 +36,7 @@ def run(args: argparse.Namespace) -> int:
     config = load_config(args.config) or {}
 
     # Get paths from config
-    cache_dir = Path(config.get("cache_dir", "~/.cache/bugownership")).expanduser()
+    cache_dir = Path(config.get("cache_dir", "~/.cache/bugownerctl")).expanduser()
     whitelist_file_name = config.get("whitelist_file", "whitelist_maintainership.json")
 
     # Find product config for requested version
@@ -112,7 +112,7 @@ def run(args: argparse.Namespace) -> int:
 
     # Resolve the shipped overrides JSON via importlib.resources so it
     # works whether the package is installed as a wheel or run from source.
-    overrides_resource = files("bugowner.data").joinpath("false_positives_overrides.json")
+    overrides_resource = files("bugownerctl.data").joinpath("false_positives_overrides.json")
     with as_file(overrides_resource) as overrides_file:
         # Execute whitelist check
         result = whitelist_service.check_whitelist(

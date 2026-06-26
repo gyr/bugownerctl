@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from bugowner.utils.file_utils import (
+from bugownerctl.utils.file_utils import (
     load_json,
     save_json,
     validate_file_within_directory,

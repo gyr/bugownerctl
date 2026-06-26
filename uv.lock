@@ -62,7 +62,7 @@ wheels = [
 ]
 
 [[package]]
-name = "bugowner"
+name = "bugownerctl"
 source = { editable = "." }
 dependencies = [
     { name = "lxml" },

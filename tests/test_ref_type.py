@@ -1,6 +1,6 @@
 """Tests for RefType enum."""
 
-from bugowner.domain.ref_type import RefType
+from bugownerctl.domain.ref_type import RefType
 
 
 def test_ref_type_has_branch_member():

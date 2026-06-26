@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from bugowner.services.whitelist_service import WhitelistCheckResult, WhitelistService
+from bugownerctl.services.whitelist_service import WhitelistCheckResult, WhitelistService
 
 
 class TestCheckWhitelist:

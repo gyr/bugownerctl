@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from bugowner.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
+from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
 
 
 class TestCacheLogMessages:

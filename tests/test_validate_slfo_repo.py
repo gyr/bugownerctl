@@ -6,9 +6,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from bugowner.commands.validate import run
-from bugowner.domain.ref_type import RefType
-from bugowner.services.validation_service import ValidationResult
+from bugownerctl.commands.validate import run
+from bugownerctl.domain.ref_type import RefType
+from bugownerctl.services.validation_service import ValidationResult
 
 
 class TestValidateSLFORepo:
@@ -18,7 +18,7 @@ class TestValidateSLFORepo:
         """Should clone SLFO repo using git URL and branch from config for branch-based version."""
         # Config format: slfo_git_url + products list with version/branch
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
@@ -28,25 +28,25 @@ class TestValidateSLFORepo:
             ],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock GitRepository to track clone_or_update call
         mock_git_repo = Mock()
         mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
         mock_git_repo_cls = Mock(return_value=mock_git_repo)
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", mock_git_repo_cls)
+        monkeypatch.setattr("bugownerctl.commands.validate.GitRepositoryImpl", mock_git_repo_cls)
 
         # Mock other repositories
-        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.MaintainershipRepositoryImpl", Mock())
         mock_metadata_repo = Mock()
         mock_metadata_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
         monkeypatch.setattr(
-            "bugowner.commands.validate.RepoMetadataRepositoryImpl",
+            "bugownerctl.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
-        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         # Mock ValidationService
         mock_service = Mock()
@@ -56,7 +56,7 @@ class TestValidateSLFORepo:
             shipped_not_in_submodule=[],
         )
         monkeypatch.setattr(
-            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+            "bugownerctl.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
@@ -66,14 +66,14 @@ class TestValidateSLFORepo:
         mock_git_repo.clone_or_update.assert_called_once_with(
             repo_url="gitea@src.suse.de:products/SLFO.git",
             git_ref="slfo-main",
-            cache_dir=Path.home() / ".cache" / "bugownership",
+            cache_dir=Path.home() / ".cache" / "bugownerctl",
             ref_type=RefType.BRANCH,
         )
 
     def test_run_clones_slfo_repo_for_commit_version(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should clone SLFO repo using git URL and commit from config for commit-based version."""
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
@@ -83,26 +83,26 @@ class TestValidateSLFORepo:
             ],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock GitRepository
         mock_git_repo = Mock()
         mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
         monkeypatch.setattr(
-            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+            "bugownerctl.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
         )
 
         # Mock other repositories
-        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.MaintainershipRepositoryImpl", Mock())
         mock_metadata_repo = Mock()
         mock_metadata_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
         monkeypatch.setattr(
-            "bugowner.commands.validate.RepoMetadataRepositoryImpl",
+            "bugownerctl.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
-        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         # Mock ValidationService
         mock_service = Mock()
@@ -112,7 +112,7 @@ class TestValidateSLFORepo:
             shipped_not_in_submodule=[],
         )
         monkeypatch.setattr(
-            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+            "bugownerctl.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
         args = argparse.Namespace(version="16.0", debug=False, config=None, refresh_bulk_map=False)
@@ -122,7 +122,7 @@ class TestValidateSLFORepo:
         mock_git_repo.clone_or_update.assert_called_once_with(
             repo_url="gitea@src.suse.de:products/SLFO.git",
             git_ref="9d679ed",
-            cache_dir=Path.home() / ".cache" / "bugownership",
+            cache_dir=Path.home() / ".cache" / "bugownerctl",
             ref_type=RefType.COMMIT,
         )
 
@@ -131,34 +131,34 @@ class TestValidateSLFORepo:
     ) -> None:
         """Should use _maintainership.json from cloned SLFO repo, not cwd."""
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
             "products": [{"version": "16.1", "branch": "slfo-main"}],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock GitRepository to return specific path
         mock_git_repo = Mock()
-        slfo_repo_path = Path("/cache/bugownership/SLFO")
+        slfo_repo_path = Path("/cache/bugownerctl/SLFO")
         mock_git_repo.clone_or_update.return_value = slfo_repo_path
         monkeypatch.setattr(
-            "bugowner.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
+            "bugownerctl.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_repo)
         )
 
         # Mock other repositories
-        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.MaintainershipRepositoryImpl", Mock())
         mock_metadata_repo = Mock()
         mock_metadata_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
         monkeypatch.setattr(
-            "bugowner.commands.validate.RepoMetadataRepositoryImpl",
+            "bugownerctl.commands.validate.RepoMetadataRepositoryImpl",
             Mock(return_value=mock_metadata_repo),
         )
-        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         # Mock ValidationService to track validate_all call
         mock_service = Mock()
@@ -168,7 +168,7 @@ class TestValidateSLFORepo:
             shipped_not_in_submodule=[],
         )
         monkeypatch.setattr(
-            "bugowner.commands.validate.ValidationService", Mock(return_value=mock_service)
+            "bugownerctl.commands.validate.ValidationService", Mock(return_value=mock_service)
         )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
@@ -190,7 +190,7 @@ class TestValidateSLFORepo:
     ) -> None:
         """Should raise ValueError if requested version not found in config."""
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
@@ -200,15 +200,15 @@ class TestValidateSLFORepo:
             ],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         args = argparse.Namespace(version="99.9", debug=False, config=None, refresh_bulk_map=False)
 
@@ -220,7 +220,7 @@ class TestValidateSLFORepo:
     ) -> None:
         """Should raise ValueError if product config has neither branch nor commit."""
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
@@ -229,15 +229,15 @@ class TestValidateSLFORepo:
             ],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
 
@@ -251,7 +251,7 @@ class TestValidateSLFORepo:
     ) -> None:
         """Should raise ValueError if slfo_git_url not in config."""
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             # slfo_git_url missing
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
@@ -260,15 +260,15 @@ class TestValidateSLFORepo:
             ],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         # Mock repositories
-        monkeypatch.setattr("bugowner.commands.validate.GitRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.MaintainershipRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.RepoMetadataRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
-        monkeypatch.setattr("bugowner.commands.validate.NameOverridesRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.GitRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.MaintainershipRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.RepoMetadataRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.ObsBulkSourceInfoRepositoryImpl", Mock())
+        monkeypatch.setattr("bugownerctl.commands.validate.NameOverridesRepositoryImpl", Mock())
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
 
@@ -280,7 +280,7 @@ class TestValidateSLFORepo:
     ) -> None:
         """Should raise ValueError if git ref is empty string."""
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
@@ -289,7 +289,7 @@ class TestValidateSLFORepo:
             ],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
@@ -300,7 +300,7 @@ class TestValidateSLFORepo:
     def test_run_raises_error_if_git_ref_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should raise ValueError if git ref is None."""
         mock_config = {
-            "cache_dir": "~/.cache/bugownership",
+            "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "maintainership_file": "_maintainership.json",
             "false_positives_file": "false_positives.json",
@@ -309,7 +309,7 @@ class TestValidateSLFORepo:
             ],
         }
         monkeypatch.setattr(
-            "bugowner.commands.validate.load_config", Mock(return_value=mock_config)
+            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
         )
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)

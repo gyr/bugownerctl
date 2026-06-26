@@ -2,7 +2,7 @@
 
 import pytest
 
-from bugowner.domain.package import MaintainedPackage, Package
+from bugownerctl.domain.package import MaintainedPackage, Package
 
 
 class TestPackage:
