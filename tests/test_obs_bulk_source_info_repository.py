@@ -21,8 +21,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from bugowner.domain.bulk_map import BulkMap
-from bugowner.repositories.obs_bulk_source_info_repository import (
+from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.repositories.obs_bulk_source_info_repository import (
     MAX_XML_BYTES,
     ObsBulkSourceInfoRepository,
     ObsBulkSourceInfoRepositoryImpl,
@@ -105,7 +105,7 @@ class TestInputValidation:
 
 
 class TestSubprocessInvocation:
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_runs_osc_api_with_correct_args(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
@@ -127,7 +127,7 @@ class TestSubprocessInvocation:
         assert kwargs.get("timeout") is not None
         assert kwargs.get("timeout") > 0
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_subprocess_nonzero_raises_runtime_error(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
@@ -136,7 +136,7 @@ class TestSubprocessInvocation:
         with pytest.raises(RuntimeError, match="osc"):
             repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_subprocess_timeout_raises_runtime_error(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
@@ -145,7 +145,7 @@ class TestSubprocessInvocation:
         with pytest.raises(RuntimeError, match="timed out|timeout"):
             repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_osc_not_installed_raises_helpful_error(self, mock_run: Mock, tmp_path: Path) -> None:
         mock_run.side_effect = FileNotFoundError("osc")
         repo = ObsBulkSourceInfoRepositoryImpl()
@@ -158,7 +158,7 @@ class TestSubprocessInvocation:
 
 
 class TestParsing:
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_parses_fixture_into_expected_mapping(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
@@ -221,7 +221,7 @@ class TestParsing:
         assert m["X"] == "X"
         assert m["Y"] == "Y"
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_invalid_xml_raises_runtime_error(self, mock_run: Mock, tmp_path: Path) -> None:
         mock_run.return_value = _make_proc(returncode=0, stdout=b"not xml at all")
         repo = ObsBulkSourceInfoRepositoryImpl()
@@ -277,7 +277,7 @@ class TestParsing:
 
 
 class TestCache:
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_writes_cache_files(self, mock_run: Mock, tmp_path: Path) -> None:
         body = _fixture_xml()
         mock_run.return_value = _make_proc(returncode=0, stdout=body)
@@ -293,7 +293,7 @@ class TestCache:
         assert "fetched_at" in meta
         assert meta["sha256"] == hashlib.sha256(body).hexdigest()
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_cache_hit_skips_subprocess(self, mock_run: Mock, tmp_path: Path) -> None:
         body = _fixture_xml()
         # First call populates the cache.
@@ -308,7 +308,7 @@ class TestCache:
         assert bm2.fetched_at == bm1.fetched_at
         assert bm2.mapping == bm1.mapping
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_force_refresh_bypasses_cache(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
@@ -320,7 +320,7 @@ class TestCache:
         repo.load_bulk_map("SUSE:SLFO:Main", tmp_path, force_refresh=True)
         assert mock_run.call_count == 2
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_stale_cache_triggers_refetch(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
@@ -343,7 +343,7 @@ class TestCache:
         # Stale cache → must have invoked subprocess.
         assert mock_run.call_count == 1
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_cache_dir_has_owner_only_perms(self, mock_run: Mock, tmp_path: Path) -> None:
         """cache_dir is chmod 0o700 to prevent other-user reads of cached XML."""
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
@@ -352,7 +352,7 @@ class TestCache:
         repo.load_bulk_map("SUSE:SLFO:Main", cache_dir)
         assert (cache_dir.stat().st_mode & 0o777) == 0o700
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_cache_xml_has_owner_only_perms(self, mock_run: Mock, tmp_path: Path) -> None:
         """Cached XML file is chmod 0o600 (never visible to other users)."""
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
@@ -361,7 +361,7 @@ class TestCache:
         xml_path = tmp_path / "obs_bulk_map.xml"
         assert (xml_path.stat().st_mode & 0o777) == 0o600
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_cache_meta_has_owner_only_perms(self, mock_run: Mock, tmp_path: Path) -> None:
         """Cached meta JSON is chmod 0o600 (never visible to other users)."""
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
@@ -370,7 +370,7 @@ class TestCache:
         meta_path = tmp_path / "obs_bulk_map.meta.json"
         assert (meta_path.stat().st_mode & 0o777) == 0o600
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_corrupted_cache_xml_triggers_refetch(self, mock_run: Mock, tmp_path: Path) -> None:
         body = _fixture_xml()
         mock_run.return_value = _make_proc(returncode=0, stdout=body)
@@ -383,7 +383,7 @@ class TestCache:
         # Mismatch should have forced a re-fetch.
         assert mock_run.call_count == 2
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_rejects_symlink_cache_files(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
@@ -407,7 +407,7 @@ class TestCache:
         with pytest.raises(RuntimeError, match="symlink"):
             repo.load_bulk_map("SUSE:SLFO:Main", cache_dir)
 
-    @patch("bugowner.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_different_project_refetches(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:

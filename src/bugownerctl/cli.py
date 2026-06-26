@@ -1,4 +1,4 @@
-"""CLI entry point for bugowner package.
+"""CLI entry point for bugownerctl package.
 
 This module provides the command-line interface with subcommands for
 validating maintainership data, checking whitelists, and querying packages.
@@ -10,7 +10,7 @@ import sys
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 
-from bugowner.commands import init, query, validate, whitelist
+from bugownerctl.commands import init, query, validate, whitelist
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -20,18 +20,18 @@ def create_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser with init, validate, whitelist-check, and query subcommands.
     """
     parser = argparse.ArgumentParser(
-        prog="bugowner", description="Bug ownership and package maintainership validation tool"
+        prog="bugownerctl", description="Bug ownership and package maintainership validation tool"
     )
     parser.add_argument(
         "--version",
         action="version",
-        version=f"%(prog)s {pkg_version('bugowner')}",
+        version=f"%(prog)s {pkg_version('bugownerctl')}",
     )
     parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # bugowner init
+    # bugownerctl init
     init_parser = subparsers.add_parser("init", help="Create initial configuration file")
     init_parser.add_argument(
         "--location",
@@ -42,7 +42,7 @@ def create_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--force", action="store_true", help="Overwrite existing config")
     init_parser.set_defaults(func=init.run)
 
-    # bugowner validate
+    # bugownerctl validate
     validate_parser = subparsers.add_parser(
         "validate",
         help="Validate maintainership data for inconsistencies and orphan packages",
@@ -65,7 +65,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     validate_parser.set_defaults(func=validate.run)
 
-    # bugowner whitelist-check
+    # bugownerctl whitelist-check
     whitelist_check_parser = subparsers.add_parser(
         "whitelist-check",
         help="Validate that whitelisted packages are NOT shipped",
@@ -88,7 +88,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     whitelist_check_parser.set_defaults(func=whitelist.run)
 
-    # bugowner query
+    # bugownerctl query
     query_parser = subparsers.add_parser("query", help="Query package and maintainer information")
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
 

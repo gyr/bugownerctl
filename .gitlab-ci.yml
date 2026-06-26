@@ -72,7 +72,7 @@ test:
   stage: test
   <<: *install_dependencies
   script:
-    - uv run pytest -v --cov=src/bugowner --cov-report=term --cov-report=xml --cov-fail-under=90
+    - uv run pytest -v --cov=src/bugownerctl --cov-report=term --cov-report=xml --cov-fail-under=90
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     reports:

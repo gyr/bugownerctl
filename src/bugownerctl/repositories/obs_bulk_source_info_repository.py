@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Protocol
 from xml.etree import ElementTree as ET
 
-from bugowner.domain.bulk_map import BulkMap
+from bugownerctl.domain.bulk_map import BulkMap
 
 logger = logging.getLogger(__name__)
 

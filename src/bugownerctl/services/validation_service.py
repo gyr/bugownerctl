@@ -13,15 +13,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from bugowner.domain.bulk_map import BulkMap
-from bugowner.domain.maintainer import MaintainershipData
-from bugowner.repositories.git_repository import GitRepository
-from bugowner.repositories.maintainership_repository import MaintainershipRepository
-from bugowner.repositories.name_overrides_repository import NameOverridesRepository
-from bugowner.repositories.obs_bulk_source_info_repository import (
+from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.domain.maintainer import MaintainershipData
+from bugownerctl.repositories.git_repository import GitRepository
+from bugownerctl.repositories.maintainership_repository import MaintainershipRepository
+from bugownerctl.repositories.name_overrides_repository import NameOverridesRepository
+from bugownerctl.repositories.obs_bulk_source_info_repository import (
     ObsBulkSourceInfoRepository,
 )
-from bugowner.repositories.repo_metadata_repository import RepoMetadataRepository
+from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepository
 
 logger = logging.getLogger(__name__)
 

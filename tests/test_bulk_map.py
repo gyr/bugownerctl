@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from bugowner.domain.bulk_map import BulkMap
+from bugownerctl.domain.bulk_map import BulkMap
 
 
 class TestBulkMap:

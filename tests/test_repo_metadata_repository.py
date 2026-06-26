@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from bugowner.repositories.repo_metadata_repository import (
+from bugownerctl.repositories.repo_metadata_repository import (
     RepoMetadataRepositoryImpl,
 )
 
@@ -370,7 +370,7 @@ class TestDownloadPrimaryMetadata:
         with pytest.raises(RuntimeError, match="Invalid primary.xml location"):
             repo.download_primary_metadata("16.1", tmp_path)
 
-    @patch("bugowner.repositories.repo_metadata_repository.requests.get")
+    @patch("bugownerctl.repositories.repo_metadata_repository.requests.get")
     def test_download_primary_metadata_constructs_correct_ibs_url(
         self, mock_get: Mock, tmp_path: Path
     ) -> None:

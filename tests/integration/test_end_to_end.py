@@ -8,12 +8,12 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from bugowner.cli import main
-from bugowner.domain.bulk_map import BulkMap
+from bugownerctl.cli import main
+from bugownerctl.domain.bulk_map import BulkMap
 
 
 class TestValidateWorkflow:
-    """Integration tests for 'bugowner validate' workflow."""
+    """Integration tests for 'bugownerctl validate' workflow."""
 
     def test_validate_workflow_with_valid_data(self, tmp_path, monkeypatch):
         """Should complete full validation workflow with valid maintainership data.
@@ -48,21 +48,21 @@ class TestValidateWorkflow:
         # Mock external calls
         with (
             patch(
-                "bugowner.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch(
-                "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
             patch(
-                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
+                "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
-                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
+                "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
             patch(
-                "bugowner.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
+                "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
             ) as mock_bulk_map,
-            patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "validate", "-v", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["test-package", "another-package"]
@@ -101,21 +101,21 @@ class TestValidateWorkflow:
 
         with (
             patch(
-                "bugowner.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch(
-                "bugowner.repositories.git_repository.GitRepositoryImpl.list_submodules"
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.list_submodules"
             ) as mock_git,
             patch(
-                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
+                "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
-                "bugowner.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
+                "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
             patch(
-                "bugowner.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
+                "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
             ) as mock_bulk_map,
-            patch("sys.argv", ["bugowner", "validate", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "validate", "-v", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["maintained-package"]
@@ -135,7 +135,7 @@ class TestValidateWorkflow:
 
 
 class TestQueryPackageWorkflow:
-    """Integration tests for 'bugowner query package' workflow."""
+    """Integration tests for 'bugownerctl query package' workflow."""
 
     def test_query_package_finds_maintained_package(self, tmp_path, monkeypatch):
         """Should find and display package maintainers."""
@@ -152,7 +152,7 @@ class TestQueryPackageWorkflow:
         config_data = {}
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
-        with patch("sys.argv", ["bugowner", "query", "package", "test-package"]):
+        with patch("sys.argv", ["bugownerctl", "query", "package", "test-package"]):
             # Execute
             exit_code = main()
 
@@ -172,7 +172,7 @@ class TestQueryPackageWorkflow:
         config_data = {}
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
-        with patch("sys.argv", ["bugowner", "query", "package", "whitelisted-package"]):
+        with patch("sys.argv", ["bugownerctl", "query", "package", "whitelisted-package"]):
             # Execute
             exit_code = main()
 
@@ -192,7 +192,7 @@ class TestQueryPackageWorkflow:
         config_data = {}
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
-        with patch("sys.argv", ["bugowner", "query", "package", "unknown-package"]):
+        with patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package"]):
             # Execute
             exit_code = main()
 
@@ -201,7 +201,7 @@ class TestQueryPackageWorkflow:
 
 
 class TestQueryMaintainerWorkflow:
-    """Integration tests for 'bugowner query maintainer' workflow."""
+    """Integration tests for 'bugownerctl query maintainer' workflow."""
 
     def test_query_maintainer_lists_all_packages(self, tmp_path, monkeypatch):
         """Should list all packages maintained by user or group."""
@@ -222,7 +222,7 @@ class TestQueryMaintainerWorkflow:
         config_data = {}
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
-        with patch("sys.argv", ["bugowner", "query", "maintainer", "user1"]):
+        with patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1"]):
             # Execute
             exit_code = main()
 
@@ -247,7 +247,7 @@ class TestQueryMaintainerWorkflow:
         config_data = {}
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
-        with patch("sys.argv", ["bugowner", "query", "maintainer", "team1"]):
+        with patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1"]):
             # Execute
             exit_code = main()
 
@@ -266,7 +266,7 @@ class TestQueryMaintainerWorkflow:
         config_data = {}
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
-        with patch("sys.argv", ["bugowner", "query", "maintainer", "unknown-user"]):
+        with patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user"]):
             # Execute
             exit_code = main()
 

@@ -6,8 +6,8 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
-from bugowner.domain.ref_type import RefType
-from bugowner.repositories.git_repository import GitRepositoryImpl
+from bugownerctl.domain.ref_type import RefType
+from bugownerctl.repositories.git_repository import GitRepositoryImpl
 
 
 class TestListSubmodules:

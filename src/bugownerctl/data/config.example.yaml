@@ -1,20 +1,20 @@
-# Example configuration for bugowner
-# This file is bundled with the bugowner package as a template
+# Example configuration for bugownerctl
+# This file is bundled with the bugownerctl package as a template
 #
 # Copy this file to one of:
 #   - ./validate_maintainership.yaml (project-local)
-#   - ~/.config/bugownership/config.yaml (user config, recommended)
-#   - /etc/bugownership/config.yaml (system-wide)
+#   - ~/.config/bugownerctl/config.yaml (user config, recommended)
+#   - /etc/bugownerctl/config.yaml (system-wide)
 #
-# Or use: bugowner init [--location user|local|system]
+# Or use: bugownerctl init [--location user|local|system]
 
 # SLFO git repository URL
 # REQUIRED: Update for your environment
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
 
 # Cache directory for downloads, clones, persistent data
-# Optional: defaults to ~/.cache/bugownership
-# cache_dir: ~/.cache/bugownership
+# Optional: defaults to ~/.cache/bugownerctl
+# cache_dir: ~/.cache/bugownerctl
 
 # Product versions to validate
 # REQUIRED: Update with versions you need to test

@@ -22,12 +22,12 @@ def run(args: argparse.Namespace) -> int:
     """
     # Determine target location based on args.location
     if args.location == "user":
-        config_home = Path.home() / ".config" / "bugownership"
+        config_home = Path.home() / ".config" / "bugownerctl"
         target_path = config_home / "config.yaml"
     elif args.location == "local":
         target_path = Path.cwd() / "validate_maintainership.yaml"
     elif args.location == "system":
-        target_path = Path("/etc/bugownership/config.yaml")
+        target_path = Path("/etc/bugownerctl/config.yaml")
     else:
         print(f"Error: Invalid location '{args.location}'")
         return 1
@@ -46,7 +46,7 @@ def run(args: argparse.Namespace) -> int:
 
     # Get bundled example file
     try:
-        example_traversable = files("bugowner").joinpath("data/config.example.yaml")
+        example_traversable = files("bugownerctl").joinpath("data/config.example.yaml")
         # Convert Traversable to Path for proper type checking and file operations
         example_path = Path(str(example_traversable))
         if not example_path.exists():
@@ -82,6 +82,6 @@ def run(args: argparse.Namespace) -> int:
     print("Next steps:")
     print(f"  1. Edit config: {target_path}")
     print("  2. Update slfo_git_url and products")
-    print("  3. Run: bugowner validate -v 16.1")
+    print("  3. Run: bugownerctl validate -v 16.1")
 
     return 0
