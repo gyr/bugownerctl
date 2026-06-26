@@ -2,12 +2,21 @@
 
 import argparse
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
+from bugownerctl.commands.repo_prep import SlfoRepoContext
 from bugownerctl.commands.validate import run
 from bugownerctl.services.validation_service import ValidationResult
+
+_BASE_CONFIG: dict[str, Any] = {
+    "cache_dir": "~/.cache/bugownerctl",
+    "slfo_git_url": "https://github.com/test/repo",
+    "maintainership_file": "_maintainership.json",
+    "products": [{"version": "16.1", "branch": "main"}],
+}
 
 
 def _empty_result() -> ValidationResult:
@@ -19,16 +28,27 @@ def _empty_result() -> ValidationResult:
     )
 
 
-def _patch_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
-    """Patch all repository impls used by validate.run. Returns the mock classes.
+def _patch_prep(
+    monkeypatch: pytest.MonkeyPatch,
+    slfo_repo_path: Path = Path("/cache/SLFO"),
+    config: dict[str, Any] | None = None,
+) -> tuple[Mock, SlfoRepoContext]:
+    """Patch prepare_slfo_repo and return (mock_func, fake_ctx)."""
+    cfg = config if config is not None else _BASE_CONFIG
+    fake_ctx = SlfoRepoContext(
+        config=cfg,
+        cache_dir=Path.home() / ".cache" / "bugownerctl",
+        slfo_repo_path=slfo_repo_path,
+        git_repo=Mock(),
+    )
+    mock_prep = Mock(return_value=fake_ctx)
+    monkeypatch.setattr("bugownerctl.commands.validate.prepare_slfo_repo", mock_prep)
+    return mock_prep, fake_ctx
 
-    Wires a git repo instance with `clone_or_update` returning a stable path
-    so downstream code that derives `slfo_repo_path` does not blow up.
-    """
+
+def _patch_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
+    """Patch the 4 repos validate.py constructs directly. Returns a dict of mock classes."""
     mock_maint_cls = Mock()
-    mock_git_repo = Mock()
-    mock_git_repo.clone_or_update.return_value = Path("/cache/SLFO")
-    mock_git_cls = Mock(return_value=mock_git_repo)
     mock_meta_cls = Mock()
     mock_bulk_cls = Mock()
     mock_over_cls = Mock()
@@ -36,7 +56,6 @@ def _patch_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
     monkeypatch.setattr(
         "bugownerctl.commands.validate.MaintainershipRepositoryImpl", mock_maint_cls
     )
-    monkeypatch.setattr("bugownerctl.commands.validate.GitRepositoryImpl", mock_git_cls)
     monkeypatch.setattr("bugownerctl.commands.validate.RepoMetadataRepositoryImpl", mock_meta_cls)
     monkeypatch.setattr(
         "bugownerctl.commands.validate.ObsBulkSourceInfoRepositoryImpl", mock_bulk_cls
@@ -45,8 +64,6 @@ def _patch_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
 
     return {
         "maintainership": mock_maint_cls,
-        "git_cls": mock_git_cls,
-        "git_repo": mock_git_repo,
         "metadata": mock_meta_cls,
         "bulk_map": mock_bulk_cls,
         "overrides": mock_over_cls,
@@ -69,24 +86,14 @@ class TestValidateCommand:
 
     def test_run_creates_repository_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create all repository implementation instances."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        repos = _patch_repos(monkeypatch)
+        mock_prep, _ = _patch_prep(monkeypatch)
+        repos = _patch_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
         repos["maintainership"].assert_called_once()
-        repos["git_cls"].assert_called_once()
         repos["metadata"].assert_called_once()
         repos["bulk_map"].assert_called_once()
         repos["overrides"].assert_called_once()
@@ -95,20 +102,9 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should create ValidationService with new bulk_map+overrides repos."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
+        mock_prep, fake_ctx = _patch_prep(monkeypatch)
 
-        # Create explicit mock instances so we can verify the wiring.
         mock_maint_inst = Mock()
-        mock_git_inst = Mock()
-        mock_git_inst.clone_or_update.return_value = Path("/cache/SLFO")
         mock_meta_inst = Mock()
         mock_bulk_inst = Mock()
         mock_over_inst = Mock()
@@ -116,9 +112,6 @@ class TestValidateCommand:
         monkeypatch.setattr(
             "bugownerctl.commands.validate.MaintainershipRepositoryImpl",
             Mock(return_value=mock_maint_inst),
-        )
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.GitRepositoryImpl", Mock(return_value=mock_git_inst)
         )
         monkeypatch.setattr(
             "bugownerctl.commands.validate.RepoMetadataRepositoryImpl",
@@ -138,11 +131,9 @@ class TestValidateCommand:
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
-        # ValidationService called with positional (maint, git, metadata) +
-        # kwargs (bulk_map_repo, overrides_repo).
         cls_mock.assert_called_once_with(
             mock_maint_inst,
-            mock_git_inst,
+            fake_ctx.git_repo,
             mock_meta_inst,
             bulk_map_repo=mock_bulk_inst,
             overrides_repo=mock_over_inst,
@@ -152,17 +143,8 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call ValidationService.validate_all() with correct parameters."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        repos = _patch_repos(monkeypatch)
+        mock_prep, fake_ctx = _patch_prep(monkeypatch)
+        repos = _patch_other_repos(monkeypatch)
         repos["metadata"].return_value.download_primary_metadata.return_value = Path(
             "/test/cache/primary.xml.gz"
         )
@@ -194,17 +176,8 @@ class TestValidateCommand:
 
     def test_run_returns_zero_when_no_issues_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return 0 exit code when validation finds no issues."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
@@ -216,17 +189,8 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should return 1 exit code when orphan packages found."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
             ValidationResult(
@@ -245,17 +209,8 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print orphan packages to stdout."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
             ValidationResult(
@@ -277,17 +232,8 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print output with INFO prefix and SET labels matching old script format."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
             ValidationResult(
@@ -319,24 +265,15 @@ class TestValidateCommand:
         assert "INFO: - orphan2" in output
 
         # Verify no emoji in output
-        assert "[OK]" not in output  # placeholder for ✅
+        assert "[OK]" not in output  # placeholder for check mark
         # Original assertions used emoji characters; keep ASCII-only here.
 
     def test_output_format_shows_empty_state_messages(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print INFO messages for empty result sets."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
@@ -354,17 +291,8 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print the unresolved-names section when unresolved_names is non-empty."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
             ValidationResult(
@@ -386,17 +314,8 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should NOT print the unresolved-names section when unresolved_names is empty."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)  # default: empty result, unresolved=[]
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
@@ -405,18 +324,12 @@ class TestValidateCommand:
         captured = capsys.readouterr()
         assert "Names with no source mapping" not in captured.out
 
-    def test_run_passes_config_path_to_load_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should pass args.config to load_config() when provided."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("bugownerctl.commands.validate.load_config", mock_load_config)
-
-        _patch_repos(monkeypatch)
+    def test_run_forwards_version_and_config_to_prepare_slfo_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should forward args.version and args.config to prepare_slfo_repo."""
+        mock_prep, _ = _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
@@ -425,23 +338,14 @@ class TestValidateCommand:
         )
         run(args)
 
-        mock_load_config.assert_called_once_with(config_path)
+        mock_prep.assert_called_once_with("16.1", config_path)
 
     def test_run_passes_force_refresh_false_by_default(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should pass force_refresh=False to validate_all when --refresh-bulk-map not set."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
@@ -454,17 +358,8 @@ class TestValidateCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should pass force_refresh=True to validate_all when --refresh-bulk-map is set."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.validate.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=True)
@@ -473,23 +368,33 @@ class TestValidateCommand:
         call_kwargs = instance.validate_all.call_args[1]
         assert call_kwargs.get("force_refresh") is True
 
-    def test_run_passes_none_to_load_config_when_no_config_provided(
+    def test_run_forwards_none_config_to_prepare_slfo_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should pass None to load_config() when args.config is None (triggers search)."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "slfo_git_url": "https://github.com/test/repo",
-            "maintainership_file": "_maintainership.json",
-            "products": [{"version": "16.1", "branch": "main"}],
-        }
-        mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("bugownerctl.commands.validate.load_config", mock_load_config)
-
-        _patch_repos(monkeypatch)
+        """Should pass None to prepare_slfo_repo() when args.config is None."""
+        mock_prep, _ = _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
         run(args)
 
-        mock_load_config.assert_called_once_with(None)
+        mock_prep.assert_called_once_with("16.1", None)
+
+    def test_run_uses_maintainership_file_from_cloned_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should use _maintainership.json from cloned SLFO repo, not cwd."""
+        slfo_repo_path = Path("/cache/bugownerctl/SLFO")
+        mock_prep, fake_ctx = _patch_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
+        _patch_other_repos(monkeypatch)
+        _, instance = _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        run(args)
+
+        instance.validate_all.assert_called_once()
+        call_kwargs = instance.validate_all.call_args[1]
+        expected_maintainership = slfo_repo_path / "_maintainership.json"
+        assert call_kwargs["maintainership_file"] == expected_maintainership
+        assert call_kwargs["git_dir"] == slfo_repo_path
