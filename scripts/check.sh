@@ -32,7 +32,7 @@ echo "✅ Security scan passed"
 echo ""
 
 echo "Step 5/5: Running tests with coverage..."
-uv run pytest -v --cov=src/bugowner --cov-report=term --cov-report=xml --cov-fail-under=90
+uv run pytest -v --cov=src/bugownerctl --cov-report=term --cov-report=xml --cov-fail-under=90
 echo "✅ Tests passed"
 echo ""
 
