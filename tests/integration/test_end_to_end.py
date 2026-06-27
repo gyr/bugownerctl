@@ -139,64 +139,83 @@ class TestQueryPackageWorkflow:
 
     def test_query_package_finds_maintained_package(self, tmp_path, monkeypatch):
         """Should find and display package maintainers."""
-        # Change to test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Setup
+        # Setup fixture files in tmp_path (used as cloned slfo_repo_path)
         maintainership_data = {
             "packages": {"test-package": {"users": ["user1", "user2"], "groups": ["team1"]}}
         }
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
         (tmp_path / "whitelist_maintainership.json").write_text(json.dumps([]))
 
-        config_data = {}
-        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "maintainership_file": "_maintainership.json",
+            "whitelist_file": "whitelist_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
 
-        with patch("sys.argv", ["bugownerctl", "query", "package", "test-package"]):
-            # Execute
+        with (
+            patch(
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
+            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("sys.argv", ["bugownerctl", "query", "package", "test-package", "-v", "16.1"]),
+        ):
+            mock_clone.return_value = tmp_path
             exit_code = main()
-
-            # Verify
             assert exit_code == 0, "Should succeed when package found"
 
     def test_query_package_finds_whitelisted_package(self, tmp_path, monkeypatch):
         """Should indicate when package is whitelisted (no maintainer)."""
-        # Change to test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Setup
         maintainership_data = {"packages": {}}
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
         (tmp_path / "whitelist_maintainership.json").write_text(json.dumps(["whitelisted-package"]))
 
-        config_data = {}
-        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "maintainership_file": "_maintainership.json",
+            "whitelist_file": "whitelist_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
 
-        with patch("sys.argv", ["bugownerctl", "query", "package", "whitelisted-package"]):
-            # Execute
+        with (
+            patch(
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
+            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch(
+                "sys.argv",
+                ["bugownerctl", "query", "package", "whitelisted-package", "-v", "16.1"],
+            ),
+        ):
+            mock_clone.return_value = tmp_path
             exit_code = main()
-
-            # Verify
             assert exit_code == 0, "Should succeed when package whitelisted"
 
     def test_query_package_not_found(self, tmp_path, monkeypatch):
         """Should report when package not found in maintainership or whitelist."""
-        # Change to test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Setup
         maintainership_data = {"packages": {}}
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
         (tmp_path / "whitelist_maintainership.json").write_text(json.dumps([]))
 
-        config_data = {}
-        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "maintainership_file": "_maintainership.json",
+            "whitelist_file": "whitelist_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
 
-        with patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package"]):
-            # Execute
+        with (
+            patch(
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
+            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package", "-v", "16.1"]),
+        ):
+            mock_clone.return_value = tmp_path
             exit_code = main()
-
-            # Verify
             assert exit_code == 0, "Query always returns 0, but prints 'Not found'"
 
 
@@ -205,10 +224,6 @@ class TestQueryMaintainerWorkflow:
 
     def test_query_maintainer_lists_all_packages(self, tmp_path, monkeypatch):
         """Should list all packages maintained by user or group."""
-        # Change to test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Setup
         maintainership_data = {
             "packages": {
                 "package1": {"users": ["user1", "user2"], "groups": []},
@@ -219,22 +234,26 @@ class TestQueryMaintainerWorkflow:
         }
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
-        config_data = {}
-        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "maintainership_file": "_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
 
-        with patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1"]):
-            # Execute
+        with (
+            patch(
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
+            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1", "-v", "16.1"]),
+        ):
+            mock_clone.return_value = tmp_path
             exit_code = main()
-
-            # Verify
             assert exit_code == 0, "Should succeed when maintainer found"
 
     def test_query_maintainer_finds_group_packages(self, tmp_path, monkeypatch):
         """Should find packages maintained by a group."""
-        # Change to test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Setup
         maintainership_data = {
             "packages": {
                 "package1": {"users": ["user1"], "groups": ["team1"]},
@@ -244,31 +263,43 @@ class TestQueryMaintainerWorkflow:
         }
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
-        config_data = {}
-        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "maintainership_file": "_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
 
-        with patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1"]):
-            # Execute
+        with (
+            patch(
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
+            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1", "-v", "16.1"]),
+        ):
+            mock_clone.return_value = tmp_path
             exit_code = main()
-
-            # Verify
             assert exit_code == 0, "Should succeed when group found"
 
     def test_query_maintainer_not_found(self, tmp_path, monkeypatch):
         """Should report when maintainer has no packages."""
-        # Change to test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Setup
         maintainership_data = {"packages": {"package1": {"users": ["user1"], "groups": []}}}
         (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
-        config_data = {}
-        (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
+        config_data = {
+            "cache_dir": str(tmp_path / "cache"),
+            "slfo_git_url": "git@example.com:test/repo.git",
+            "maintainership_file": "_maintainership.json",
+            "products": [{"version": "16.1", "branch": "main"}],
+        }
 
-        with patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user"]):
-            # Execute
+        with (
+            patch(
+                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
+            ) as mock_clone,
+            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user", "-v", "16.1"]),
+        ):
+            mock_clone.return_value = tmp_path
             exit_code = main()
-
-            # Verify
             assert exit_code == 0, "Should succeed but show empty list"

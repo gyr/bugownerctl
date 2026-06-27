@@ -4,46 +4,42 @@ Executes query subcommands for package and maintainer information.
 """
 
 import argparse
-from pathlib import Path
 
+from bugownerctl.commands.repo_prep import prepare_slfo_repo
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.services.query_service import PackageStatus, QueryService
-from bugownerctl.utils.config import load_config
+from bugownerctl.utils.file_utils import validate_file_within_directory
 
 
 def run_package(args: argparse.Namespace) -> int:
     """Execute query package subcommand.
 
     Args:
-        args: Parsed command-line arguments with package_name
+        args: Parsed command-line arguments with package_name, version, config
 
     Returns:
         Exit code (0 = success)
     """
-    # Load configuration
-    config = load_config() or {}
+    slfo_context = prepare_slfo_repo(args.version, args.config)
 
-    # Get paths from config
-    maintainership_file_name = config.get("maintainership_file", "_maintainership.json")
-    whitelist_file_name = config.get("whitelist_file", "whitelist_maintainership.json")
+    maintainership_file_name = slfo_context.config.get(
+        "maintainership_file", "_maintainership.json"
+    )
+    whitelist_file_name = slfo_context.config.get("whitelist_file", "whitelist_maintainership.json")
 
-    # Determine current working directory for relative paths
-    cwd = Path.cwd()
-    maintainership_file = cwd / maintainership_file_name
-    whitelist_file = cwd / whitelist_file_name
+    maintainership_file = validate_file_within_directory(
+        slfo_context.slfo_repo_path, maintainership_file_name, "Maintainership file"
+    )
+    whitelist_file = validate_file_within_directory(
+        slfo_context.slfo_repo_path, whitelist_file_name, "Whitelist file"
+    )
 
-    # Create repository implementation
     maintainership_repo = MaintainershipRepositoryImpl()
-
-    # Create query service
     service = QueryService(maintainership_repo)
-
-    # Execute package query
     result = service.check_package_maintainership(
         args.package_name, maintainership_file, whitelist_file
     )
 
-    # Print results
     print(f"\nPackage: {result.package_name}")
 
     if result.status == PackageStatus.MAINTAINED:
@@ -63,31 +59,25 @@ def run_maintainer(args: argparse.Namespace) -> int:
     """Execute query maintainer subcommand.
 
     Args:
-        args: Parsed command-line arguments with maintainer_name
+        args: Parsed command-line arguments with maintainer_name, version, config
 
     Returns:
         Exit code (0 = success)
     """
-    # Load configuration
-    config = load_config() or {}
+    slfo_context = prepare_slfo_repo(args.version, args.config)
 
-    # Get paths from config
-    maintainership_file_name = config.get("maintainership_file", "_maintainership.json")
+    maintainership_file_name = slfo_context.config.get(
+        "maintainership_file", "_maintainership.json"
+    )
 
-    # Determine current working directory for relative paths
-    cwd = Path.cwd()
-    maintainership_file = cwd / maintainership_file_name
+    maintainership_file = validate_file_within_directory(
+        slfo_context.slfo_repo_path, maintainership_file_name, "Maintainership file"
+    )
 
-    # Create repository implementation
     maintainership_repo = MaintainershipRepositoryImpl()
-
-    # Create query service
     service = QueryService(maintainership_repo)
-
-    # Execute maintainer query
     packages = service.get_packages_by_maintainer(args.maintainer_name, maintainership_file)
 
-    # Print results
     print(f"\nMaintainer: {args.maintainer_name}")
 
     if packages:

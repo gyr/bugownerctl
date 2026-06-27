@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-26
+
+### Fixed
+
+- `query package` and `query maintainer` crashed with "No such file or directory" when invoked,
+  because they resolved `_maintainership.json` and `whitelist_maintainership.json` from the
+  current working directory instead of the cloned SLFO git repository. Both subcommands now
+  resolve files from the SLFO repo path returned by `prepare_slfo_repo`, consistent with
+  `validate` and `whitelist-check`.
+
+### Changed
+
+- **BREAKING**: `query package` and `query maintainer` now require `-v/--version`. They clone or
+  update the SLFO git repository and can exit `1` on bad version (`ValueError`) or missing
+  maintainership file (`FileNotFoundError`). Previously they always exited `0`. Optional
+  `-c/--config` flag added (same semantics as `validate`/`whitelist-check`).
+
 ## [0.3.0] - 2026-06-26
 
 ### Added

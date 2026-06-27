@@ -2,13 +2,21 @@
 
 import argparse
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
+from bugownerctl.commands.repo_prep import SlfoRepoContext
 from bugownerctl.commands.whitelist import run
-from bugownerctl.domain.ref_type import RefType
 from bugownerctl.services.whitelist_service import WhitelistCheckResult
+
+_BASE_CONFIG: dict[str, Any] = {
+    "cache_dir": "~/.cache/bugownerctl",
+    "slfo_git_url": "https://github.com/test/repo",
+    "whitelist_file": "whitelist_maintainership.json",
+    "products": [{"version": "16.1", "branch": "main"}],
+}
 
 
 def _empty_result() -> WhitelistCheckResult:
@@ -16,40 +24,53 @@ def _empty_result() -> WhitelistCheckResult:
     return WhitelistCheckResult(inconsistent_packages=[])
 
 
-def _patch_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
-    """Patch all repository impls used by whitelist.run."""
-    mock_git_repo = Mock()
-    mock_git_repo.clone_or_update.return_value = Path("/cache/slfo")
-    mock_git_repo.list_submodules.return_value = ["pkg1"]
-    mock_git_cls = Mock(return_value=mock_git_repo)
+def _patch_prep(
+    monkeypatch: pytest.MonkeyPatch,
+    slfo_repo_path: Path = Path("/cache/SLFO"),
+    config: dict[str, Any] | None = None,
+) -> tuple[Mock, SlfoRepoContext]:
+    """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
+    cfg = config if config is not None else _BASE_CONFIG
+    fake_slfo_context = SlfoRepoContext(
+        config=cfg,
+        cache_dir=Path.home() / ".cache" / "bugownerctl",
+        slfo_repo_path=slfo_repo_path,
+        git_repo=Mock(),
+    )
+    mock_prep = Mock(return_value=fake_slfo_context)
+    monkeypatch.setattr("bugownerctl.commands.whitelist.prepare_slfo_repo", mock_prep)
+    return mock_prep, fake_slfo_context
 
-    mock_meta_repo = Mock()
-    mock_meta_repo.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
-    mock_meta_repo.parse_source_packages.return_value = {"pkg1"}
-    mock_meta_cls = Mock(return_value=mock_meta_repo)
 
+def _patch_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
+    """Patch the 4 repos whitelist.py constructs directly.
+
+    Returns a dict of mock classes. Note: whitelist.py does NOT construct
+    GitRepositoryImpl directly after the refactor — git_repo comes from slfo_context.
+    """
+    mock_maint_cls = Mock()
+    mock_meta_cls = Mock()
+    mock_meta_cls.return_value.download_primary_metadata.return_value = Path(
+        "/cache/primary.xml.gz"
+    )
+    mock_meta_cls.return_value.parse_source_packages.return_value = {"pkg1"}
     mock_bulk_cls = Mock()
     mock_over_cls = Mock()
-    mock_maint_cls = Mock()
 
-    monkeypatch.setattr("bugownerctl.commands.whitelist.GitRepositoryImpl", mock_git_cls)
+    monkeypatch.setattr(
+        "bugownerctl.commands.whitelist.MaintainershipRepositoryImpl", mock_maint_cls
+    )
     monkeypatch.setattr("bugownerctl.commands.whitelist.RepoMetadataRepositoryImpl", mock_meta_cls)
     monkeypatch.setattr(
         "bugownerctl.commands.whitelist.ObsBulkSourceInfoRepositoryImpl", mock_bulk_cls
     )
     monkeypatch.setattr("bugownerctl.commands.whitelist.NameOverridesRepositoryImpl", mock_over_cls)
-    monkeypatch.setattr(
-        "bugownerctl.commands.whitelist.MaintainershipRepositoryImpl", mock_maint_cls
-    )
 
     return {
-        "git_cls": mock_git_cls,
-        "git_repo": mock_git_repo,
-        "metadata_cls": mock_meta_cls,
-        "metadata_repo": mock_meta_repo,
+        "maintainership": mock_maint_cls,
+        "metadata": mock_meta_cls,
         "bulk_map": mock_bulk_cls,
         "overrides": mock_over_cls,
-        "maintainership": mock_maint_cls,
     }
 
 
@@ -80,48 +101,26 @@ class TestWhitelistCheckCommand:
     """Tests for whitelist-check command handler."""
 
     def test_run_creates_all_repository_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should create all repository implementation instances."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        repos = _patch_repos(monkeypatch)
+        """Should create all repository implementation instances (no git_cls after refactor)."""
+        _patch_prep(monkeypatch)
+        repos = _patch_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
-        repos["git_cls"].assert_called_once()
-        repos["metadata_cls"].assert_called_once()
+        repos["maintainership"].assert_called_once()
+        repos["metadata"].assert_called_once()
         repos["bulk_map"].assert_called_once()
         repos["overrides"].assert_called_once()
-        repos["maintainership"].assert_called_once()
 
     def test_run_creates_validation_service_with_new_repos(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should create ValidationService with bulk_map+overrides repos."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
+        """Should create ValidationService receiving fake_slfo_context.git_repo."""
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch)
 
-        # Explicit mock instances so the ValidationService wiring can be verified.
         mock_maint_inst = Mock()
-        mock_git_inst = Mock()
-        mock_git_inst.clone_or_update.return_value = Path("/cache/slfo")
-        mock_git_inst.list_submodules.return_value = ["pkg1"]
         mock_meta_inst = Mock()
         mock_meta_inst.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
         mock_meta_inst.parse_source_packages.return_value = {"pkg1"}
@@ -131,9 +130,6 @@ class TestWhitelistCheckCommand:
         monkeypatch.setattr(
             "bugownerctl.commands.whitelist.MaintainershipRepositoryImpl",
             Mock(return_value=mock_maint_inst),
-        )
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.GitRepositoryImpl", Mock(return_value=mock_git_inst)
         )
         monkeypatch.setattr(
             "bugownerctl.commands.whitelist.RepoMetadataRepositoryImpl",
@@ -153,11 +149,10 @@ class TestWhitelistCheckCommand:
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
-        # ValidationService called with positional (maint, git, metadata) +
-        # kwargs (bulk_map_repo, overrides_repo).
+        # ValidationService called with slfo_context.git_repo (not a fresh GitRepositoryImpl).
         services["validation_cls"].assert_called_once_with(
             mock_maint_inst,
-            mock_git_inst,
+            fake_slfo_context.git_repo,
             mock_meta_inst,
             bulk_map_repo=mock_bulk_inst,
             overrides_repo=mock_over_inst,
@@ -167,17 +162,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should create WhitelistService with ValidationService dependency."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
@@ -189,19 +175,16 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call WhitelistService.check_whitelist() with correct parameters."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
+        slfo_repo_path = Path("/cache/SLFO")
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
 
-        repos = _patch_repos(monkeypatch)
-        repos["git_repo"].list_submodules.return_value = ["pkg1", "pkg2"]
-        repos["metadata_repo"].parse_source_packages.return_value = {"pkg1", "pkg2", "pkg3"}
+        repos = _patch_other_repos(monkeypatch)
+        repos["metadata"].return_value.parse_source_packages.return_value = {
+            "pkg1",
+            "pkg2",
+            "pkg3",
+        }
+        fake_slfo_context.git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
 
         services = _patch_services(monkeypatch)
 
@@ -210,15 +193,13 @@ class TestWhitelistCheckCommand:
 
         services["whitelist_service"].check_whitelist.assert_called_once()
         call_args = services["whitelist_service"].check_whitelist.call_args[1]
-        # whitelist_file should come from cloned SLFO repo (like validate command)
-        assert call_args["whitelist_file"] == Path("/cache/slfo/whitelist_maintainership.json")
+        # whitelist_file must come from slfo_repo_path
+        assert call_args["whitelist_file"] == slfo_repo_path / "whitelist_maintainership.json"
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert call_args["submodules"] == ["pkg1", "pkg2"]
-        # cache_dir should come from config (XDG user cache)
-        expected_cache_dir = Path("~/.cache/bugownerctl").expanduser()
-        assert call_args["cache_dir"] == expected_cache_dir
-        # overrides_file must resolve via importlib.resources to the
-        # shipped JSON; verify basename.
+        # cache_dir must come from fake_slfo_context
+        assert call_args["cache_dir"] == fake_slfo_context.cache_dir
+        # overrides_file must resolve via importlib.resources to the shipped JSON
         assert isinstance(call_args["overrides_file"], Path)
         assert call_args["overrides_file"].name == "false_positives_overrides.json"
 
@@ -226,17 +207,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should return 0 exit code when no inconsistencies found."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
@@ -248,17 +220,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should return 1 exit code when inconsistencies found."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
             WhitelistCheckResult(inconsistent_packages=["pkg1", "pkg2"]),
@@ -273,17 +236,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print inconsistent packages with INFO prefix."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
             WhitelistCheckResult(inconsistent_packages=["apache2", "kernel-source"]),
@@ -302,17 +256,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print success message with INFO prefix when no issues."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
@@ -321,120 +266,12 @@ class TestWhitelistCheckCommand:
         captured = capsys.readouterr()
         assert "INFO: No inconsistencies found" in captured.out
 
-    def test_run_raises_error_when_version_not_found_in_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Should raise ValueError when version not in config."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        args = argparse.Namespace(version="99.9", config=None, refresh_bulk_map=False)
-
-        with pytest.raises(ValueError, match="Version 99.9 not found in config"):
-            run(args)
-
-    def test_run_raises_error_when_product_config_has_no_branch_or_commit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Should raise ValueError when product config has neither branch nor commit."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1"}],  # Missing branch and commit
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
-
-        with pytest.raises(ValueError, match="has neither branch nor commit"):
-            run(args)
-
-    def test_run_raises_error_when_git_ref_is_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should raise ValueError when git ref is empty."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": ""}],  # Empty branch
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
-
-        with pytest.raises(ValueError, match="Empty git ref for version 16.1"):
-            run(args)
-
-    def test_run_raises_error_when_slfo_git_url_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Should raise ValueError when slfo_git_url not in config."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            # Missing slfo_git_url
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
-
-        with pytest.raises(ValueError, match="slfo_git_url not found in config"):
-            run(args)
-
-    def test_run_supports_commit_ref_type(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should support commit ref type (not just branch)."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "commit": "abc123def"}],  # Commit instead of branch
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        repos = _patch_repos(monkeypatch)
-        _patch_services(monkeypatch)
-
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
-        result = run(args)
-
-        # Verify clone_or_update called with COMMIT ref type
-        assert repos["git_repo"].clone_or_update.called
-        call_kwargs = repos["git_repo"].clone_or_update.call_args[1]
-        assert call_kwargs["git_ref"] == "abc123def"
-        assert call_kwargs["ref_type"] == RefType.COMMIT
-        assert result == 0
-
     def test_whitelist_prints_unresolved_names_section(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print the unresolved-names section when unresolved_names is non-empty."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
             WhitelistCheckResult(
@@ -454,17 +291,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Verdict line must be printed LAST, after the unresolved-names diagnostic."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
             WhitelistCheckResult(
@@ -487,17 +315,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Inconsistency verdict block must come LAST, after the unresolved-names diagnostic."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
             WhitelistCheckResult(
@@ -520,17 +339,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should NOT print the unresolved-names section when unresolved_names is empty."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(monkeypatch)  # default: empty result, unresolved=[]
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
@@ -539,41 +349,39 @@ class TestWhitelistCheckCommand:
         captured = capsys.readouterr()
         assert "Names with no source mapping" not in captured.out
 
-    def test_run_passes_config_path_to_load_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Should pass args.config to load_config() when provided."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("bugownerctl.commands.whitelist.load_config", mock_load_config)
-
-        _patch_repos(monkeypatch)
+    def test_run_forwards_version_and_config_to_prepare_slfo_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should forward args.version and args.config to prepare_slfo_repo."""
+        mock_prep, _ = _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
         args = argparse.Namespace(version="16.1", config=config_path, refresh_bulk_map=False)
         run(args)
 
-        mock_load_config.assert_called_once_with(config_path)
+        mock_prep.assert_called_once_with("16.1", config_path)
+
+    def test_run_forwards_none_config_to_prepare_slfo_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should pass None to prepare_slfo_repo() when args.config is None."""
+        mock_prep, _ = _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        run(args)
+
+        mock_prep.assert_called_once_with("16.1", None)
 
     def test_run_passes_force_refresh_false_by_default(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should pass force_refresh=False to check_whitelist when --refresh-bulk-map not set."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
@@ -586,17 +394,8 @@ class TestWhitelistCheckCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should pass force_refresh=True to check_whitelist when --refresh-bulk-map is set."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        monkeypatch.setattr(
-            "bugownerctl.commands.whitelist.load_config", Mock(return_value=mock_config)
-        )
-
-        _patch_repos(monkeypatch)
+        _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=True)
@@ -605,23 +404,18 @@ class TestWhitelistCheckCommand:
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
         assert call_kwargs.get("force_refresh") is True
 
-    def test_run_passes_none_to_load_config_when_no_config_provided(
+    def test_run_calls_list_submodules_on_ctx_git_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should pass None to load_config() when args.config is None (triggers search)."""
-        mock_config = {
-            "cache_dir": "~/.cache/bugownerctl",
-            "whitelist_file": "whitelist_maintainership.json",
-            "slfo_git_url": "https://github.com/example/slfo.git",
-            "products": [{"version": "16.1", "branch": "SLFO-1.1"}],
-        }
-        mock_load_config = Mock(return_value=mock_config)
-        monkeypatch.setattr("bugownerctl.commands.whitelist.load_config", mock_load_config)
-
-        _patch_repos(monkeypatch)
+        """Should call list_submodules on slfo_context.git_repo, not a fresh GitRepositoryImpl."""
+        mock_prep, fake_slfo_context = _patch_prep(monkeypatch)
+        _patch_other_repos(monkeypatch)
         _patch_services(monkeypatch)
+        fake_slfo_context.git_repo.list_submodules.return_value = ["submodule1"]
 
         args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
         run(args)
 
-        mock_load_config.assert_called_once_with(None)
+        fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
+            fake_slfo_context.slfo_repo_path
+        )

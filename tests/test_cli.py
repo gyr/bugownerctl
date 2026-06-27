@@ -81,18 +81,20 @@ class TestCreateParser:
     def test_parser_has_query_package_subcommand(self) -> None:
         """Parser should have 'query package' subcommand."""
         parser = create_parser()
-        args = parser.parse_args(["query", "package", "test-pkg"])
+        args = parser.parse_args(["query", "package", "test-pkg", "-v", "16.1"])
         assert args.command == "query"
         assert args.query_command == "package"
         assert args.package_name == "test-pkg"
+        assert args.version == "16.1"
 
     def test_parser_has_query_maintainer_subcommand(self) -> None:
         """Parser should have 'query maintainer' subcommand."""
         parser = create_parser()
-        args = parser.parse_args(["query", "maintainer", "testuser"])
+        args = parser.parse_args(["query", "maintainer", "testuser", "-v", "16.1"])
         assert args.command == "query"
         assert args.query_command == "maintainer"
         assert args.maintainer_name == "testuser"
+        assert args.version == "16.1"
 
     def test_query_requires_subcommand(self) -> None:
         """Query should require a subcommand (package or maintainer)."""
@@ -105,7 +107,7 @@ class TestCreateParser:
         from bugownerctl.commands import query
 
         parser = create_parser()
-        args = parser.parse_args(["query", "package", "test-pkg"])
+        args = parser.parse_args(["query", "package", "test-pkg", "-v", "16.1"])
         assert args.func == query.run_package
 
     def test_query_maintainer_wires_correct_handler(self) -> None:
@@ -113,8 +115,44 @@ class TestCreateParser:
         from bugownerctl.commands import query
 
         parser = create_parser()
-        args = parser.parse_args(["query", "maintainer", "testuser"])
+        args = parser.parse_args(["query", "maintainer", "testuser", "-v", "16.1"])
         assert args.func == query.run_maintainer
+
+    def test_query_package_requires_version_flag(self) -> None:
+        """Query package should require -v/--version flag."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "package", "foo"])
+
+    def test_query_maintainer_requires_version_flag(self) -> None:
+        """Query maintainer should require -v/--version flag."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "maintainer", "foo"])
+
+    def test_query_package_accepts_config_flag(self) -> None:
+        """Query package should accept -c/--config flag."""
+        parser = create_parser()
+        args = parser.parse_args(["query", "package", "foo", "-v", "16.1", "-c", "/x.yaml"])
+        assert args.config == Path("/x.yaml")
+
+    def test_query_package_config_defaults_to_none(self) -> None:
+        """Query package config flag should default to None when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["query", "package", "foo", "-v", "16.1"])
+        assert args.config is None
+
+    def test_query_maintainer_accepts_config_flag(self) -> None:
+        """Query maintainer should accept -c/--config flag."""
+        parser = create_parser()
+        args = parser.parse_args(["query", "maintainer", "foo", "-v", "16.1", "-c", "/x.yaml"])
+        assert args.config == Path("/x.yaml")
+
+    def test_query_maintainer_config_defaults_to_none(self) -> None:
+        """Query maintainer config flag should default to None when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["query", "maintainer", "foo", "-v", "16.1"])
+        assert args.config is None
 
     def test_validate_accepts_config_flag(self) -> None:
         """Validate subcommand should accept --config flag."""
