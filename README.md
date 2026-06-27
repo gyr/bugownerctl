@@ -239,19 +239,30 @@ Check maintainership status of a package.
 
 **Usage:**
 ```bash
-bugownerctl query package <package_name>
+bugownerctl query package <package_name> -v <version> [-c <config>]
 ```
 
 **Examples:**
 ```bash
 # Check if apache2 is maintained
-bugownerctl query package apache2
+bugownerctl query package apache2 -v 16.1
 
 # Check whitelisted package
-bugownerctl query package legacy-pkg
+bugownerctl query package legacy-pkg -v 16.1
+
+# With explicit config
+bugownerctl query package apache2 -v 16.1 --config /path/to/config.yaml
 ```
 
-**Exit code:** Always `0`
+**Exit codes:**
+- `0` - Query completed successfully
+- `1` - Bad version (no matching product in config) or maintainership file not found
+
+**Maintainership File Location:**
+
+The maintainership and whitelist files are read from the **cloned SLFO git repository**, not the current working directory.
+
+Example path: `~/.cache/bugownerctl/SLFO/_maintainership.json`
 
 **Output:**
 ```
@@ -276,19 +287,30 @@ List all packages maintained by a user or group.
 
 **Usage:**
 ```bash
-bugownerctl query maintainer <maintainer_name>
+bugownerctl query maintainer <maintainer_name> -v <version> [-c <config>]
 ```
 
 **Examples:**
 ```bash
 # List packages for user
-bugownerctl query maintainer user1
+bugownerctl query maintainer user1 -v 16.1
 
 # List packages for group
-bugownerctl query maintainer team1
+bugownerctl query maintainer team1 -v 16.1
+
+# With explicit config
+bugownerctl query maintainer user1 -v 16.1 --config /path/to/config.yaml
 ```
 
-**Exit code:** Always `0`
+**Exit codes:**
+- `0` - Query completed successfully
+- `1` - Bad version (no matching product in config) or maintainership file not found
+
+**Maintainership File Location:**
+
+The maintainership file is read from the **cloned SLFO git repository**, not the current working directory.
+
+Example path: `~/.cache/bugownerctl/SLFO/_maintainership.json`
 
 **Output:**
 ```
