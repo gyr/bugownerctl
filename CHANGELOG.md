@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - Unreleased
+
+### Changed
+
+- **BREAKING:** Replaced the `validate` command with `check maintainership` and the
+  `whitelist-check` command with `check whitelist`. The old top-level commands are removed
+  with no aliases.
+
 ## [0.4.0] - 2026-06-26
 
 ### Fixed

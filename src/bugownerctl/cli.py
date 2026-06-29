@@ -1,7 +1,7 @@
 """CLI entry point for bugownerctl package.
 
 This module provides the command-line interface with subcommands for
-validating maintainership data, checking whitelists, and querying packages.
+init, check, and query subcommands.
 """
 
 import argparse
@@ -10,14 +10,14 @@ import sys
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 
-from bugownerctl.commands import init, query, validate, whitelist
+from bugownerctl.commands import check, init, query
 
 
 def create_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser with subcommands.
 
     Returns:
-        Configured ArgumentParser with init, validate, whitelist-check, and query subcommands.
+        Configured ArgumentParser with init, check, and query subcommands.
     """
     parser = argparse.ArgumentParser(
         prog="bugownerctl", description="Bug ownership and package maintainership validation tool"
@@ -42,51 +42,55 @@ def create_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--force", action="store_true", help="Overwrite existing config")
     init_parser.set_defaults(func=init.run)
 
-    # bugownerctl validate
-    validate_parser = subparsers.add_parser(
-        "validate",
+    # bugownerctl check
+    check_parser = subparsers.add_parser("check", help="Check maintainership and whitelist data")
+    check_subparsers = check_parser.add_subparsers(dest="check_command", required=True)
+
+    # check maintainership
+    maintainership_parser = check_subparsers.add_parser(
+        "maintainership",
         help="Validate maintainership data for inconsistencies and orphan packages",
     )
-    validate_parser.add_argument(
+    maintainership_parser.add_argument(
         "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
     )
-    validate_parser.add_argument(
+    maintainership_parser.add_argument(
         "-c",
         "--config",
         type=Path,
         default=None,
         help="Path to config file (default: search standard locations)",
     )
-    validate_parser.add_argument(
+    maintainership_parser.add_argument(
         "--refresh-bulk-map",
         action="store_true",
         default=False,
         help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
     )
-    validate_parser.set_defaults(func=validate.run)
+    maintainership_parser.set_defaults(func=check.run_maintainership)
 
-    # bugownerctl whitelist-check
-    whitelist_check_parser = subparsers.add_parser(
-        "whitelist-check",
+    # check whitelist
+    whitelist_parser = check_subparsers.add_parser(
+        "whitelist",
         help="Validate that whitelisted packages are NOT shipped",
     )
-    whitelist_check_parser.add_argument(
+    whitelist_parser.add_argument(
         "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
     )
-    whitelist_check_parser.add_argument(
+    whitelist_parser.add_argument(
         "-c",
         "--config",
         type=Path,
         default=None,
         help="Path to config file (default: search standard locations)",
     )
-    whitelist_check_parser.add_argument(
+    whitelist_parser.add_argument(
         "--refresh-bulk-map",
         action="store_true",
         default=False,
         help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
     )
-    whitelist_check_parser.set_defaults(func=whitelist.run)
+    whitelist_parser.set_defaults(func=check.run_whitelist)
 
     # bugownerctl query
     query_parser = subparsers.add_parser("query", help="Query package and maintainer information")

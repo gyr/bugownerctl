@@ -62,7 +62,7 @@ class TestValidateWorkflow:
             patch(
                 "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
             ) as mock_bulk_map,
-            patch("sys.argv", ["bugownerctl", "validate", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "check", "maintainership", "-v", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["test-package", "another-package"]
@@ -115,7 +115,7 @@ class TestValidateWorkflow:
             patch(
                 "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
             ) as mock_bulk_map,
-            patch("sys.argv", ["bugownerctl", "validate", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "check", "maintainership", "-v", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["maintained-package"]
