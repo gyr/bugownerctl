@@ -82,6 +82,6 @@ def run(args: argparse.Namespace) -> int:
     print("Next steps:")
     print(f"  1. Edit config: {target_path}")
     print("  2. Update slfo_git_url and products")
-    print("  3. Run: bugownerctl validate -v 16.1")
+    print("  3. Run: bugownerctl check maintainership -v 16.1")
 
     return 0

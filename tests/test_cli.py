@@ -23,13 +23,13 @@ class TestCreateParser:
     def test_parser_has_debug_flag(self) -> None:
         """Parser should support --debug flag."""
         parser = create_parser()
-        args = parser.parse_args(["--debug", "validate", "-v", "16.1"])
+        args = parser.parse_args(["--debug", "check", "maintainership", "-v", "16.1"])
         assert args.debug is True
 
     def test_parser_debug_flag_defaults_to_false(self) -> None:
         """Debug flag should default to False."""
         parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
         assert args.debug is False
 
     def test_parser_requires_subcommand(self) -> None:
@@ -38,18 +38,27 @@ class TestCreateParser:
         with pytest.raises(SystemExit):
             parser.parse_args([])
 
-    def test_parser_has_validate_subcommand(self) -> None:
-        """Parser should have 'validate' subcommand."""
+    def test_parser_has_check_maintainership_subcommand(self) -> None:
+        """Parser should have 'check maintainership' subcommand."""
         parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1"])
-        assert args.command == "validate"
+        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
+        assert args.command == "check"
+        assert args.check_command == "maintainership"
         assert args.version == "16.1"
 
-    def test_validate_requires_version_flag(self) -> None:
-        """Validate subcommand should require -v/--version flag."""
+    def test_check_maintainership_requires_version_flag(self) -> None:
+        """check maintainership should require -v/--version flag."""
         parser = create_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["validate"])
+            parser.parse_args(["check", "maintainership"])
+
+    def test_check_maintainership_wires_correct_handler(self) -> None:
+        """check maintainership should wire check.run_maintainership as handler."""
+        from bugownerctl.commands import check
+
+        parser = create_parser()
+        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
+        assert args.func == check.run_maintainership
 
     def test_parser_rejects_whitelist_update_subcommand(self) -> None:
         """Parser should NOT have 'whitelist update' subcommand (removed)."""
@@ -57,26 +66,27 @@ class TestCreateParser:
         with pytest.raises(SystemExit):
             parser.parse_args(["whitelist", "update"])
 
-    def test_parser_has_whitelist_check_subcommand(self) -> None:
-        """Parser should have 'whitelist-check' subcommand with version flag."""
+    def test_parser_has_check_whitelist_subcommand(self) -> None:
+        """Parser should have 'check whitelist' subcommand with version flag."""
         parser = create_parser()
-        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
-        assert args.command == "whitelist-check"
+        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
+        assert args.command == "check"
+        assert args.check_command == "whitelist"
         assert args.version == "16.1"
 
-    def test_whitelist_check_requires_version_flag(self) -> None:
-        """Whitelist-check should require -v/--version flag."""
+    def test_check_whitelist_requires_version_flag(self) -> None:
+        """check whitelist should require -v/--version flag."""
         parser = create_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["whitelist-check"])
+            parser.parse_args(["check", "whitelist"])
 
-    def test_whitelist_check_wires_correct_handler(self) -> None:
-        """Whitelist-check should wire whitelist.run as handler."""
-        from bugownerctl.commands import whitelist
+    def test_check_whitelist_wires_correct_handler(self) -> None:
+        """check whitelist should wire check.run_whitelist as handler."""
+        from bugownerctl.commands import check
 
         parser = create_parser()
-        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
-        assert args.func == whitelist.run
+        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
+        assert args.func == check.run_whitelist
 
     def test_parser_has_query_package_subcommand(self) -> None:
         """Parser should have 'query package' subcommand."""
@@ -154,73 +164,71 @@ class TestCreateParser:
         args = parser.parse_args(["query", "maintainer", "foo", "-v", "16.1"])
         assert args.config is None
 
-    def test_validate_accepts_config_flag(self) -> None:
-        """Validate subcommand should accept --config flag."""
-        parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1", "--config", "/custom/config.yaml"])
-        assert args.config == Path("/custom/config.yaml")
-
-    def test_validate_config_flag_short_form(self) -> None:
-        """Validate subcommand should accept -c short form for config flag."""
-        parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1", "-c", "/custom/config.yaml"])
-        assert args.config == Path("/custom/config.yaml")
-
-    def test_validate_config_flag_defaults_to_none(self) -> None:
-        """Config flag should default to None when not provided."""
-        parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1"])
-        assert args.config is None
-
-    def test_validate_config_flag_is_path_type(self) -> None:
-        """Config flag should be converted to Path type."""
-        parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1", "--config", "/custom/config.yaml"])
-        assert isinstance(args.config, Path)
-
-    def test_whitelist_check_accepts_config_flag(self) -> None:
-        """Whitelist-check subcommand should accept --config flag."""
+    def test_check_maintainership_accepts_config_flag(self) -> None:
+        """check maintainership should accept --config flag."""
         parser = create_parser()
         args = parser.parse_args(
-            ["whitelist-check", "-v", "16.1", "--config", "/custom/config.yaml"]
+            ["check", "maintainership", "-v", "16.1", "--config", "/custom/config.yaml"]
         )
         assert args.config == Path("/custom/config.yaml")
 
-    def test_whitelist_check_config_flag_short_form(self) -> None:
-        """Whitelist-check subcommand should accept -c short form."""
+    def test_check_maintainership_config_flag_short_form(self) -> None:
+        """check maintainership should accept -c short form for config flag."""
         parser = create_parser()
-        args = parser.parse_args(["whitelist-check", "-v", "16.1", "-c", "/custom/config.yaml"])
+        args = parser.parse_args(
+            ["check", "maintainership", "-v", "16.1", "-c", "/custom/config.yaml"]
+        )
         assert args.config == Path("/custom/config.yaml")
 
-    def test_whitelist_check_config_flag_defaults_to_none(self) -> None:
-        """Config flag should default to None for whitelist-check."""
+    def test_check_maintainership_config_flag_defaults_to_none(self) -> None:
+        """Config flag should default to None for check maintainership."""
         parser = create_parser()
-        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
         assert args.config is None
 
-    def test_validate_refresh_bulk_map_defaults_to_false(self) -> None:
-        """Validate subcommand --refresh-bulk-map should default to False."""
+    def test_check_maintainership_refresh_bulk_map_defaults_to_false(self) -> None:
+        """check maintainership --refresh-bulk-map should default to False."""
         parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
         assert args.refresh_bulk_map is False
 
-    def test_validate_accepts_refresh_bulk_map_flag(self) -> None:
-        """Validate subcommand should accept --refresh-bulk-map flag."""
+    def test_check_maintainership_accepts_refresh_bulk_map_flag(self) -> None:
+        """check maintainership should accept --refresh-bulk-map flag."""
         parser = create_parser()
-        args = parser.parse_args(["validate", "-v", "16.1", "--refresh-bulk-map"])
+        args = parser.parse_args(["check", "maintainership", "-v", "16.1", "--refresh-bulk-map"])
         assert args.refresh_bulk_map is True
 
-    def test_whitelist_check_refresh_bulk_map_defaults_to_false(self) -> None:
-        """Whitelist-check subcommand --refresh-bulk-map should default to False."""
+    def test_check_whitelist_accepts_config_flag(self) -> None:
+        """check whitelist should accept --config flag."""
         parser = create_parser()
-        args = parser.parse_args(["whitelist-check", "-v", "16.1"])
+        args = parser.parse_args(
+            ["check", "whitelist", "-v", "16.1", "--config", "/custom/config.yaml"]
+        )
+        assert args.config == Path("/custom/config.yaml")
+
+    def test_check_whitelist_config_flag_defaults_to_none(self) -> None:
+        """Config flag should default to None for check whitelist."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
+        assert args.config is None
+
+    def test_check_whitelist_refresh_bulk_map_defaults_to_false(self) -> None:
+        """check whitelist --refresh-bulk-map should default to False."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
         assert args.refresh_bulk_map is False
 
-    def test_whitelist_check_accepts_refresh_bulk_map_flag(self) -> None:
-        """Whitelist-check subcommand should accept --refresh-bulk-map flag."""
+    def test_check_whitelist_accepts_refresh_bulk_map_flag(self) -> None:
+        """check whitelist should accept --refresh-bulk-map flag."""
         parser = create_parser()
-        args = parser.parse_args(["whitelist-check", "-v", "16.1", "--refresh-bulk-map"])
+        args = parser.parse_args(["check", "whitelist", "-v", "16.1", "--refresh-bulk-map"])
         assert args.refresh_bulk_map is True
+
+    def test_check_requires_subcommand(self) -> None:
+        """check should require a subcommand (maintainership or whitelist)."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check"])
 
     def test_parser_has_init_subcommand(self) -> None:
         """Parser should have 'init' subcommand."""
