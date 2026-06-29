@@ -23,10 +23,10 @@ pip install -e .
 bugownerctl init
 
 # Validate maintainership for SLES 16.1
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 
 # Check whitelist against shipped packages
-bugownerctl whitelist-check -v 16.1
+bugownerctl check whitelist -v 16.1
 
 # Check package maintainership
 bugownerctl query package apache2
@@ -94,18 +94,18 @@ bugownerctl init --force
 Next steps:
   1. Edit config: /home/user/.config/bugownerctl/config.yaml
   2. Update slfo_git_url and products
-  3. Run: bugownerctl validate -v 16.1
+  3. Run: bugownerctl check maintainership -v 16.1
 ```
 
 ---
 
-### `bugownerctl validate`
+### `bugownerctl check maintainership`
 
 Validates package maintainership data for consistency.
 
 **Usage:**
 ```bash
-bugownerctl validate -v <version> [--config <path>] [--debug]
+bugownerctl check maintainership -v <version> [--config <path>] [--debug]
 ```
 
 **Options:**
@@ -128,17 +128,17 @@ bugownerctl validate -v <version> [--config <path>] [--debug]
 **Examples:**
 ```bash
 # Validate SLES 16.1 (uses config search hierarchy)
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 
 # Validate with explicit config file
-bugownerctl validate -v 16.1 --config /custom/config.yaml
+bugownerctl check maintainership -v 16.1 --config /custom/config.yaml
 
 # Validate with debug logging
-bugownerctl validate -v 16.0 --debug
+bugownerctl check maintainership -v 16.0 --debug
 
 # Use environment variable for config
 export BUGOWNERCTL_CONFIG=/path/to/config.yaml
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 ```
 
 **Exit codes:**
@@ -153,7 +153,7 @@ bugownerctl validate -v 16.1
 
 ---
 
-### `bugownerctl whitelist-check`
+### `bugownerctl check whitelist`
 
 Validates that whitelisted packages are NOT shipped in the distribution.
 
@@ -161,7 +161,7 @@ Validates that whitelisted packages are NOT shipped in the distribution.
 
 **Usage:**
 ```bash
-bugownerctl whitelist-check -v <version> [--config <path>]
+bugownerctl check whitelist -v <version> [--config <path>]
 ```
 
 **Options:**
@@ -171,7 +171,7 @@ bugownerctl whitelist-check -v <version> [--config <path>]
 **What it does:**
 - Downloads repository metadata (primary.xml.gz)
 - Clones/updates git repository
-- Extracts validated shipped packages (same pipeline as `validate`)
+- Extracts validated shipped packages (same pipeline as `check maintainership`)
 - Loads whitelist file (`whitelist_maintainership.json`)
 - Finds intersection: packages that are BOTH shipped AND whitelisted
 - Reports inconsistencies
@@ -179,10 +179,10 @@ bugownerctl whitelist-check -v <version> [--config <path>]
 **Examples:**
 ```bash
 # Check whitelist with automatic config discovery
-bugownerctl whitelist-check -v 16.1
+bugownerctl check whitelist -v 16.1
 
 # Check whitelist with explicit config
-bugownerctl whitelist-check -v 16.1 --config /path/to/config.yaml
+bugownerctl check whitelist -v 16.1 --config /path/to/config.yaml
 ```
 
 **Exit codes:**
@@ -352,14 +352,14 @@ The tool uses a **standard search hierarchy** to find configuration:
 **Examples:**
 ```bash
 # Let tool find config automatically (searches hierarchy)
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 
 # Explicit config (highest priority, skips search)
-bugownerctl validate -v 16.1 --config /ci/config.yaml
+bugownerctl check maintainership -v 16.1 --config /ci/config.yaml
 
 # Environment variable (second priority)
 export BUGOWNERCTL_CONFIG=/team/shared-config.yaml
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 
 # Create user config (recommended first step)
 bugownerctl init
@@ -427,7 +427,7 @@ Manually maintained whitelist for packages expected to be NOT shipped:
 ]
 ```
 
-**Note:** This file is no longer auto-generated. It serves as a reference list for validation via `bugownerctl whitelist-check`.
+**Note:** This file is no longer auto-generated. It serves as a reference list for validation via `bugownerctl check whitelist`.
 
 ### `false_positives_overrides.json`
 
@@ -445,7 +445,7 @@ Hand-curated mapping of binary/subpackage names to canonical source package name
 
 **Why a file, not a cache:** Earlier versions auto-populated `~/.cache/bugownerctl/false_positives.json` from OBS lookups. That cache silently shadowed real bugs (a stale entry could hide a missing maintainership row). Hand-curated overrides put a human in the loop and make every entry diff-reviewable. Full rationale, alternatives considered, and consequences are recorded in `docs/adr/0001-source-name-resolution.md`.
 
-### How `bugownerctl validate` resolves source names
+### How `bugownerctl check maintainership` resolves source names
 
 For every shipped binary name `n` found in the SLES repo, the resolver picks the first hit from this pipeline:
 
@@ -501,7 +501,7 @@ rm -rf ~/.cache/bugownerctl/repodata/16.1/
 rm -rf ~/.cache/bugownerctl/repodata/
 
 # Cache will automatically rebuild on next run
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 ```
 
 **Performance impact:**
@@ -688,11 +688,11 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 
 | Old Script | New Command |
 |------------|-------------|
-| `validate_maintainership.py -v 16.1` | `bugownerctl validate -v 16.1` |
+| `validate_maintainership.py -v 16.1` | `bugownerctl check maintainership -v 16.1` |
 | `create_whitelist_maintainership.py` | ~~`bugownerctl whitelist update`~~ (removed) |
 | `check_package_maintainer.py <pkg>` | `bugownerctl query package <pkg>` |
 | N/A | `bugownerctl query maintainer <user>` (new) |
-| N/A | `bugownerctl whitelist-check -v <version>` (new) |
+| N/A | `bugownerctl check whitelist -v <version>` (new) |
 | N/A | `bugownerctl init` (new) |
 
 **Migration steps:**
@@ -722,14 +722,14 @@ bugownerctl init
 bugownerctl init --location local
 
 # Option 3: Explicitly specify config location
-bugownerctl validate -v 16.1 --config /path/to/config.yaml
+bugownerctl check maintainership -v 16.1 --config /path/to/config.yaml
 
 # Option 4: Use environment variable
 export BUGOWNERCTL_CONFIG=/path/to/config.yaml
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 
 # View search locations (error message shows all paths checked)
-bugownerctl validate -v 16.1  # If no config found, shows search hierarchy
+bugownerctl check maintainership -v 16.1  # If no config found, shows search hierarchy
 ```
 
 **"Config file exists" (when running init)**
@@ -778,7 +778,7 @@ firefox htmlcov/index.html
 rm -rf ~/.cache/bugownerctl/repodata/16.1/
 
 # Retry validation (will re-download)
-bugownerctl validate -v 16.1
+bugownerctl check maintainership -v 16.1
 ```
 
 **"Cache corruption or stale data"**
@@ -795,7 +795,7 @@ rm -rf ~/.cache/bugownerctl/repodata/16.0/
 **"OBS bulk map is stale or corrupt"**
 ```bash
 # Force re-fetch without touching repodata cache
-bugownerctl validate -v 16.1 --refresh-bulk-map
+bugownerctl check maintainership -v 16.1 --refresh-bulk-map
 
 # Or delete the cache files manually (re-fetched on next run)
 rm -f ~/.cache/bugownerctl/obs_bulk_map.xml ~/.cache/bugownerctl/obs_bulk_map.meta.json
