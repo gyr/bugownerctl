@@ -593,3 +593,44 @@ class TestDownloadPrimaryMetadata:
         # Verify file was written correctly
         assert result.exists()
         assert result.read_bytes() == primary_content
+
+
+class TestParseSourcePackagesDefusedxml:
+    """Defusedxml hardening tests for parse_source_packages."""
+
+    def test_parse_source_packages_still_parses_gzip(self) -> None:
+        """parse_source_packages must return the src-arch package from the on-disk fixture."""
+        fixture = Path(__file__).parent / "fixtures" / "primary_sample.xml.gz"
+        repo = RepoMetadataRepositoryImpl()
+        result = repo.parse_source_packages(fixture)
+        assert result == {"fixture-src-pkg"}
+
+    def test_primary_xml_with_doctype_rejected(self, tmp_path: Path) -> None:
+        """A bare DOCTYPE in a gzipped primary XML must raise RuntimeError containing 'DOCTYPE'."""
+        evil = (
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b"<!DOCTYPE foo []>"
+            b'<metadata xmlns="http://linux.duke.edu/metadata/common"/>'
+        )
+        gz_file = tmp_path / "evil_primary.xml.gz"
+        with gzip.open(gz_file, "wb") as f:
+            f.write(evil)
+        repo = RepoMetadataRepositoryImpl()
+        with pytest.raises(RuntimeError, match="DOCTYPE"):
+            repo.parse_source_packages(gz_file)
+
+
+class TestDownloadPrimaryMetadataDefusedxml:
+    """Defusedxml hardening tests for download_primary_metadata (repomd path)."""
+
+    @patch("requests.get")
+    def test_repomd_with_doctype_rejected(self, mock_get: Mock, tmp_path: Path) -> None:
+        """A bare DOCTYPE in repomd.xml must raise RuntimeError containing 'DOCTYPE'."""
+        evil_repomd = b'<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE foo []><repomd/>'
+        mock_resp = Mock()
+        mock_resp.content = evil_repomd
+        mock_resp.raise_for_status = Mock()
+        mock_get.return_value = mock_resp
+        repo = RepoMetadataRepositoryImpl()
+        with pytest.raises(RuntimeError, match="DOCTYPE"):
+            repo.download_primary_metadata("16.1", tmp_path)
