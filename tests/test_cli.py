@@ -472,3 +472,71 @@ class TestMainExceptionHandling:
         captured = capsys.readouterr()
         assert "ERROR: Unexpected error" in captured.err
         assert "Traceback" not in captured.err
+
+
+class TestCheckUsersSubcommand:
+    """Tests for 'check users' CLI subcommand parsing."""
+
+    def test_check_users_parses_check_command_and_version(self) -> None:
+        """check users -v 16.1 should parse check_command='users', version='16.1'."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        assert args.command == "check"
+        assert args.check_command == "users"
+        assert args.version == "16.1"
+
+    def test_check_users_requires_version_flag(self) -> None:
+        """-v/--version is required for check users (raises SystemExit when omitted)."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "users"])
+
+    def test_check_users_wires_correct_handler(self) -> None:
+        """check users should wire check.run_users as handler."""
+        from bugownerctl.commands import check
+
+        parser = create_parser()
+        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        assert args.func == check.run_users
+
+    def test_check_users_api_defaults_to_api_suse_de(self) -> None:
+        """--api should default to 'https://api.suse.de' when not supplied."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        assert args.api == "https://api.suse.de"
+
+    def test_check_users_batch_size_defaults_to_50(self) -> None:
+        """--batch-size should default to 50 when not supplied."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        assert args.batch_size == 50
+
+    def test_check_users_batch_size_zero_raises_system_exit(self) -> None:
+        """--batch-size 0 is rejected by positive_int and raises SystemExit."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "users", "-v", "16.1", "--batch-size", "0"])
+
+    def test_check_users_batch_size_negative_raises_system_exit(self) -> None:
+        """--batch-size -1 is rejected by positive_int and raises SystemExit."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "users", "-v", "16.1", "--batch-size", "-1"])
+
+    def test_check_users_batch_size_valid_value_is_stored_as_int(self) -> None:
+        """--batch-size 25 is accepted by positive_int and stored as int 25."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "users", "-v", "16.1", "--batch-size", "25"])
+        assert args.batch_size == 25
+
+    def test_check_users_accepts_config_flag(self) -> None:
+        """check users should accept -c/--config flag and store it as a Path."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "users", "-v", "16.1", "-c", "/custom/config.yaml"])
+        assert args.config == Path("/custom/config.yaml")
+
+    def test_check_users_config_flag_defaults_to_none(self) -> None:
+        """Config flag should default to None for check users when not provided."""
+        parser = create_parser()
+        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        assert args.config is None

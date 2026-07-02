@@ -12,7 +12,9 @@ from bugownerctl.repositories.name_overrides_repository import NameOverridesRepo
 from bugownerctl.repositories.obs_bulk_source_info_repository import (
     ObsBulkSourceInfoRepositoryImpl,
 )
+from bugownerctl.repositories.obs_person_repository import ObsPersonRepositoryImpl
 from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
+from bugownerctl.services.user_validation_service import UserValidationService
 from bugownerctl.services.validation_service import ValidationService
 from bugownerctl.services.whitelist_service import WhitelistService
 from bugownerctl.utils.file_utils import validate_file_within_directory
@@ -194,3 +196,51 @@ def run_whitelist(args: argparse.Namespace) -> int:
     has_issues = bool(result.inconsistent_packages)
 
     return 1 if has_issues else 0
+
+
+def run_users(args: argparse.Namespace) -> int:
+    """Execute check users subcommand.
+
+    Args:
+        args: Parsed command-line arguments (requires version, config, api, batch_size).
+
+    Returns:
+        Exit code (0 = all confirmed, 1 = any invalid or not found).
+    """
+    slfo_context = prepare_slfo_repo(args.version, args.config)
+    maintainership_file_name = slfo_context.config.get(
+        "maintainership_file", "_maintainership.json"
+    )
+    maintainership_file = validate_file_within_directory(
+        slfo_context.slfo_repo_path, maintainership_file_name, "Maintainership file"
+    )
+
+    maintainership_repo = MaintainershipRepositoryImpl()
+    person_repo = ObsPersonRepositoryImpl()
+    service = UserValidationService(maintainership_repo, person_repo)
+
+    result = service.validate(maintainership_file, args.api, args.batch_size)
+
+    if result.confirmed:
+        print(f"INFO: Found {len(result.confirmed)} confirmed OBS accounts.")
+        print("INFO: Confirmed accounts:")
+        for login in result.confirmed:
+            print(f"INFO: - {login}")
+    if result.invalid:
+        print(f"INFO: Found {len(result.invalid)} invalid (locked / non-confirmed) accounts.")
+        print("INFO: Invalid accounts:")
+        for login in result.invalid:
+            print(f"INFO: - {login}")
+    if result.not_found:
+        print(f"INFO: Found {len(result.not_found)} accounts not found in OBS.")
+        print("INFO: Accounts not found in OBS:")
+        for login in result.not_found:
+            print(f"INFO: - {login}")
+    total = len(result.confirmed) + len(result.invalid) + len(result.not_found)
+    not_ok = len(result.invalid) + len(result.not_found)
+    if result.invalid or result.not_found:
+        print(f"INFO: {not_ok} of {total} users are not confirmed OBS accounts.")
+    else:
+        print(f"INFO: All {total} users are confirmed OBS accounts.")
+
+    return 1 if (result.invalid or result.not_found) else 0
