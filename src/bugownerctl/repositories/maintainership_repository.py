@@ -64,6 +64,24 @@ class MaintainershipRepository(Protocol):
         """
         ...
 
+    def load_users_by_package(self, file_path: Path) -> dict[str, list[str]]:
+        """Load users per package from a maintainership JSON file.
+
+        Returns only the "users" list per package, excluding groups.
+
+        Args:
+            file_path: Path to _maintainership.json
+
+        Returns:
+            Mapping of package name to list of user login strings.
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            json.JSONDecodeError: If invalid JSON
+            KeyError: If missing required 'packages' key
+        """
+        ...
+
 
 class MaintainershipRepositoryImpl:
     """Repository for maintainership data access."""
@@ -136,3 +154,23 @@ class MaintainershipRepositoryImpl:
             if maintainer in maintainers:
                 result.append(package_name)
         return result
+
+    def load_users_by_package(self, file_path: Path) -> dict[str, list[str]]:
+        """Load users per package from a maintainership JSON file.
+
+        Returns only the "users" list per package, excluding groups.
+
+        Args:
+            file_path: Path to _maintainership.json
+
+        Returns:
+            Mapping of package name to list of user login strings.
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+            json.JSONDecodeError: If invalid JSON
+            KeyError: If missing required 'packages' key
+        """
+        with open(file_path) as f:
+            data = json.load(f)
+        return {pkg: pkg_obj.get("users", []) for pkg, pkg_obj in data["packages"].items()}
