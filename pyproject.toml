@@ -6,7 +6,7 @@ authors = [
     {name = "Gustavo Yokoyama Ribeiro", email = "gyribeiro@suse.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "lxml>=4.9.0",
     "PyYAML>=6.0",
@@ -44,7 +44,7 @@ packages = ["src/bugownerctl"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -65,7 +65,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

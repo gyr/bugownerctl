@@ -5,7 +5,7 @@ using real fixtures and minimal mocking.
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 from bugownerctl.cli import main
@@ -71,7 +71,7 @@ class TestValidateWorkflow:
             mock_bulk_map.return_value = BulkMap(
                 mapping={},
                 project="test-project",
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=datetime.now(UTC),
             )
 
             # Execute
@@ -124,7 +124,7 @@ class TestValidateWorkflow:
             mock_bulk_map.return_value = BulkMap(
                 mapping={},
                 project="test-project",
-                fetched_at=datetime.now(timezone.utc),
+                fetched_at=datetime.now(UTC),
             )
 
             # Execute

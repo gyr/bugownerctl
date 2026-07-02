@@ -6,8 +6,8 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from bugownerctl.commands.check import run_maintainership, run_whitelist
 
+from bugownerctl.commands.check import run_maintainership, run_whitelist
 from bugownerctl.commands.repo_prep import SlfoRepoContext
 from bugownerctl.services.validation_service import ValidationResult
 from bugownerctl.services.whitelist_service import WhitelistCheckResult

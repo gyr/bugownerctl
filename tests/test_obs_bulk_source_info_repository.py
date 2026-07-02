@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -327,7 +327,7 @@ class TestCache:
         body = _fixture_xml()
         # Write a stale cache by hand (TTL is 7d; set fetched_at to 8d ago).
         (tmp_path / "obs_bulk_map.xml").write_bytes(body)
-        stale = datetime.now(timezone.utc) - timedelta(days=8)
+        stale = datetime.now(UTC) - timedelta(days=8)
         (tmp_path / "obs_bulk_map.meta.json").write_text(
             json.dumps(
                 {

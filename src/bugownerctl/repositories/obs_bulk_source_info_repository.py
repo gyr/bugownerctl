@@ -25,7 +25,7 @@ import logging
 import os
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 from xml.etree import ElementTree as ET
@@ -124,7 +124,7 @@ class ObsBulkSourceInfoRepositoryImpl:
         else:
             logger.info("Fetching OBS bulk source-info for project %s", project)
             xml_body = self._fetch_via_osc_api(project)
-            fetched_at = datetime.now(timezone.utc)
+            fetched_at = datetime.now(UTC)
             cache_dir.mkdir(parents=True, exist_ok=True)
             # Restrict the cache directory to owner-only (mirrors
             # false_positives_repository pattern). Cached XML may include
@@ -184,7 +184,7 @@ class ObsBulkSourceInfoRepositoryImpl:
             logger.warning("Cache meta has invalid fetched_at; refetching")
             return None
 
-        if datetime.now(timezone.utc) - fetched_at > CACHE_TTL:
+        if datetime.now(UTC) - fetched_at > CACHE_TTL:
             logger.info("OBS bulk cache stale (age > %s); refetching", CACHE_TTL)
             return None
 

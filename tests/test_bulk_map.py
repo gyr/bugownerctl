@@ -1,6 +1,6 @@
 """Tests for BulkMap domain value object."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -12,7 +12,7 @@ class TestBulkMap:
 
     def test_bulk_map_exposes_constructor_fields(self):
         """BulkMap should expose mapping, project, and fetched_at."""
-        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         bm = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
@@ -27,7 +27,7 @@ class TestBulkMap:
         bm = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
-            fetched_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         with pytest.raises((AttributeError, TypeError)):
             bm.project = "openSUSE:Factory"
@@ -37,7 +37,7 @@ class TestBulkMap:
         bm = BulkMap(
             mapping={"apache2-devel": "apache2", "libapr1": "apr"},
             project="SUSE:SLFO:Main",
-            fetched_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert bm.entry_count == 2
         assert bm.entry_count == len(bm.mapping)
@@ -47,13 +47,13 @@ class TestBulkMap:
         bm = BulkMap(
             mapping={},
             project="SUSE:SLFO:Main",
-            fetched_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert bm.entry_count == 0
 
     def test_bulk_map_equality(self):
         """Two BulkMaps with identical fields should be equal."""
-        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         bm1 = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
@@ -68,7 +68,7 @@ class TestBulkMap:
 
     def test_bulk_map_inequality_different_project(self):
         """BulkMaps with different project should not be equal."""
-        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         bm1 = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
@@ -83,7 +83,7 @@ class TestBulkMap:
 
     def test_bulk_map_inequality_different_mapping(self):
         """BulkMaps with different mapping should not be equal."""
-        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         bm1 = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
@@ -101,7 +101,7 @@ class TestBulkMap:
         bm = BulkMap(
             mapping={"apache2-devel": "apache2", "libapr1": "apr"},
             project="SUSE:SLFO:Main",
-            fetched_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert bm.mapping["apache2-devel"] == "apache2"
         assert bm.mapping["libapr1"] == "apr"
