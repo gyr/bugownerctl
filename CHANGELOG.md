@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `check users` subcommand: validates that user logins in `_maintainership.json` are confirmed
+  OBS accounts. Extracts all unique user logins (groups are not checked), queries OBS
+  `/search/person` in batches, and prints categorised lists of confirmed, invalid (locked /
+  non-confirmed), and not-found accounts with `INFO:` output. Exits `0` if all logins are
+  confirmed, `1` if any are invalid or not found. Options: `-v/--version` (required),
+  `-c/--config`, `--api` (default `https://api.suse.de`), `--batch-size` (default `50`).
+
+### Changed
+
+- **BREAKING:** Python minimum raised from `3.10` to `3.13`. Runtime and CI both require
+  Python ≥ 3.13.
+- `lxml` dependency replaced by `defusedxml>=0.7.1`. `lxml` was unused in `src/`; `defusedxml`
+  is now the active XML parser at all three parse sites.
+
+### Security
+
+- All XML parse sites now use **defusedxml** instead of `xml.etree.ElementTree`, with
+  `forbid_dtd=True` on every parse call. Affected: `obs_bulk_source_info_repository.py`
+  (bulk map), `repo_metadata_repository.py` (`repomd.xml` and `primary.xml.gz`),
+  `obs_person_repository.py` (person search). The previous 4096-byte `<!DOCTYPE` byte scan in
+  the bulk-map parser — bypassable by placing a large XML comment before the declaration —
+  is replaced by the parser-level DTD guard.
+
 ## [0.5.0] - 2026-06-29
 
 ### Changed
