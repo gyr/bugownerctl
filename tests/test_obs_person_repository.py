@@ -214,3 +214,83 @@ class TestBatchBoundary:
         logins = [f"user{i}" for i in range(100)]
         repo.query_persons(logins)
         assert mock_run.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# XML parsing
+
+
+class TestXmlParse:
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_parse_returns_login_state_mapping(self, mock_run: Mock) -> None:
+        """Valid XML with two persons returns login→state mapping."""
+        xml = (
+            b"<directory>"
+            b"<person><login>alice</login><state>confirmed</state></person>"
+            b"<person><login>bob</login><state>locked</state></person>"
+            b"</directory>"
+        )
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsPersonRepositoryImpl()
+        result = repo.query_persons(["alice", "bob"])
+        assert result == {"alice": "confirmed", "bob": "locked"}
+
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_parse_person_without_state_returns_none(self, mock_run: Mock) -> None:
+        """Person element with no <state> child maps to None."""
+        xml = b"<directory><person><login>alice</login></person></directory>"
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsPersonRepositoryImpl()
+        result = repo.query_persons(["alice"])
+        assert result == {"alice": None}
+
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_login_absent_from_response_is_absent_from_result(self, mock_run: Mock) -> None:
+        """Login not present in XML response is absent from the returned dict."""
+        xml = (
+            b"<directory><person><login>alice</login><state>confirmed</state></person></directory>"
+        )
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsPersonRepositoryImpl()
+        result = repo.query_persons(["alice", "bob"])
+        assert result == {"alice": "confirmed"}
+
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_malformed_xml_raises_runtime_error(self, mock_run: Mock) -> None:
+        """Malformed XML bytes raise RuntimeError."""
+        mock_run.return_value = _make_proc(returncode=0, stdout=b"not xml at all <<<")
+        repo = ObsPersonRepositoryImpl()
+        with pytest.raises(RuntimeError):
+            repo.query_persons(["alice"])
+
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_doctype_in_person_response_raises_runtime_error(self, mock_run: Mock) -> None:
+        """DOCTYPE in response raises RuntimeError with 'DOCTYPE' in message."""
+        mock_run.return_value = _make_proc(returncode=0, stdout=b"<!DOCTYPE foo><directory/>")
+        repo = ObsPersonRepositoryImpl()
+        with pytest.raises(RuntimeError, match="DOCTYPE"):
+            repo.query_persons(["alice"])
+
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_oversized_response_raises_runtime_error(self, mock_run: Mock) -> None:
+        """Response exceeding 50 MB raises RuntimeError with 'exceeds' in message."""
+        mock_run.return_value = _make_proc(returncode=0, stdout=b"x" * (51 * 1024 * 1024))
+        repo = ObsPersonRepositoryImpl()
+        with pytest.raises(RuntimeError, match="exceeds"):
+            repo.query_persons(["alice"])
+
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_person_without_login_element_is_skipped(self, mock_run: Mock) -> None:
+        """<person> with no <login> child is silently skipped."""
+        xml = b"<directory><person><state>confirmed</state></person></directory>"
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        result = ObsPersonRepositoryImpl().query_persons(["alice"])
+        assert result == {}
+
+    @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
+    def test_person_with_empty_login_element_is_skipped(self, mock_run: Mock) -> None:
+        """<person> with empty <login/> is silently skipped."""
+        xml = b"<directory><person><login/><state>confirmed</state></person></directory>"
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        result = ObsPersonRepositoryImpl().query_persons(["alice"])
+        assert result == {}

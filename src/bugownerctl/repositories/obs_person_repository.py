@@ -9,6 +9,9 @@ import subprocess
 from typing import Protocol
 from urllib.parse import quote, urlparse
 
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
+
 DEFAULT_OBS_API = "https://api.suse.de"
 MAX_XML_BYTES = 50 * 1024 * 1024
 
@@ -80,7 +83,8 @@ class ObsPersonRepositoryImpl:
         result: dict[str, str | None] = {}
         for i in range(num_batches):
             batch = logins[i * batch_size : (i + 1) * batch_size]
-            _xml_bytes = self._fetch_batch(batch, api)
+            xml_bytes = self._fetch_batch(batch, api)
+            result.update(self._parse_persons(xml_bytes))
 
         return result
 
@@ -88,6 +92,25 @@ class ObsPersonRepositoryImpl:
     def _build_search_url(logins: list[str]) -> str:
         conditions = " or ".join(f"@login='{u}'" for u in logins)
         return f"/search/person?match={quote(f'({conditions})', safe='')}"
+
+    @staticmethod
+    def _parse_persons(xml_bytes: bytes) -> dict[str, str | None]:
+        if len(xml_bytes) > MAX_XML_BYTES:
+            raise RuntimeError(f"OBS person response exceeds {MAX_XML_BYTES} bytes")
+        try:
+            root = ET.fromstring(xml_bytes, forbid_dtd=True)
+        except DefusedXmlException as exc:
+            raise RuntimeError("OBS person response contains forbidden DOCTYPE") from exc
+        except ET.ParseError as exc:
+            raise RuntimeError(f"OBS person response is not valid XML: {exc}") from exc
+        result: dict[str, str | None] = {}
+        for person in root.findall("person"):
+            login_el = person.find("login")
+            if login_el is None or login_el.text is None:
+                continue
+            state_el = person.find("state")
+            result[login_el.text] = state_el.text if state_el is not None else None
+        return result
 
     @staticmethod
     def _fetch_batch(logins: list[str], api: str) -> bytes:
