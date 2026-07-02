@@ -684,13 +684,11 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 
 ## Migration from Legacy Scripts
 
-**Old scripts are deprecated but still functional.**
+**`validate_maintainership.py` is deprecated but still present. All other legacy scripts have been removed.**
 
 | Old Script | New Command |
 |------------|-------------|
 | `validate_maintainership.py -v 16.1` | `bugownerctl check maintainership -v 16.1` |
-| `create_whitelist_maintainership.py` | ~~`bugownerctl whitelist update`~~ (removed) |
-| `check_package_maintainer.py <pkg>` | `bugownerctl query package <pkg>` |
 | N/A | `bugownerctl query maintainer <user>` (new) |
 | N/A | `bugownerctl check whitelist -v <version>` (new) |
 | N/A | `bugownerctl init` (new) |
