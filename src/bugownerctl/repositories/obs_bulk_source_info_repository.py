@@ -17,8 +17,6 @@ existing credential manager configuration. See SOURCE_NAME_RESOLUTION_REFACTOR_P
 section 9 for the full discussion.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging

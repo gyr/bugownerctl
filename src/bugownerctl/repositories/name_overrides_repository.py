@@ -10,8 +10,6 @@ the OBS bulk map so curated overrides short-circuit incorrect bulk-map
 entries (e.g. kernel-azure cycles).
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Mapping
 from pathlib import Path

@@ -9,8 +9,6 @@ Phase 2 of the OBS source-name resolution refactor. Tests cover:
   - Failure modes (non-zero exit, timeout, malformed XML, osc not installed).
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import os
