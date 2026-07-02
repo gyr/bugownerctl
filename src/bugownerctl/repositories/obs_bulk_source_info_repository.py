@@ -26,7 +26,9 @@ import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
-from xml.etree import ElementTree as ET
+
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 from bugownerctl.domain.bulk_map import BulkMap
 
@@ -278,19 +280,13 @@ class ObsBulkSourceInfoRepositoryImpl:
                 f"OBS bulk response exceeds {MAX_XML_BYTES} bytes ({len(xml_body)}); "
                 "refusing to parse to avoid memory exhaustion"
             )
-        # DOCTYPE check: ET.fromstring blocks external-entity (XXE) loads but
-        # still expands *internal* entities, so a small DOCTYPE with nested
-        # entity definitions ("billion laughs") can OOM the process. Real OBS
-        # bulk responses never contain a DOCTYPE; refuse any that do. We scan
-        # only the prologue (first 4 KiB) since DOCTYPE must precede the root
-        # element per XML 1.0 §2.8.
-        if b"<!DOCTYPE" in xml_body[:4096]:
+        try:
+            root = ET.fromstring(xml_body, forbid_dtd=True)
+        except DefusedXmlException as exc:
             raise RuntimeError(
                 "OBS bulk response contains a DOCTYPE declaration; refusing to parse "
                 "(prevents entity-expansion attacks). Real OBS responses never contain DOCTYPE."
-            )
-        try:
-            root = ET.fromstring(xml_body)
+            ) from exc
         except ET.ParseError as exc:
             snippet = xml_body[:200].decode(errors="replace")
             raise RuntimeError(

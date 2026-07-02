@@ -236,6 +236,15 @@ class TestParsing:
         with pytest.raises(RuntimeError, match="DOCTYPE"):
             repo._build_bulk_map(evil)
 
+    def test_build_bulk_map_rejects_doctype_beyond_4096_bytes(self) -> None:
+        """DOCTYPE beyond the 4096-byte scan window must still be rejected."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        # 5001-byte comment pushes <!DOCTYPE past the former [:4096] scan window.
+        padding = b"<!-- " + b"x" * 5001 + b" -->"
+        evil = padding + b'<!DOCTYPE foo [<!ENTITY a "x">]><sourceinfolist/>'
+        with pytest.raises(RuntimeError, match="DOCTYPE"):
+            repo._build_bulk_map(evil)
+
     def test_build_bulk_map_ignores_whitespace_only_subpacks(self) -> None:
         """A <subpacks>   </subpacks> element must not produce a whitespace key.
 

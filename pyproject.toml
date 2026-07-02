@@ -59,7 +59,14 @@ select = [
     "C4",  # flake8-comprehensions
     "SIM", # flake8-simplify
 ]
-ignore = []
+ignore = [
+    # N817: 'from defusedxml import ElementTree as ET' triggers "CamelCase imported as
+    # acronym" because defusedxml is a single-level package. The stdlib form
+    # 'from xml.etree import ElementTree as ET' does NOT trigger it (ruff exempts
+    # dotted-path imports). 'ET' is an established Python convention for ElementTree;
+    # suppressed project-wide since the alias appears in multiple files (B2/B3/C1b).
+    "N817",
+]
 
 [tool.ruff.format]
 quote-style = "double"
