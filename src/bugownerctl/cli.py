@@ -95,7 +95,10 @@ def create_parser() -> argparse.ArgumentParser:
         "--strict",
         action="store_true",
         default=False,
-        help="Also gate on shipped-not-in-submodule, unresolved-names, and maintained-without-submodule",
+        help=(
+            "Also gate on shipped-not-in-submodule, unresolved-names,"
+            " and maintained-without-submodule"
+        ),
     )
     maintainership_parser.set_defaults(func=check.run_maintainership)
 
@@ -226,6 +229,7 @@ def main() -> int:
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(levelname)s: %(message)s",
+        stream=sys.stderr,
     )
 
     # Route to appropriate command handler with exception handling

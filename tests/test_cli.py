@@ -1,5 +1,6 @@
 """Tests for CLI argument parsing and routing."""
 
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -307,10 +308,11 @@ class TestMain:
 
         main()
 
-        # Verify basicConfig called with INFO level
+        # Verify basicConfig called with INFO level and stderr stream
         mock_config.assert_called_once()
         call_kwargs = mock_config.call_args[1]
         assert call_kwargs["level"] == logging.INFO
+        assert call_kwargs["stream"] == sys.stderr
 
     def test_main_configures_logging_debug_when_flag_set(
         self, monkeypatch: pytest.MonkeyPatch
@@ -330,6 +332,7 @@ class TestMain:
 
         call_kwargs = mock_config.call_args[1]
         assert call_kwargs["level"] == logging.DEBUG
+        assert call_kwargs["stream"] == sys.stderr
 
     def test_main_calls_command_handler_function(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Main should call the command handler function from args.func."""
