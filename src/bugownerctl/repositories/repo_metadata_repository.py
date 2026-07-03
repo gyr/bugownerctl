@@ -11,6 +11,8 @@ import requests
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
+from ..exceptions import NetworkTimeoutError
+
 logger = logging.getLogger(__name__)
 
 
@@ -109,7 +111,9 @@ class RepoMetadataRepositoryImpl:
             repomd_cache_file.write_bytes(repomd_response.content)
             logger.debug("Cached repomd.xml to %s", repomd_cache_file)
 
-        except (requests.RequestException, requests.Timeout, OSError) as e:
+        except requests.Timeout as exc:
+            raise NetworkTimeoutError("repo metadata download", 30) from exc
+        except (requests.RequestException, OSError) as e:
             logger.error("Failed to download repomd.xml for version %s: %s", version, e)
             raise RuntimeError(f"Failed to download repomd.xml: {e}") from e
 
@@ -202,7 +206,9 @@ class RepoMetadataRepositoryImpl:
 
             return cached_file
 
-        except (requests.RequestException, requests.Timeout, OSError) as e:
+        except requests.Timeout as exc:
+            raise NetworkTimeoutError("repo metadata download", 30) from exc
+        except (requests.RequestException, OSError) as e:
             logger.error("Failed to download primary.xml for version %s: %s", version, e)
             raise RuntimeError(f"Failed to download primary.xml: {e}") from e
 

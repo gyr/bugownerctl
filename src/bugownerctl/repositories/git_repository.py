@@ -13,6 +13,7 @@ from typing import Protocol
 from urllib.parse import urlparse
 
 from ..domain.ref_type import RefType
+from ..exceptions import MissingBinaryError
 
 
 class GitRepository(Protocol):
@@ -123,7 +124,8 @@ class GitRepositoryImpl:
             CompletedProcess from subprocess.run
 
         Raises:
-            RuntimeError: If git command fails or git not found
+            MissingBinaryError: If git is not in PATH.
+            RuntimeError: If the git command exits non-zero.
         """
         try:
             return subprocess.run(
@@ -141,10 +143,8 @@ class GitRepositoryImpl:
                 f"Exit code: {e.returncode}\n"
                 f"Stderr: {e.stderr.strip()}"
             ) from e
-        except FileNotFoundError as e:
-            raise RuntimeError(
-                "'git' command not found. Ensure Git is installed and in your PATH."
-            ) from e
+        except FileNotFoundError as exc:
+            raise MissingBinaryError("git") from exc
 
     def list_submodules(self, repo_path: Path) -> list[str]:
         """Get list of git submodule names.
@@ -156,7 +156,8 @@ class GitRepositoryImpl:
             Sorted list of submodule names
 
         Raises:
-            RuntimeError: If git command fails or git not found
+            MissingBinaryError: If git is not in PATH.
+            RuntimeError: If the git command exits non-zero.
         """
         try:
             result = subprocess.run(
@@ -183,10 +184,8 @@ class GitRepositoryImpl:
 
             return sorted(names)
 
-        except FileNotFoundError as e:
-            raise RuntimeError(
-                "'git' command not found. Ensure Git is installed and in your PATH."
-            ) from e
+        except FileNotFoundError as exc:
+            raise MissingBinaryError("git") from exc
 
     def clone_or_update(
         self,
@@ -210,8 +209,9 @@ class GitRepositoryImpl:
             Path to local repository
 
         Raises:
-            ValueError: If inputs are invalid or path traversal detected
-            RuntimeError: If git operations fail
+            ValueError: If inputs are invalid or path traversal detected.
+            MissingBinaryError: If git is not in PATH.
+            RuntimeError: If git operations fail.
         """
         # Detect URL type and validate format
         is_ssh = self._is_ssh_url(repo_url)

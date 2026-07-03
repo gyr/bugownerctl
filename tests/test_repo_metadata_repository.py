@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
+from bugownerctl.exceptions import NetworkTimeoutError
 from bugownerctl.repositories.repo_metadata_repository import (
     RepoMetadataRepositoryImpl,
 )
@@ -276,6 +277,39 @@ class TestDownloadPrimaryMetadata:
 
         # Act & Assert
         with pytest.raises(RuntimeError, match="Failed to download"):
+            repo.download_primary_metadata("16.1", tmp_path)
+
+    @patch("requests.get")
+    def test_download_repomd_raises_network_timeout_error_on_timeout(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should raise NetworkTimeoutError when repomd.xml download times out."""
+        mock_get.side_effect = requests.Timeout()
+        repo = RepoMetadataRepositoryImpl()
+
+        with pytest.raises(NetworkTimeoutError, match="timed out"):
+            repo.download_primary_metadata("16.1", tmp_path)
+
+    @patch("requests.get")
+    def test_download_primary_xml_raises_network_timeout_error_on_timeout(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should raise NetworkTimeoutError when primary.xml download times out."""
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha256">abc123</checksum>
+  </data>
+</repomd>"""
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        mock_get.side_effect = [mock_repomd_response, requests.Timeout()]
+        repo = RepoMetadataRepositoryImpl()
+
+        with pytest.raises(NetworkTimeoutError, match="timed out"):
             repo.download_primary_metadata("16.1", tmp_path)
 
     def test_download_primary_metadata_validates_version_format(self, tmp_path: Path) -> None:

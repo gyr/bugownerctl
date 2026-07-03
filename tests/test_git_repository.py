@@ -7,6 +7,7 @@ from unittest.mock import Mock, call, patch
 import pytest
 
 from bugownerctl.domain.ref_type import RefType
+from bugownerctl.exceptions import MissingBinaryError
 from bugownerctl.repositories.git_repository import GitRepositoryImpl
 
 
@@ -60,11 +61,11 @@ class TestListSubmodules:
                 repo.list_submodules(Path("/test/repo"))
 
     def test_list_submodules_raises_on_git_not_found(self) -> None:
-        """Should raise RuntimeError when git command not found."""
+        """Should raise MissingBinaryError when git command not found."""
         with patch("subprocess.run", side_effect=FileNotFoundError()):
             repo = GitRepositoryImpl()
 
-            with pytest.raises(RuntimeError, match="git.*not found"):
+            with pytest.raises(MissingBinaryError, match="git"):
                 repo.list_submodules(Path("/test/repo"))
 
 
@@ -459,6 +460,23 @@ class TestCloneOrUpdate:
                     check=True,
                     capture_output=True,
                     text=True,
+                )
+
+    def test_clone_or_update_raises_missing_binary_error_when_git_not_found(self) -> None:
+        """Should raise MissingBinaryError when git binary not found during clone."""
+        with (
+            patch("subprocess.run", side_effect=FileNotFoundError()),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.mkdir"),
+        ):
+            repo = GitRepositoryImpl()
+
+            with pytest.raises(MissingBinaryError, match="git"):
+                repo.clone_or_update(
+                    "https://github.com/test/repo.git",
+                    "main",
+                    Path("/cache"),
+                    RefType.BRANCH,
                 )
 
     def test_clone_raises_on_git_error(self) -> None:
