@@ -11,6 +11,12 @@ from importlib.metadata import version as pkg_version
 from pathlib import Path
 
 from bugownerctl.commands import check, init, query
+from bugownerctl.exceptions import (
+    BugownerctlError,
+    ConfigError,
+    MissingBinaryError,
+    NetworkTimeoutError,
+)
 
 
 def positive_int(value: str) -> int:
@@ -197,7 +203,12 @@ def main() -> int:
         Exit code (0 = success, non-zero = failure)
     """
     parser = create_parser()
-    args = parser.parse_args()
+    try:
+        args = parser.parse_args()
+    except SystemExit as e:
+        if e.code == 2:
+            sys.exit(64)
+        raise
 
     # Configure logging
     logging.basicConfig(
@@ -213,12 +224,20 @@ def main() -> int:
         # User pressed Ctrl+C - exit gracefully
         sys.stderr.write("\nInterrupted\n")
         return 130  # Standard exit code for SIGINT
-    except (FileNotFoundError, ValueError) as e:
-        # Expected errors - show friendly message
+    except MissingBinaryError as e:
+        _handle_exception(e, args.debug)
+        return 127
+    except NetworkTimeoutError as e:
+        _handle_exception(e, args.debug)
+        return 124
+    except (ConfigError, ValueError) as e:
+        _handle_exception(e, args.debug)
+        return 64
+    except BugownerctlError as e:
         _handle_exception(e, args.debug)
         return 1
     except Exception as e:
-        # Unexpected errors
+        # Unexpected errors (includes FileNotFoundError → 1)
         _handle_exception(e, args.debug)
         return 1
 

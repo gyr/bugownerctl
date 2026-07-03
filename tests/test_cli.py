@@ -408,7 +408,7 @@ class TestMainExceptionHandling:
 
         result = main()
 
-        assert result == 1
+        assert result == 64
         captured = capsys.readouterr()
         assert "ERROR: Version 16.1 not found in config" in captured.err
         assert "Traceback" not in captured.err
@@ -471,6 +471,104 @@ class TestMainExceptionHandling:
         assert result == 1
         captured = capsys.readouterr()
         assert "ERROR: Unexpected error" in captured.err
+        assert "Traceback" not in captured.err
+
+    def test_main_catches_missing_binary_error_and_returns_127(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should catch MissingBinaryError and return exit code 127."""
+        from bugownerctl.exceptions import MissingBinaryError
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_handler = Mock(side_effect=MissingBinaryError("osc"))
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 127
+        captured = capsys.readouterr()
+        assert "ERROR: Required binary not found: osc" in captured.err
+        assert "Traceback" not in captured.err
+
+    def test_main_catches_network_timeout_error_and_returns_124(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should catch NetworkTimeoutError and return exit code 124."""
+        from bugownerctl.exceptions import NetworkTimeoutError
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_handler = Mock(side_effect=NetworkTimeoutError("osc api '/search/person'", 60))
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 124
+        captured = capsys.readouterr()
+        assert "ERROR:" in captured.err
+        assert "Traceback" not in captured.err
+
+    def test_main_catches_config_error_and_returns_64(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should catch ConfigError and return exit code 64."""
+        from bugownerctl.exceptions import ConfigError
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_handler = Mock(side_effect=ConfigError("Config file not found: /x.yaml"))
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 64
+        captured = capsys.readouterr()
+        assert "ERROR: Config file not found: /x.yaml" in captured.err
+        assert "Traceback" not in captured.err
+
+    def test_main_remaps_argparse_usage_error_exit_2_to_64(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Main should remap argparse SystemExit(2) (usage error) to exit code 64."""
+        monkeypatch.setattr("logging.basicConfig", Mock())
+
+        mock_parser = Mock()
+        mock_parser.parse_args.side_effect = SystemExit(2)
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 64
+
+    def test_main_catches_bugownerctl_error_and_returns_1(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Main should catch base BugownerctlError and return exit code 1."""
+        from bugownerctl.exceptions import BugownerctlError
+
+        monkeypatch.setattr("logging.basicConfig", Mock())
+        mock_handler = Mock(side_effect=BugownerctlError("unexpected domain error"))
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, func=mock_handler)
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
+
+        result = main()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "ERROR: unexpected domain error" in captured.err
         assert "Traceback" not in captured.err
 
 
