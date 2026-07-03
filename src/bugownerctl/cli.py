@@ -91,6 +91,12 @@ def create_parser() -> argparse.ArgumentParser:
         default=False,
         help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
     )
+    maintainership_parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Also gate on shipped-not-in-submodule, unresolved-names, and maintained-without-submodule",
+    )
     maintainership_parser.set_defaults(func=check.run_maintainership)
 
     # check whitelist
@@ -113,6 +119,12 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
+    )
+    whitelist_parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help="Also gate on unresolved-names",
     )
     whitelist_parser.set_defaults(func=check.run_whitelist)
 

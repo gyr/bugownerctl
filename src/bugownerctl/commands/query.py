@@ -6,6 +6,7 @@ Executes query subcommands for package and maintainer information.
 import argparse
 
 from bugownerctl.commands.repo_prep import prepare_slfo_repo
+from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.services.query_service import PackageStatus, QueryService
 from bugownerctl.utils.file_utils import validate_file_within_directory
@@ -52,7 +53,7 @@ def run_package(args: argparse.Namespace) -> int:
     else:
         print("Status: Not found")
 
-    return 0
+    return ExitCode.OK
 
 
 def run_maintainer(args: argparse.Namespace) -> int:
@@ -87,4 +88,4 @@ def run_maintainer(args: argparse.Namespace) -> int:
     else:
         print("No packages found")
 
-    return 0
+    return ExitCode.OK

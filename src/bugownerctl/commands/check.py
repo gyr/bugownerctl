@@ -7,6 +7,7 @@ import argparse
 from importlib.resources import as_file, files
 
 from bugownerctl.commands.repo_prep import prepare_slfo_repo
+from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.repositories.name_overrides_repository import NameOverridesRepositoryImpl
 from bugownerctl.repositories.obs_bulk_source_info_repository import (
@@ -27,7 +28,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments (requires version attribute)
 
     Returns:
-        Exit code (0 = success, 1 = validation failures found)
+        Exit code (0 = no issues, 2 = gating findings found)
     """
     slfo_context = prepare_slfo_repo(args.version, args.config)
 
@@ -112,9 +113,14 @@ def run_maintainership(args: argparse.Namespace) -> int:
         print("INFO: No orphan packages found.")
 
     # Determine exit code
-    has_issues = bool(result.orphan_packages or result.shipped_not_in_submodule)
-
-    return 1 if has_issues else 0
+    gate = bool(result.orphan_packages)
+    if args.strict:
+        gate = gate or bool(
+            result.shipped_not_in_submodule
+            or result.unresolved_names
+            or result.maintained_packages_without_submodule
+        )
+    return ExitCode.ISSUES if gate else ExitCode.OK
 
 
 def run_whitelist(args: argparse.Namespace) -> int:
@@ -124,7 +130,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments (requires version attribute)
 
     Returns:
-        Exit code (0 = no issues, 1 = inconsistencies found)
+        Exit code (0 = no issues, 2 = gating findings found)
     """
     slfo_context = prepare_slfo_repo(args.version, args.config)
 
@@ -193,9 +199,10 @@ def run_whitelist(args: argparse.Namespace) -> int:
         print("INFO: No inconsistencies found. All whitelisted packages are NOT shipped.")
 
     # Determine exit code
-    has_issues = bool(result.inconsistent_packages)
-
-    return 1 if has_issues else 0
+    gate = bool(result.inconsistent_packages)
+    if args.strict:
+        gate = gate or bool(result.unresolved_names)
+    return ExitCode.ISSUES if gate else ExitCode.OK
 
 
 def run_users(args: argparse.Namespace) -> int:
@@ -205,7 +212,7 @@ def run_users(args: argparse.Namespace) -> int:
         args: Parsed command-line arguments (requires version, config, api, batch_size).
 
     Returns:
-        Exit code (0 = all confirmed, 1 = any invalid or not found).
+        Exit code (0 = all confirmed, 2 = any invalid or not found).
     """
     slfo_context = prepare_slfo_repo(args.version, args.config)
     maintainership_file_name = slfo_context.config.get(
@@ -243,4 +250,4 @@ def run_users(args: argparse.Namespace) -> int:
     else:
         print(f"INFO: All {total} users are confirmed OBS accounts.")
 
-    return 1 if (result.invalid or result.not_found) else 0
+    return ExitCode.ISSUES if (result.invalid or result.not_found) else ExitCode.OK

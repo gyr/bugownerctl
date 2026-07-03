@@ -118,7 +118,7 @@ class TestValidateWorkflow:
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-v", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
-            mock_git.return_value = ["maintained-package"]
+            mock_git.return_value = ["maintained-package", "orphan-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"maintained-package", "orphan-package"}
             mock_bulk_map.return_value = BulkMap(
@@ -131,7 +131,7 @@ class TestValidateWorkflow:
             exit_code = main()
 
             # Verify - should report issues found
-            assert exit_code == 1, "Should return 1 when orphan packages found"
+            assert exit_code == 2, "Should return 2 when orphan packages found"
 
 
 class TestQueryPackageWorkflow:

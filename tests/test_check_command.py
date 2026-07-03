@@ -185,7 +185,9 @@ class TestCheckMaintainershipCommand:
         repos = _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         repos["maintainership"].assert_called_once()
@@ -223,7 +225,9 @@ class TestCheckMaintainershipCommand:
 
         cls_mock, _ = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         cls_mock.assert_called_once_with(
@@ -246,7 +250,9 @@ class TestCheckMaintainershipCommand:
 
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         # Verify download_primary_metadata called with version
@@ -275,15 +281,17 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         result = run_maintainership(args)
 
         assert result == 0
 
-    def test_run_returns_one_when_orphan_packages_found(
+    def test_run_returns_two_when_orphan_packages_found(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should return 1 exit code when orphan packages found."""
+        """Should return 2 exit code when orphan packages found."""
         _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
@@ -295,10 +303,52 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         result = run_maintainership(args)
 
-        assert result == 1
+        assert result == 2
+
+    def test_run_returns_zero_for_shipped_not_in_submodule_without_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """shipped_not_in_submodule alone does NOT gate without --strict."""
+        _patch_maint_prep(monkeypatch)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(
+            monkeypatch,
+            ValidationResult(
+                orphan_packages=[],
+                maintained_packages_without_submodule=[],
+                shipped_not_in_submodule=["pkg1"],
+            ),
+        )
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        result = run_maintainership(args)
+        assert result == 0
+
+    def test_run_returns_two_for_shipped_not_in_submodule_with_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """shipped_not_in_submodule gates when --strict is set."""
+        _patch_maint_prep(monkeypatch)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(
+            monkeypatch,
+            ValidationResult(
+                orphan_packages=[],
+                maintained_packages_without_submodule=[],
+                shipped_not_in_submodule=["pkg1"],
+            ),
+        )
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=True
+        )
+        result = run_maintainership(args)
+        assert result == 2
 
     def test_run_prints_orphan_packages(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -315,7 +365,9 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
@@ -338,7 +390,9 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
@@ -371,7 +425,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
@@ -398,7 +454,9 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
@@ -413,7 +471,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)  # default: empty result, unresolved=[]
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
@@ -429,7 +489,7 @@ class TestCheckMaintainershipCommand:
 
         config_path = Path("/custom/config.yaml")
         args = argparse.Namespace(
-            version="16.1", debug=False, config=config_path, refresh_bulk_map=False
+            version="16.1", debug=False, config=config_path, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -443,7 +503,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         call_kwargs = instance.validate_all.call_args[1]
@@ -457,7 +519,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=True)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=True, strict=False
+        )
         run_maintainership(args)
 
         call_kwargs = instance.validate_all.call_args[1]
@@ -471,7 +535,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         mock_prep.assert_called_once_with("16.1", None)
@@ -485,7 +551,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         instance.validate_all.assert_called_once()
@@ -509,7 +577,7 @@ class TestCheckWhitelistCommand:
         repos = _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         repos["maintainership"].assert_called_once()
@@ -549,7 +617,7 @@ class TestCheckWhitelistCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         # ValidationService called with slfo_context.git_repo (not a fresh GitRepositoryImpl).
@@ -569,7 +637,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         services["whitelist_cls"].assert_called_once_with(services["validation_service"])
@@ -593,7 +661,7 @@ class TestCheckWhitelistCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         services["whitelist_service"].check_whitelist.assert_called_once()
@@ -616,15 +684,15 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         result = run_whitelist(args)
 
         assert result == 0
 
-    def test_run_returns_one_when_inconsistencies_found(
+    def test_run_returns_two_when_inconsistencies_found(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should return 1 exit code when inconsistencies found."""
+        """Should return 2 exit code when inconsistencies found."""
         _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
@@ -632,10 +700,38 @@ class TestCheckWhitelistCommand:
             WhitelistCheckResult(inconsistent_packages=["pkg1", "pkg2"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         result = run_whitelist(args)
 
-        assert result == 1
+        assert result == 2
+
+    def test_run_returns_zero_for_unresolved_names_without_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """unresolved_names alone does NOT gate without --strict."""
+        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(inconsistent_packages=[], unresolved_names=["mystery"]),
+        )
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        result = run_whitelist(args)
+        assert result == 0
+
+    def test_run_returns_two_for_unresolved_names_with_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """unresolved_names gates when --strict is set."""
+        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(inconsistent_packages=[], unresolved_names=["mystery"]),
+        )
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=True)
+        result = run_whitelist(args)
+        assert result == 2
 
     def test_run_prints_inconsistent_packages_with_info_prefix(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -648,7 +744,7 @@ class TestCheckWhitelistCommand:
             WhitelistCheckResult(inconsistent_packages=["apache2", "kernel-source"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -665,7 +761,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -685,7 +781,7 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -706,7 +802,7 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -730,7 +826,7 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -748,7 +844,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)  # default: empty result, unresolved=[]
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -763,7 +859,9 @@ class TestCheckWhitelistCommand:
         _patch_services(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
-        args = argparse.Namespace(version="16.1", config=config_path, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            version="16.1", config=config_path, refresh_bulk_map=False, strict=False
+        )
         run_whitelist(args)
 
         mock_prep.assert_called_once_with("16.1", config_path)
@@ -776,7 +874,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         mock_prep.assert_called_once_with("16.1", None)
@@ -789,7 +887,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
@@ -803,7 +901,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=True)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=True, strict=False)
         run_whitelist(args)
 
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
@@ -818,7 +916,7 @@ class TestCheckWhitelistCommand:
         _patch_services(monkeypatch)
         fake_slfo_context.git_repo.list_submodules.return_value = ["submodule1"]
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
@@ -896,7 +994,7 @@ class TestCheckUsersCommand:
         )
         result = run_users(args)
 
-        assert result == 1
+        assert result == 2
 
     def test_run_returns_one_when_not_found_accounts_found(
         self, monkeypatch: pytest.MonkeyPatch
@@ -913,7 +1011,7 @@ class TestCheckUsersCommand:
         )
         result = run_users(args)
 
-        assert result == 1
+        assert result == 2
 
     def test_run_prints_confirmed_section_when_non_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
