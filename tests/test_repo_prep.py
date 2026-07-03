@@ -8,6 +8,7 @@ import pytest
 
 from bugownerctl.commands.repo_prep import prepare_slfo_repo
 from bugownerctl.domain.ref_type import RefType
+from bugownerctl.exceptions import ConfigError
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -264,3 +265,14 @@ class TestPrepareSlfoRepoConfigFile:
         ctx = prepare_slfo_repo(version="16.1", config_file=None)
 
         assert ctx.cache_dir == Path.home() / ".cache" / "bugownerctl"
+
+
+class TestPrepareSlfoRepoMissingConfig:
+    """Tests that verify ConfigError is raised when the config file is missing."""
+
+    def test_missing_config_file_raises_config_error(self) -> None:
+        """Nonexistent explicit config path raises ConfigError, not FileNotFoundError."""
+        nonexistent = Path("/nonexistent/path/that/cannot/exist/config.yaml")
+
+        with pytest.raises(ConfigError):
+            prepare_slfo_repo(version="16.1", config_file=nonexistent)

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from bugownerctl.domain.ref_type import RefType
+from bugownerctl.exceptions import ConfigError
 from bugownerctl.repositories.git_repository import GitRepository, GitRepositoryImpl
 from bugownerctl.utils.config import load_config
 
@@ -44,10 +45,13 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
     Raises:
         ValueError: If version not found, ref is missing/empty, or
                     slfo_git_url is absent from config.
-        FileNotFoundError: If config file cannot be found.
+        ConfigError: If config file cannot be found.
         RuntimeError: If git operations fail.
     """
-    config = load_config(config_file) or {}
+    try:
+        config = load_config(config_file) or {}
+    except FileNotFoundError as exc:
+        raise ConfigError(str(exc)) from exc
     cache_dir = Path(config.get("cache_dir", "~/.cache/bugownerctl")).expanduser()
 
     products = config.get("products", [])
