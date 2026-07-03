@@ -5,6 +5,7 @@ Fetches person records from the OBS search API via `osc api`
 """
 
 import re
+import shutil
 import subprocess
 from typing import Protocol
 from urllib.parse import quote, urlparse
@@ -118,9 +119,12 @@ class ObsPersonRepositoryImpl:
     @staticmethod
     def _fetch_batch(logins: list[str], api: str) -> bytes:
         path = ObsPersonRepositoryImpl._build_search_url(logins)
+        osc_bin = shutil.which("osc")
+        if osc_bin is None:
+            raise MissingBinaryError("osc")
         try:
             proc = subprocess.run(
-                ["osc", "-A", api, "api", path],
+                [osc_bin, "-A", api, "api", path],
                 capture_output=True,
                 check=False,
                 timeout=_DEFAULT_TIMEOUT,
