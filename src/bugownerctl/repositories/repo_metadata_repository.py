@@ -6,9 +6,10 @@ import logging
 import re
 from pathlib import Path
 from typing import Protocol
-from xml.etree import ElementTree as ET
 
 import requests
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ class RepoMetadataRepositoryImpl:
 
         # Parse repomd.xml to find primary.xml location and checksum
         try:
-            repomd_root = ET.fromstring(repomd_response.content)
+            repomd_root = ET.fromstring(repomd_response.content, forbid_dtd=True)
             # Find primary data element
             ns = {"ns": "http://linux.duke.edu/metadata/repo"}
             primary_data = repomd_root.find('.//ns:data[@type="primary"]', ns)
@@ -156,6 +157,11 @@ class RepoMetadataRepositoryImpl:
             ):
                 raise RuntimeError(f"Invalid primary.xml location: {primary_href!r}")
 
+        except DefusedXmlException as exc:
+            raise RuntimeError(
+                "repomd.xml contains a DOCTYPE declaration; refusing to parse "
+                "(prevents entity-expansion attacks)."
+            ) from exc
         except ET.ParseError as e:
             raise RuntimeError(f"Failed to parse repomd.xml: {e}") from e
 
@@ -220,35 +226,38 @@ class RepoMetadataRepositoryImpl:
 
         source_packages: set[str] = set()
 
-        # Open gzipped XML file
         with gzip.open(primary_xml_path, "rt", encoding="utf-8") as f:
-            # Use iterparse for memory efficiency on large files
-            # Parse iteratively
-            context = ET.iterparse(f, events=("start", "end"))
-            context = iter(context)
+            try:
+                context = ET.iterparse(f, events=("start", "end"), forbid_dtd=True)
 
-            current_package_name: str | None = None
-            current_arch: str | None = None
+                current_package_name: str | None = None
+                current_arch: str | None = None
 
-            for event, elem in context:
-                # Strip namespace from tag
-                tag = elem.tag.replace("{http://linux.duke.edu/metadata/common}", "")
+                for event, elem in context:
+                    # Strip namespace from tag
+                    tag = elem.tag.replace("{http://linux.duke.edu/metadata/common}", "")
 
-                if event == "end":
-                    if tag == "name" and elem.text:
-                        current_package_name = elem.text
-                    elif tag == "arch" and elem.text:
-                        current_arch = elem.text
-                    elif tag == "package":
-                        # End of package element - check if it's a source package
-                        if current_package_name and current_arch == "src":
-                            source_packages.add(current_package_name)
+                    if event == "end":
+                        if tag == "name" and elem.text:
+                            current_package_name = elem.text
+                        elif tag == "arch" and elem.text:
+                            current_arch = elem.text
+                        elif tag == "package":
+                            # End of package element - check if it's a source package
+                            if current_package_name and current_arch == "src":
+                                source_packages.add(current_package_name)
 
-                        # Reset for next package
-                        current_package_name = None
-                        current_arch = None
+                            # Reset for next package
+                            current_package_name = None
+                            current_arch = None
 
-                        # Clear element to free memory
-                        elem.clear()
+                            # Clear element to free memory
+                            elem.clear()
+
+            except DefusedXmlException as exc:
+                raise RuntimeError(
+                    "Primary XML contains a DOCTYPE declaration; refusing to parse "
+                    "(prevents entity-expansion attacks)."
+                ) from exc
 
         return source_packages

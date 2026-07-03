@@ -6,9 +6,9 @@ authors = [
     {name = "Gustavo Yokoyama Ribeiro", email = "gyribeiro@suse.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
-    "lxml>=4.9.0",
+    "defusedxml>=0.7.1",
     "PyYAML>=6.0",
     "requests>=2.31.0",
 ]
@@ -22,6 +22,7 @@ dev = [
     "bandit>=1.7.0",
     "types-requests>=2.31.0",
     "types-PyYAML>=6.0",
+    "types-defusedxml>=0.7.0",
 ]
 
 [project.scripts]
@@ -44,7 +45,7 @@ packages = ["src/bugownerctl"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -58,14 +59,21 @@ select = [
     "C4",  # flake8-comprehensions
     "SIM", # flake8-simplify
 ]
-ignore = []
+ignore = [
+    # N817: 'from defusedxml import ElementTree as ET' triggers "CamelCase imported as
+    # acronym" because defusedxml is a single-level package. The stdlib form
+    # 'from xml.etree import ElementTree as ET' does NOT trigger it (ruff exempts
+    # dotted-path imports). 'ET' is an established Python convention for ElementTree;
+    # suppressed project-wide since the alias appears in multiple files (B2/B3/C1b).
+    "N817",
+]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

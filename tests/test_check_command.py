@@ -6,9 +6,10 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from bugownerctl.commands.check import run_maintainership, run_whitelist
 
+from bugownerctl.commands.check import run_maintainership, run_users, run_whitelist
 from bugownerctl.commands.repo_prep import SlfoRepoContext
+from bugownerctl.services.user_validation_service import UserValidationResult
 from bugownerctl.services.validation_service import ValidationResult
 from bugownerctl.services.whitelist_service import WhitelistCheckResult
 
@@ -823,3 +824,256 @@ class TestCheckWhitelistCommand:
         fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
             fake_slfo_context.slfo_repo_path
         )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for check users tests
+# ---------------------------------------------------------------------------
+
+
+def _empty_users_result() -> UserValidationResult:
+    """Build a UserValidationResult with one confirmed login and no invalid/not_found."""
+    return UserValidationResult(confirmed=["user1"], invalid=[], not_found=[])
+
+
+def _patch_users_service(
+    monkeypatch: pytest.MonkeyPatch,
+    result: UserValidationResult | None = None,
+) -> tuple[Mock, Mock]:
+    """Patch MaintainershipRepositoryImpl, ObsPersonRepositoryImpl, UserValidationService.
+
+    Patches the three targets at bugownerctl.commands.check.* and returns
+    (service_cls_mock, service_instance_mock).
+    """
+    monkeypatch.setattr("bugownerctl.commands.check.MaintainershipRepositoryImpl", Mock())
+    monkeypatch.setattr("bugownerctl.commands.check.ObsPersonRepositoryImpl", Mock())
+
+    service_instance = Mock()
+    service_instance.validate.return_value = result if result is not None else _empty_users_result()
+    service_cls = Mock(return_value=service_instance)
+    monkeypatch.setattr("bugownerctl.commands.check.UserValidationService", service_cls)
+
+    return service_cls, service_instance
+
+
+# ---------------------------------------------------------------------------
+# Tests for run_users
+# ---------------------------------------------------------------------------
+
+
+class TestCheckUsersCommand:
+    """Tests for check users command handler."""
+
+    def test_run_returns_zero_when_all_users_confirmed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns 0 when result.invalid and result.not_found are both empty."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=["gyr"], invalid=[], not_found=[]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        result = run_users(args)
+
+        assert result == 0
+
+    def test_run_returns_one_when_invalid_accounts_found(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns 1 when result.invalid is non-empty."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=[], invalid=["baduser"], not_found=[]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        result = run_users(args)
+
+        assert result == 1
+
+    def test_run_returns_one_when_not_found_accounts_found(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Returns 1 when result.not_found is non-empty."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=[], invalid=[], not_found=["ghost"]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        result = run_users(args)
+
+        assert result == 1
+
+    def test_run_prints_confirmed_section_when_non_empty(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Confirmed section (Found N..., Confirmed accounts:, - login) prints when non-empty."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=["gyr"], invalid=[], not_found=[]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args)
+
+        captured = capsys.readouterr()
+        assert "INFO: Found 1 confirmed OBS accounts." in captured.out
+        assert "INFO: Confirmed accounts:" in captured.out
+        assert "INFO: - gyr" in captured.out
+
+    def test_run_prints_invalid_section_when_non_empty(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Invalid section prints with INFO prefix when result.invalid is non-empty."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=[], invalid=["locked-user"], not_found=[]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args)
+
+        captured = capsys.readouterr()
+        assert "INFO: Found 1 invalid (locked / non-confirmed) accounts." in captured.out
+        assert "INFO: Invalid accounts:" in captured.out
+        assert "INFO: - locked-user" in captured.out
+
+    def test_run_prints_not_found_section_when_non_empty(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Not-found section prints with INFO prefix when result.not_found is non-empty."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=[], invalid=[], not_found=["ghost"]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args)
+
+        captured = capsys.readouterr()
+        assert "INFO: Found 1 accounts not found in OBS." in captured.out
+        assert "INFO: Accounts not found in OBS:" in captured.out
+        assert "INFO: - ghost" in captured.out
+
+    def test_run_prints_all_confirmed_summary_when_no_invalid_or_not_found(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Prints 'All N users are confirmed' summary when invalid and not_found are empty."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=["gyr", "other"], invalid=[], not_found=[]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args)
+
+        captured = capsys.readouterr()
+        assert "INFO: All 2 users are confirmed OBS accounts." in captured.out
+
+    def test_run_prints_failure_summary_when_any_invalid_or_not_found(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Prints 'X of N users are not confirmed' summary when any invalid or not_found."""
+        _patch_maint_prep(monkeypatch)
+        _patch_users_service(
+            monkeypatch,
+            UserValidationResult(confirmed=["ok-user"], invalid=["bad-user"], not_found=["ghost"]),
+        )
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args)
+
+        captured = capsys.readouterr()
+        # 1 invalid + 1 not_found = 2; total = 1 + 1 + 1 = 3
+        assert "INFO: 2 of 3 users are not confirmed OBS accounts." in captured.out
+
+    def test_run_resolves_maintainership_file_from_slfo_repo_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Resolves maintainership_file via config.get + validate_file_within_directory."""
+        slfo_repo_path = Path("/cache/bugownerctl/SLFO")
+        _patch_maint_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
+        _, service_instance = _patch_users_service(monkeypatch)
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args)
+
+        service_instance.validate.assert_called_once()
+        positional_args = service_instance.validate.call_args[0]
+        expected_file = slfo_repo_path / "_maintainership.json"
+        assert positional_args[0] == expected_file
+
+    def test_run_forwards_api_and_batch_size_to_service_validate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Forwards args.api and args.batch_size to service.validate() as positional args."""
+        _patch_maint_prep(monkeypatch)
+        _, service_instance = _patch_users_service(monkeypatch)
+
+        args = argparse.Namespace(
+            version="16.1",
+            config=None,
+            api="https://api.example.com",
+            batch_size=25,
+        )
+        run_users(args)
+
+        service_instance.validate.assert_called_once()
+        positional_args = service_instance.validate.call_args[0]
+        assert positional_args[1] == "https://api.example.com"
+        assert positional_args[2] == 25
+
+    def test_run_wires_user_validation_service_with_correct_repos(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """UserValidationService must be constructed with (maintainership_repo, person_repo)."""
+        _patch_maint_prep(monkeypatch)
+
+        mock_maint_inst = Mock()
+        mock_person_inst = Mock()
+        monkeypatch.setattr(
+            "bugownerctl.commands.check.MaintainershipRepositoryImpl",
+            Mock(return_value=mock_maint_inst),
+        )
+        monkeypatch.setattr(
+            "bugownerctl.commands.check.ObsPersonRepositoryImpl",
+            Mock(return_value=mock_person_inst),
+        )
+        service_instance = Mock()
+        service_instance.validate.return_value = _empty_users_result()
+        service_cls = Mock(return_value=service_instance)
+        monkeypatch.setattr("bugownerctl.commands.check.UserValidationService", service_cls)
+
+        args = argparse.Namespace(
+            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args)
+
+        service_cls.assert_called_once_with(mock_maint_inst, mock_person_inst)

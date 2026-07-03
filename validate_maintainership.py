@@ -1,18 +1,19 @@
-import logging
 import argparse
 import gzip
-import sys
-from lxml import etree
-import yaml
-import requests
-import json
 import hashlib
+import json
+import logging
 import subprocess
-from typing import List, Set, Dict, Optional, Any, Union
-from pathlib import Path
-from urllib.parse import urljoin
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
+from pathlib import Path
+from typing import Any
+from urllib.parse import urljoin
+
+import requests
+import yaml
+from lxml import etree
 
 
 class RefType(Enum):
@@ -26,7 +27,7 @@ class RefType(Enum):
 # --- Configuration ---
 
 
-def load_config(config_file_path: str) -> Dict[str, Any]:
+def load_config(config_file_path: str) -> dict[str, Any]:
     """Loads a YAML configuration file.
 
     :param config_file_path: The path to the configuration file.
@@ -37,7 +38,7 @@ def load_config(config_file_path: str) -> Dict[str, Any]:
     :rtype: Dict[str, Any]
     """
     try:
-        with open(config_file_path, "r") as f:
+        with open(config_file_path) as f:
             config = yaml.safe_load(f)
         return config
     except FileNotFoundError:
@@ -56,7 +57,7 @@ REPOMD_PATH = "repodata/repomd.xml"
 FALSEPOSITIVES_FILE: str = config.get("false_positives_file", "false_positives.json")
 
 # Hardcoded output filenames
-OUTPUT_FILES: Dict[str, str] = {
+OUTPUT_FILES: dict[str, str] = {
     "shipped_packages_not_in_submodule": "shipped_packages_not_in_submodule.json",
     "orphan_packages": "orphan_packages.json",
     "maintained_packages_without_submodule": "maintained_packages_without_submodule.json",
@@ -64,7 +65,7 @@ OUTPUT_FILES: Dict[str, str] = {
 
 
 def download_file(
-    url: str, destination_folder: Union[str, Path] = ".", filename: Optional[str] = None
+    url: str, destination_folder: str | Path = ".", filename: str | None = None
 ) -> str:
     """Downloads a file from a given URL to a specified destination folder.
 
@@ -110,7 +111,7 @@ def download_file(
         raise
 
 
-def get_file_checksum(file_path: Union[str, Path], checksum_type: str = "sha256") -> Optional[str]:
+def get_file_checksum(file_path: str | Path, checksum_type: str = "sha256") -> str | None:
     """Calculates the checksum of a file.
 
     :param file_path: The path to the file.
@@ -132,7 +133,7 @@ def get_file_checksum(file_path: Union[str, Path], checksum_type: str = "sha256"
     return hash_func.hexdigest()
 
 
-def parse_repomd(file_path: Union[str, Path]) -> Optional[Dict[str, str]]:
+def parse_repomd(file_path: str | Path) -> dict[str, str] | None:
     """Parses a repomd.xml file to find the location and checksum of the primary data.
 
     :param file_path: The path to the repomd.xml file.
@@ -210,7 +211,8 @@ def download_repo_metadata(version: str, cache_dir: Path) -> str:
 
     if existing_checksum == expected_checksum:
         logging.info(
-            f"File {primary_filename} already exists in cache and checksum matches. Skipping download."
+            f"File {primary_filename} already exists in cache and checksum matches."
+            " Skipping download."
         )
         return str(primary_file_path_in_cache)
     else:
@@ -231,7 +233,7 @@ def download_repo_metadata(version: str, cache_dir: Path) -> str:
         return downloaded_primary_path
 
 
-def parse_primary_xml(file_path: Union[str, Path], debug: bool) -> Set[str]:
+def parse_primary_xml(file_path: str | Path, debug: bool) -> set[str]:
     """Parses a gzipped primary XML file to extract 'src' package names.
 
     :param file_path: The path to the gzipped primary XML file.
@@ -264,7 +266,7 @@ def parse_primary_xml(file_path: Union[str, Path], debug: bool) -> Set[str]:
                     # Clear the element to free memory
                     elem.clear()
 
-        unique_packages = sorted(list(package_names))
+        unique_packages = sorted(package_names)
         logging.info(f"Successfully extracted {len(unique_packages)} unique 'src' package names")
         if debug:
             output_filename = "src_packages.json"
@@ -381,7 +383,7 @@ def manage_git_repository(repo_url: str, git_ref: str, cache_dir: Path, ref_type
         raise RuntimeError(f"Failed to manage git repository {repo_url}: {e.stderr.strip()}") from e
 
 
-def get_source_package_from_obs(package: str) -> Optional[str]:
+def get_source_package_from_obs(package: str) -> str | None:
     """Gets the source package from OBS for a given binary package.
 
     This function queries the SUSE OBS instance to find the corresponding
@@ -401,19 +403,19 @@ def get_source_package_from_obs(package: str) -> Optional[str]:
         text=True,
         check=False,
     )
-    filtered_output: List[str] = [
+    filtered_output: list[str] = [
         line for line in output.stdout.splitlines() if line.startswith(f"{project} ")
     ]
     if len(filtered_output) == 0:
         logging.info(f"No source package found for {package} in {project}.")
         return None
-    packages: List[str] = []
+    packages: list[str] = []
     for line in filtered_output:
-        items: List[str] = line.split()
-        item: List[str] = items[1].split(":")
+        items: list[str] = line.split()
+        item: list[str] = items[1].split(":")
         if len(item) > 0:
             packages.append(item[0])
-    source_package: Set[str] = set(packages)
+    source_package: set[str] = set(packages)
     if len(source_package) != 1:
         logging.warning(
             "More than 1 source package found for %s in %s: %s",
@@ -453,10 +455,12 @@ def run_git_submodule(slfo_git_repo_path: str) -> str:
         raise RuntimeError(f"Git command failed: {e.stderr.strip()}") from e
     except FileNotFoundError:
         logging.error(" Error: 'git' command not found. Ensure Git is installed and in your PATH.")
-        raise RuntimeError("'git' command not found. Ensure Git is installed and in your PATH.")
+        raise RuntimeError(
+            "'git' command not found. Ensure Git is installed and in your PATH."
+        ) from None
 
 
-def parse_git_submodules(git_output: str) -> List[str]:
+def parse_git_submodules(git_output: str) -> list[str]:
     """Parses the output of `git submodule status` to extract submodule names.
 
     :param git_output: The raw string output from the git command.
@@ -464,15 +468,15 @@ def parse_git_submodules(git_output: str) -> List[str]:
     :return: A list of submodule names.
     :rtype: List[str]
     """
-    names: List[str] = []
+    names: list[str] = []
     for line in git_output.splitlines():
-        parts: List[str] = line.strip().split()
+        parts: list[str] = line.strip().split()
         if len(parts) >= 2:
             names.append(parts[1])
     return names
 
 
-def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
+def get_packages_from_git_submodules(slfo_git_repo_path: str) -> list[str]:
     """Retrieves a sorted list of submodule names from the Git repository.
 
     This function orchestrates running `git submodule status` and parsing
@@ -493,8 +497,8 @@ def get_packages_from_git_submodules(slfo_git_repo_path: str) -> List[str]:
 
 
 def find_shipped_packages_without_submodule(
-    packages_from_repo: Set[str], submodule_list: List[str], debug: bool
-) -> Set[str]:
+    packages_from_repo: set[str], submodule_list: list[str], debug: bool
+) -> set[str]:
     """Checks for shipped packages that are not in the git submodules.
 
     This function identifies packages that are present in the repository
@@ -514,9 +518,9 @@ def find_shipped_packages_without_submodule(
     """
     logging.info("--- Checking for shipped packages not found in git submodules ---")
 
-    remapping: Dict[str, Optional[str]] = {}
+    remapping: dict[str, str | None] = {}
     try:
-        with open(FALSEPOSITIVES_FILE, "r") as f:
+        with open(FALSEPOSITIVES_FILE) as f:
             file_remapping = json.load(f)
             if file_remapping:
                 remapping.update(file_remapping)
@@ -531,7 +535,7 @@ def find_shipped_packages_without_submodule(
         logging.info(
             f"--- Updating {len(remapping)} false-positive packages from {FALSEPOSITIVES_FILE} ---"
         )
-        processed_package_names: List[str] = []
+        processed_package_names: list[str] = []
         for pkg in packages_from_repo:
             remapped_name = remapping.get(pkg, pkg)
             if remapped_name is not None:
@@ -539,11 +543,11 @@ def find_shipped_packages_without_submodule(
 
         packages_from_repo = set(processed_package_names)
 
-    unknown_packages: Set[str] = packages_from_repo - set(submodule_list)
-    valid_packages: Set[str] = packages_from_repo - unknown_packages
+    unknown_packages: set[str] = packages_from_repo - set(submodule_list)
+    valid_packages: set[str] = packages_from_repo - unknown_packages
 
-    shipped_not_in_submodule: List[str] = []
-    false_positive_packages: Dict[str, str] = {}
+    shipped_not_in_submodule: list[str] = []
+    false_positive_packages: dict[str, str] = {}
 
     logging.info(f"Found {len(unknown_packages)} unknown packages. Querying OBS in parallel...")
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -594,7 +598,7 @@ def find_shipped_packages_without_submodule(
     return valid_packages
 
 
-def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, List[str]]:
+def get_maintainer_data(maintainership_file: str | Path) -> dict[str, list[str]]:
     """Parses the JSON maintainership file and returns normalized content.
 
     Expects new format with "packages" key containing package objects.
@@ -610,14 +614,14 @@ def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, List
     """
     logging.info(f"--- Parsing maintainership from {maintainership_file} ---")
     try:
-        with open(maintainership_file, "r") as f:
-            raw_data: Dict[str, Any] = json.load(f)
+        with open(maintainership_file) as f:
+            raw_data: dict[str, Any] = json.load(f)
 
         # Extract packages from new format
         packages_data = raw_data.get("packages", {})
 
         # Normalize: merge users and groups into single list
-        maintainer_data: Dict[str, List[str]] = {}
+        maintainer_data: dict[str, list[str]] = {}
         for pkg, maintainers in packages_data.items():
             users = maintainers.get("users", [])
             groups = maintainers.get("groups", [])
@@ -636,8 +640,8 @@ def get_maintainer_data(maintainership_file: Union[str, Path]) -> Dict[str, List
 
 
 def check_orphan_packages(
-    shipped_packages: Set[str], maintainer_data: Dict[str, List[str]]
-) -> List[str]:
+    shipped_packages: set[str], maintainer_data: dict[str, list[str]]
+) -> list[str]:
     """Checks for shipped packages that do not have a listed maintainer.
 
     :param shipped_packages: A set of package names considered shipped.
@@ -649,7 +653,7 @@ def check_orphan_packages(
     """
     logging.info("--- Checking for orphan packages ---")
 
-    orphan_packages: List[str] = sorted(
+    orphan_packages: list[str] = sorted(
         [pkg for pkg in shipped_packages if not maintainer_data.get(pkg)]
     )
 
@@ -657,7 +661,7 @@ def check_orphan_packages(
 
 
 def find_maintained_packages_without_submodule(
-    submodule_list: List[str], maintainer_data: Dict[str, List[str]], debug: bool
+    submodule_list: list[str], maintainer_data: dict[str, list[str]], debug: bool
 ) -> None:
     """Finds maintained packages that are not git submodules.
 
@@ -669,16 +673,17 @@ def find_maintained_packages_without_submodule(
     :type debug: bool
     """
     logging.info("--- Finding maintained packages without equivalent git submodule ---")
-    packages_in_maintainership: Set[str] = set(maintainer_data.keys())
+    packages_in_maintainership: set[str] = set(maintainer_data.keys())
     # Filter out any empty strings that might have come from maintainer_data.keys()
     packages_in_maintainership = {pkg for pkg in packages_in_maintainership if pkg}
-    submodule_set: Set[str] = set(submodule_list)
+    submodule_set: set[str] = set(submodule_list)
 
-    mismatched_packages: List[str] = sorted(list(packages_in_maintainership - submodule_set))
+    mismatched_packages: list[str] = sorted(packages_in_maintainership - submodule_set)
 
     if mismatched_packages:
         logging.info(
-            f"Found {len(mismatched_packages)} maintained packages without an equivalent git submodule."
+            f"Found {len(mismatched_packages)} maintained packages"
+            " without an equivalent git submodule."
         )
         logging.info("Maintained packages without an equivalent git submodule:")
         for package in mismatched_packages:
@@ -757,7 +762,8 @@ def main() -> None:
         logging.info(f"Using git commit: {git_ref}")
     else:
         logging.error(
-            f"Neither 'branch', 'tag', nor 'commit' is set for product version {sles_version} in the configuration file."
+            f"Neither 'branch', 'tag', nor 'commit' is set for product version"
+            f" {sles_version} in the configuration file."
         )
         return
 
@@ -767,22 +773,22 @@ def main() -> None:
 
     maintainership_file = Path(slfo_repo_path) / "_maintainership.json"
 
-    src_package_list: Set[str] = parse_primary_xml(primary_xml_file, args.debug)
+    src_package_list: set[str] = parse_primary_xml(primary_xml_file, args.debug)
 
-    submodule_list: List[str] = get_packages_from_git_submodules(slfo_repo_path)
+    submodule_list: list[str] = get_packages_from_git_submodules(slfo_repo_path)
 
-    maintainer_data: Dict[str, List[str]] = get_maintainer_data(maintainership_file)
+    maintainer_data: dict[str, list[str]] = get_maintainer_data(maintainership_file)
 
     find_maintained_packages_without_submodule(submodule_list, maintainer_data, args.debug)
 
-    shipped_packages: Set[str] = find_shipped_packages_without_submodule(
+    shipped_packages: set[str] = find_shipped_packages_without_submodule(
         src_package_list, submodule_list, args.debug
     )
     if not shipped_packages:
         logging.error("No shipped packages found. Aborting.")
         return
 
-    orphan_packages: List[str] = check_orphan_packages(shipped_packages, maintainer_data)
+    orphan_packages: list[str] = check_orphan_packages(shipped_packages, maintainer_data)
     if orphan_packages:
         logging.info(f"Found {len(orphan_packages)} orphan packages.")
         logging.info("Orphan packages:")

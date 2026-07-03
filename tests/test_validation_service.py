@@ -1,6 +1,6 @@
 """Tests for validation_service module - orchestrates validation workflow."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -16,7 +16,7 @@ def _make_bulk_map(mapping: dict[str, str], project: str = "SUSE:SLFO:Main") -> 
     return BulkMap(
         mapping=mapping,
         project=project,
-        fetched_at=datetime(2026, 6, 8, tzinfo=timezone.utc),
+        fetched_at=datetime(2026, 6, 8, tzinfo=UTC),
     )
 
 

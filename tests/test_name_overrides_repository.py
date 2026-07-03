@@ -13,8 +13,6 @@ Tests cover:
   - Real shipped overrides file is loadable and contains the expected entry.
 """
 
-from __future__ import annotations
-
 from importlib.resources import files
 from pathlib import Path
 

@@ -1,7 +1,7 @@
 # GitLab CI/CD Pipeline
 # Mirrors the GitHub CI workflow with quality checks and tests
 
-image: python:3.12
+image: python:3.13
 
 # Define pipeline stages
 stages:
@@ -24,7 +24,7 @@ cache:
   before_script:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - export PATH="$HOME/.cargo/bin:$PATH"
-    - uv python install 3.12
+    - uv python install 3.13
     - uv sync --extra dev
 
 # Linting job

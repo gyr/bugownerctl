@@ -13,6 +13,24 @@ from pathlib import Path
 from bugownerctl.commands import check, init, query
 
 
+def positive_int(value: str) -> int:
+    """Convert string to a positive integer (>= 1) for argparse type validation.
+
+    Args:
+        value: String value to convert.
+
+    Returns:
+        Integer >= 1.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is < 1.
+    """
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1, got {n}")
+    return n
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser with subcommands.
 
@@ -91,6 +109,32 @@ def create_parser() -> argparse.ArgumentParser:
         help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
     )
     whitelist_parser.set_defaults(func=check.run_whitelist)
+
+    # check users
+    users_parser = check_subparsers.add_parser(
+        "users",
+        help="Validate that user logins in maintainership file are confirmed OBS accounts",
+    )
+    users_parser.add_argument("-v", "--version", required=True, help="SLES version (e.g., '16.1')")
+    users_parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (default: search standard locations)",
+    )
+    users_parser.add_argument(
+        "--api",
+        default="https://api.suse.de",
+        help="OBS API URL (default: https://api.suse.de)",
+    )
+    users_parser.add_argument(
+        "--batch-size",
+        type=positive_int,
+        default=50,
+        help="Max logins per OBS API call (default: 50)",
+    )
+    users_parser.set_defaults(func=check.run_users)
 
     # bugownerctl query
     query_parser = subparsers.add_parser("query", help="Query package and maintainer information")

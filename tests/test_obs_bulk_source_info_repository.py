@@ -9,13 +9,11 @@ Phase 2 of the OBS source-name resolution refactor. Tests cover:
   - Failure modes (non-zero exit, timeout, malformed XML, osc not installed).
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import os
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -238,6 +236,15 @@ class TestParsing:
         with pytest.raises(RuntimeError, match="DOCTYPE"):
             repo._build_bulk_map(evil)
 
+    def test_build_bulk_map_rejects_doctype_beyond_4096_bytes(self) -> None:
+        """DOCTYPE beyond the 4096-byte scan window must still be rejected."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        # 5001-byte comment pushes <!DOCTYPE past the former [:4096] scan window.
+        padding = b"<!-- " + b"x" * 5001 + b" -->"
+        evil = padding + b'<!DOCTYPE foo [<!ENTITY a "x">]><sourceinfolist/>'
+        with pytest.raises(RuntimeError, match="DOCTYPE"):
+            repo._build_bulk_map(evil)
+
     def test_build_bulk_map_ignores_whitespace_only_subpacks(self) -> None:
         """A <subpacks>   </subpacks> element must not produce a whitespace key.
 
@@ -327,7 +334,7 @@ class TestCache:
         body = _fixture_xml()
         # Write a stale cache by hand (TTL is 7d; set fetched_at to 8d ago).
         (tmp_path / "obs_bulk_map.xml").write_bytes(body)
-        stale = datetime.now(timezone.utc) - timedelta(days=8)
+        stale = datetime.now(UTC) - timedelta(days=8)
         (tmp_path / "obs_bulk_map.meta.json").write_text(
             json.dumps(
                 {

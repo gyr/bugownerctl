@@ -28,6 +28,9 @@ bugownerctl check maintainership -v 16.1
 # Check whitelist against shipped packages
 bugownerctl check whitelist -v 16.1
 
+# Validate user logins in maintainership file are confirmed OBS accounts
+bugownerctl check users -v 16.1
+
 # Check package maintainership
 bugownerctl query package apache2
 
@@ -230,6 +233,85 @@ Config file names are validated to prevent path traversal attacks. Invalid file 
 **Migration Note:**
 
 The old `bugownerctl whitelist update` command has been removed. The whitelist file is now manually maintained as a reference for validation.
+
+---
+
+### `bugownerctl check users`
+
+Validates that user logins in the maintainership file are confirmed OBS accounts.
+
+**Purpose:** Detect logins that are locked, non-confirmed, or absent from OBS before they
+cause maintainership data to reference invalid accounts. Groups are not checked (only the
+`users` key per package).
+
+**Usage:**
+```bash
+bugownerctl check users -v <version> [--config <path>] [--api <url>] [--batch-size <n>]
+```
+
+**Options:**
+- `-v, --version` - SLES version (required, e.g., "16.1")
+- `-c, --config` - Path to config file (optional, uses search hierarchy)
+- `--api` - OBS API base URL (default: `https://api.suse.de`)
+- `--batch-size` - Max logins per OBS API call (default: `50`, must be ≥ 1)
+
+**What it does:**
+1. Clones/updates the SLFO git repository
+2. Loads `_maintainership.json` from the repo
+3. Extracts all unique user logins across all packages
+4. Queries OBS `/search/person` in batches (requires a logged-in `osc` session)
+5. Classifies each login: confirmed, invalid (locked / non-confirmed), or not found
+
+**Examples:**
+```bash
+# Validate user logins for SLES 16.1
+bugownerctl check users -v 16.1
+
+# Use a different OBS instance
+bugownerctl check users -v 16.1 --api https://api.opensuse.org
+
+# Use a smaller batch size
+bugownerctl check users -v 16.1 --batch-size 25
+
+# With explicit config file
+bugownerctl check users -v 16.1 --config /path/to/config.yaml
+```
+
+**Exit codes:**
+- `0` - All user logins are confirmed OBS accounts
+- `1` - One or more logins are invalid or not found in OBS
+
+**Output (when issues found):**
+```
+INFO: Found 5 confirmed OBS accounts.
+INFO: Confirmed accounts:
+INFO: - user1
+INFO: - user2
+INFO: - user3
+INFO: - user4
+INFO: - user5
+INFO: Found 1 invalid (locked / non-confirmed) accounts.
+INFO: Invalid accounts:
+INFO: - lockeduser
+INFO: Found 2 accounts not found in OBS.
+INFO: Accounts not found in OBS:
+INFO: - ghost1
+INFO: - ghost2
+INFO: 3 of 8 users are not confirmed OBS accounts.
+```
+
+**Output (all confirmed):**
+```
+INFO: Found 8 confirmed OBS accounts.
+INFO: Confirmed accounts:
+INFO: - user1
+...
+INFO: All 8 users are confirmed OBS accounts.
+```
+
+**Requirements:**
+- `osc` must be installed and logged in to the target OBS instance (`osc api <url>`)
+- Only user logins are validated; group names in `groups` keys are intentionally skipped
 
 ---
 
@@ -513,8 +595,8 @@ bugownerctl check maintainership -v 16.1
 ## Dependencies
 
 **Runtime:**
-- Python 3.10+
-- `lxml` - XML parsing
+- Python 3.13+
+- `defusedxml` - Safe XML parsing (XXE/DTD protection)
 - `PyYAML` - Config file parsing
 - `requests` - HTTP downloads
 
@@ -684,13 +766,12 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 
 ## Migration from Legacy Scripts
 
-**Old scripts are deprecated but still functional.**
+**`validate_maintainership.py` is deprecated but still present. All other legacy scripts have been removed.**
 
 | Old Script | New Command |
 |------------|-------------|
 | `validate_maintainership.py -v 16.1` | `bugownerctl check maintainership -v 16.1` |
-| `create_whitelist_maintainership.py` | ~~`bugownerctl whitelist update`~~ (removed) |
-| `check_package_maintainer.py <pkg>` | `bugownerctl query package <pkg>` |
+| `validate_maintainer.py -v 16.1` | `bugownerctl check users -v 16.1` (new) |
 | N/A | `bugownerctl query maintainer <user>` (new) |
 | N/A | `bugownerctl check whitelist -v <version>` (new) |
 | N/A | `bugownerctl init` (new) |

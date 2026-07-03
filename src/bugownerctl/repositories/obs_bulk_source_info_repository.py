@@ -17,18 +17,18 @@ existing credential manager configuration. See SOURCE_NAME_RESOLUTION_REFACTOR_P
 section 9 for the full discussion.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
 import os
 import re
 import subprocess
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
-from xml.etree import ElementTree as ET
+
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 from bugownerctl.domain.bulk_map import BulkMap
 
@@ -124,7 +124,7 @@ class ObsBulkSourceInfoRepositoryImpl:
         else:
             logger.info("Fetching OBS bulk source-info for project %s", project)
             xml_body = self._fetch_via_osc_api(project)
-            fetched_at = datetime.now(timezone.utc)
+            fetched_at = datetime.now(UTC)
             cache_dir.mkdir(parents=True, exist_ok=True)
             # Restrict the cache directory to owner-only (mirrors
             # false_positives_repository pattern). Cached XML may include
@@ -184,7 +184,7 @@ class ObsBulkSourceInfoRepositoryImpl:
             logger.warning("Cache meta has invalid fetched_at; refetching")
             return None
 
-        if datetime.now(timezone.utc) - fetched_at > CACHE_TTL:
+        if datetime.now(UTC) - fetched_at > CACHE_TTL:
             logger.info("OBS bulk cache stale (age > %s); refetching", CACHE_TTL)
             return None
 
@@ -280,19 +280,13 @@ class ObsBulkSourceInfoRepositoryImpl:
                 f"OBS bulk response exceeds {MAX_XML_BYTES} bytes ({len(xml_body)}); "
                 "refusing to parse to avoid memory exhaustion"
             )
-        # DOCTYPE check: ET.fromstring blocks external-entity (XXE) loads but
-        # still expands *internal* entities, so a small DOCTYPE with nested
-        # entity definitions ("billion laughs") can OOM the process. Real OBS
-        # bulk responses never contain a DOCTYPE; refuse any that do. We scan
-        # only the prologue (first 4 KiB) since DOCTYPE must precede the root
-        # element per XML 1.0 §2.8.
-        if b"<!DOCTYPE" in xml_body[:4096]:
+        try:
+            root = ET.fromstring(xml_body, forbid_dtd=True)
+        except DefusedXmlException as exc:
             raise RuntimeError(
                 "OBS bulk response contains a DOCTYPE declaration; refusing to parse "
                 "(prevents entity-expansion attacks). Real OBS responses never contain DOCTYPE."
-            )
-        try:
-            root = ET.fromstring(xml_body)
+            ) from exc
         except ET.ParseError as exc:
             snippet = xml_body[:200].decode(errors="replace")
             raise RuntimeError(
