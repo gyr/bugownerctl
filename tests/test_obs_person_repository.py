@@ -14,6 +14,7 @@ from urllib.parse import unquote
 
 import pytest
 
+from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 from bugownerctl.repositories.obs_person_repository import (
     DEFAULT_OBS_API,
     ObsPersonRepository,
@@ -158,19 +159,19 @@ class TestSubprocessInvocation:
             repo.query_persons(["alice"])
 
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_subprocess_timeout_raises_runtime_error(self, mock_run: Mock) -> None:
-        """TimeoutExpired must raise RuntimeError mentioning timed out or timeout."""
+    def test_subprocess_timeout_raises_network_timeout_error(self, mock_run: Mock) -> None:
+        """TimeoutExpired must raise NetworkTimeoutError."""
         mock_run.side_effect = subprocess.TimeoutExpired("osc", 30)
         repo = ObsPersonRepositoryImpl()
-        with pytest.raises(RuntimeError, match="timed out|timeout"):
+        with pytest.raises(NetworkTimeoutError):
             repo.query_persons(["alice"])
 
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_osc_not_installed_raises_runtime_error(self, mock_run: Mock) -> None:
-        """FileNotFoundError must raise RuntimeError matching 'osc executable not found'."""
+    def test_osc_not_installed_raises_missing_binary_error(self, mock_run: Mock) -> None:
+        """FileNotFoundError must raise MissingBinaryError."""
         mock_run.side_effect = FileNotFoundError("osc")
         repo = ObsPersonRepositoryImpl()
-        with pytest.raises(RuntimeError, match="osc executable not found"):
+        with pytest.raises(MissingBinaryError):
             repo.query_persons(["alice"])
 
 

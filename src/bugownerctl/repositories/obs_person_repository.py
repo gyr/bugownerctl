@@ -12,6 +12,8 @@ from urllib.parse import quote, urlparse
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
+from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
+
 DEFAULT_OBS_API = "https://api.suse.de"
 MAX_XML_BYTES = 50 * 1024 * 1024
 
@@ -47,8 +49,9 @@ class ObsPersonRepository(Protocol):
         Raises:
             ValueError: If any login contains characters outside
                 ``[A-Za-z0-9_.@-]``.
-            RuntimeError: If ``osc api`` exits non-zero, times out, or
-                ``osc`` is not installed.
+            MissingBinaryError: If ``osc`` is not in PATH.
+            NetworkTimeoutError: If the ``osc api`` subprocess exceeds the timeout.
+            RuntimeError: If ``osc api`` exits non-zero.
         """
         ...
 
@@ -123,11 +126,9 @@ class ObsPersonRepositoryImpl:
                 timeout=_DEFAULT_TIMEOUT,
             )
         except FileNotFoundError as exc:
-            raise RuntimeError(
-                "osc executable not found; install with `zypper install osc` or `pip install osc`"
-            ) from exc
+            raise MissingBinaryError("osc") from exc
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"osc api {path!r} timed out after {_DEFAULT_TIMEOUT}s") from exc
+            raise NetworkTimeoutError(f"osc api {path!r}", _DEFAULT_TIMEOUT) from exc
 
         if proc.returncode != 0:
             stderr = proc.stderr.decode(errors="replace") if proc.stderr else ""
