@@ -292,8 +292,10 @@ class TestCreateParser:
 class TestMain:
     """Tests for main entry point."""
 
-    def test_main_configures_logging_info_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Main should configure INFO level logging by default."""
+    def test_main_configures_logging_warning_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Main should configure WARNING level logging by default."""
         import logging
 
         # Mock basicConfig to capture call
@@ -302,16 +304,16 @@ class TestMain:
 
         # Mock parser to avoid executing command
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=Mock(return_value=0))
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=Mock(return_value=0))
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
         main()
 
-        # Verify basicConfig called with INFO level and stderr stream
+        # Verify basicConfig called with WARNING level and stderr stream
         mock_config.assert_called_once()
         call_kwargs = mock_config.call_args[1]
-        assert call_kwargs["level"] == logging.INFO
+        assert call_kwargs["level"] == logging.WARNING
         assert call_kwargs["stream"] == sys.stderr
 
     def test_main_configures_logging_debug_when_flag_set(
@@ -324,7 +326,7 @@ class TestMain:
         monkeypatch.setattr("logging.basicConfig", mock_config)
 
         mock_parser = Mock()
-        mock_args = Mock(debug=True, func=Mock(return_value=0))
+        mock_args = Mock(debug=True, verbose=False, quiet=False, func=Mock(return_value=0))
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -334,6 +336,46 @@ class TestMain:
         assert call_kwargs["level"] == logging.DEBUG
         assert call_kwargs["stream"] == sys.stderr
 
+    def test_main_configures_logging_error_when_quiet_flag_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Main should configure ERROR level when --quiet flag provided."""
+        import logging
+
+        mock_config = Mock()
+        monkeypatch.setattr("logging.basicConfig", mock_config)
+
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, verbose=False, quiet=True, func=Mock(return_value=0))
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
+
+        main()
+
+        call_kwargs = mock_config.call_args[1]
+        assert call_kwargs["level"] == logging.ERROR
+        assert call_kwargs["stream"] == sys.stderr
+
+    def test_main_configures_logging_info_when_verbose_flag_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Main should configure INFO level when --verbose flag provided."""
+        import logging
+
+        mock_config = Mock()
+        monkeypatch.setattr("logging.basicConfig", mock_config)
+
+        mock_parser = Mock()
+        mock_args = Mock(debug=False, verbose=True, quiet=False, func=Mock(return_value=0))
+        mock_parser.parse_args.return_value = mock_args
+        monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
+
+        main()
+
+        call_kwargs = mock_config.call_args[1]
+        assert call_kwargs["level"] == logging.INFO
+        assert call_kwargs["stream"] == sys.stderr
+
     def test_main_calls_command_handler_function(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Main should call the command handler function from args.func."""
 
@@ -341,7 +383,7 @@ class TestMain:
 
         mock_handler = Mock(return_value=0)
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -357,7 +399,7 @@ class TestMain:
 
         mock_handler = Mock(return_value=42)
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -381,7 +423,7 @@ class TestMainExceptionHandling:
             side_effect=FileNotFoundError("Config file not found at /path/to/config.yaml")
         )
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -405,7 +447,7 @@ class TestMainExceptionHandling:
 
         mock_handler = Mock(side_effect=ValueError("Version 16.1 not found in config"))
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -425,7 +467,7 @@ class TestMainExceptionHandling:
 
         mock_handler = Mock(side_effect=FileNotFoundError("Config file not found"))
         mock_parser = Mock()
-        mock_args = Mock(debug=True, func=mock_handler)  # debug=True
+        mock_args = Mock(debug=True, verbose=False, quiet=False, func=mock_handler)  # debug=True
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -446,7 +488,7 @@ class TestMainExceptionHandling:
 
         mock_handler = Mock(side_effect=KeyboardInterrupt())
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -465,7 +507,7 @@ class TestMainExceptionHandling:
 
         mock_handler = Mock(side_effect=RuntimeError("Unexpected error"))
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -486,7 +528,7 @@ class TestMainExceptionHandling:
 
         mock_handler = Mock(side_effect=MissingBinaryError("osc"))
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -507,7 +549,7 @@ class TestMainExceptionHandling:
 
         mock_handler = Mock(side_effect=NetworkTimeoutError("osc api '/search/person'", 60))
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -528,7 +570,7 @@ class TestMainExceptionHandling:
 
         mock_handler = Mock(side_effect=ConfigError("Config file not found: /x.yaml"))
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 
@@ -563,7 +605,7 @@ class TestMainExceptionHandling:
         monkeypatch.setattr("logging.basicConfig", Mock())
         mock_handler = Mock(side_effect=BugownerctlError("unexpected domain error"))
         mock_parser = Mock()
-        mock_args = Mock(debug=False, func=mock_handler)
+        mock_args = Mock(debug=False, verbose=False, quiet=False, func=mock_handler)
         mock_parser.parse_args.return_value = mock_args
         monkeypatch.setattr("bugownerctl.cli.create_parser", lambda: mock_parser)
 

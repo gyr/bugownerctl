@@ -51,7 +51,14 @@ def create_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"%(prog)s {pkg_version('bugownerctl')}",
     )
-    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
+    log_level_group = parser.add_mutually_exclusive_group()
+    log_level_group.add_argument("-d", "--debug", action="store_true", help="Enable debug logging")
+    log_level_group.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress all but error messages"
+    )
+    log_level_group.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose (INFO) logging"
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -196,6 +203,26 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_log_level(args: argparse.Namespace) -> int:
+    """Resolve logging level from parsed CLI arguments.
+
+    Precedence: DEBUG > INFO (verbose) > ERROR (quiet) > WARNING (default).
+
+    Args:
+        args: Parsed argument namespace containing debug, verbose, and quiet flags.
+
+    Returns:
+        Logging level integer.
+    """
+    if args.debug:
+        return logging.DEBUG
+    if args.verbose:
+        return logging.INFO
+    if args.quiet:
+        return logging.ERROR
+    return logging.WARNING
+
+
 def _handle_exception(exception: Exception, debug: bool) -> None:
     """Handle exception by printing to stderr with optional traceback.
 
@@ -227,7 +254,7 @@ def main() -> int:
 
     # Configure logging
     logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.INFO,
+        level=_resolve_log_level(args),
         format="%(levelname)s: %(message)s",
         stream=sys.stderr,
     )
