@@ -4,12 +4,15 @@ Executes query subcommands for package and maintainer information.
 """
 
 import argparse
+import logging
 
 from bugownerctl.commands.repo_prep import prepare_slfo_repo
 from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.services.query_service import PackageStatus, QueryService
 from bugownerctl.utils.file_utils import validate_file_within_directory
+
+logger = logging.getLogger(__name__)
 
 
 def run_package(args: argparse.Namespace) -> int:
@@ -21,6 +24,7 @@ def run_package(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success)
     """
+    logger.info("querying package %r...", args.package_name)
     slfo_context = prepare_slfo_repo(args.version, args.config)
 
     maintainership_file_name = slfo_context.config.get(
@@ -65,6 +69,7 @@ def run_maintainer(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success)
     """
+    logger.info("querying maintainer %r...", args.maintainer_name)
     slfo_context = prepare_slfo_repo(args.version, args.config)
 
     maintainership_file_name = slfo_context.config.get(

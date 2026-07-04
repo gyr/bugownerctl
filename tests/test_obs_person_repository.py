@@ -8,6 +8,7 @@ Tests cover:
   - Failure modes (non-zero exit, timeout, osc not installed).
 """
 
+import logging
 import subprocess
 from unittest.mock import Mock, patch
 from urllib.parse import unquote
@@ -363,23 +364,31 @@ class TestXmlParse:
     )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
     def test_person_without_login_element_is_skipped(
-        self, mock_run: Mock, mock_which: Mock
+        self, mock_run: Mock, mock_which: Mock, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """<person> with no <login> child is silently skipped."""
+        """<person> with no <login> child is skipped with a WARNING log."""
         xml = b"<directory><person><state>confirmed</state></person></directory>"
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        result = ObsPersonRepositoryImpl().query_persons(["alice"])
+        with caplog.at_level(
+            logging.WARNING, logger="bugownerctl.repositories.obs_person_repository"
+        ):
+            result = ObsPersonRepositoryImpl().query_persons(["alice"])
         assert result == {}
+        assert "skipping person record" in caplog.text
 
     @patch(
         "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
     )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
     def test_person_with_empty_login_element_is_skipped(
-        self, mock_run: Mock, mock_which: Mock
+        self, mock_run: Mock, mock_which: Mock, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """<person> with empty <login/> is silently skipped."""
+        """<person> with empty <login/> is skipped with a WARNING log."""
         xml = b"<directory><person><login/><state>confirmed</state></person></directory>"
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        result = ObsPersonRepositoryImpl().query_persons(["alice"])
+        with caplog.at_level(
+            logging.WARNING, logger="bugownerctl.repositories.obs_person_repository"
+        ):
+            result = ObsPersonRepositoryImpl().query_persons(["alice"])
         assert result == {}
+        assert "skipping person record" in caplog.text

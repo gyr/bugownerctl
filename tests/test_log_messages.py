@@ -1,6 +1,7 @@
 """Tests for cache log messages matching old format."""
 
 import hashlib
+import logging
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -49,7 +50,9 @@ class TestCacheLogMessages:
         cache_dir = tmp_path / "cache"
 
         # Act
-        with caplog.at_level("INFO"):
+        with caplog.at_level(
+            logging.DEBUG, logger="bugownerctl.repositories.repo_metadata_repository"
+        ):
             repo.download_primary_metadata("16.1", cache_dir)
 
         # Assert - verify both log messages exist
@@ -98,7 +101,9 @@ class TestCacheLogMessages:
         repo = RepoMetadataRepositoryImpl()
 
         # Act
-        with caplog.at_level("INFO"):
+        with caplog.at_level(
+            logging.DEBUG, logger="bugownerctl.repositories.repo_metadata_repository"
+        ):
             repo.download_primary_metadata("16.1", cache_dir)
 
         # Assert - verify detailed cache hit message

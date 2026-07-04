@@ -4,6 +4,7 @@ Fetches person records from the OBS search API via `osc api`
 (SSH-signature auth is delegated to the user's local `osc` install).
 """
 
+import logging
 import re
 import shutil
 import subprocess
@@ -21,6 +22,8 @@ MAX_XML_BYTES = 50 * 1024 * 1024
 _VALID_LOGIN = re.compile(r"^[A-Za-z0-9_.@-]+$")
 
 _DEFAULT_TIMEOUT = 60  # seconds
+
+logger = logging.getLogger(__name__)
 
 
 class ObsPersonRepository(Protocol):
@@ -87,8 +90,10 @@ class ObsPersonRepositoryImpl:
         result: dict[str, str | None] = {}
         for i in range(num_batches):
             batch = logins[i * batch_size : (i + 1) * batch_size]
+            logger.debug("querying batch of %d logins from %s", len(batch), api)
             xml_bytes = self._fetch_batch(batch, api)
             result.update(self._parse_persons(xml_bytes))
+            logger.debug("batch %d/%d: %d results", i + 1, num_batches, len(result))
 
         return result
 
@@ -111,6 +116,7 @@ class ObsPersonRepositoryImpl:
         for person in root.findall("person"):
             login_el = person.find("login")
             if login_el is None or login_el.text is None:
+                logger.warning("skipping person record: missing or empty login element")
                 continue
             state_el = person.find("state")
             result[login_el.text] = state_el.text if state_el is not None else None

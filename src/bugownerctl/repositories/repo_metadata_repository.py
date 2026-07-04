@@ -97,7 +97,7 @@ class RepoMetadataRepositoryImpl:
         metadata_cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Download repomd.xml
-        logger.info("Downloading repomd.xml for version %s", version)
+        logger.debug("Downloading repomd.xml for version %s", version)
         try:
             repomd_url = self.base_url.format(version=version) + "repodata/repomd.xml"
             # NOTE: verify=False is required to access internal SUSE infrastructure
@@ -149,8 +149,8 @@ class RepoMetadataRepositoryImpl:
                 raise RuntimeError("Invalid location or checksum in repomd.xml")
 
             # Log primary metadata info (matches old validate_maintainership.py format)
-            logger.info("Primary data location from repomd.xml: %s", primary_href)
-            logger.info("Expected %s checksum: %s", checksum_type, expected_checksum)
+            logger.debug("Primary data location from repomd.xml: %s", primary_href)
+            logger.debug("Expected %s checksum: %s", checksum_type, expected_checksum)
 
             # Validate primary_href to prevent SSRF
             # (path traversal, absolute paths, protocol-relative URLs)
@@ -176,7 +176,7 @@ class RepoMetadataRepositoryImpl:
             cached_checksum = hashlib.sha256(cached_file.read_bytes()).hexdigest()
             if cached_checksum == expected_checksum:
                 # Cache hit - return cached file
-                logger.info(
+                logger.debug(
                     "File %s already exists in cache and checksum matches. Skipping download.",
                     cached_file.name,
                 )
@@ -188,10 +188,10 @@ class RepoMetadataRepositoryImpl:
             )
             cached_file.unlink()
         else:
-            logger.info("Cache miss for version %s (file not found)", version)
+            logger.debug("Cache miss for version %s (file not found)", version)
 
         # Download primary.xml
-        logger.info("Downloading primary.xml for version %s", version)
+        logger.debug("Downloading primary.xml for version %s", version)
         try:
             primary_url = self.base_url.format(version=version) + primary_href
             # NOTE: verify=False is required for internal SUSE infrastructure (see above)
@@ -202,7 +202,7 @@ class RepoMetadataRepositoryImpl:
             with cached_file.open("wb") as f:
                 for chunk in primary_response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            logger.info("Successfully downloaded and cached primary.xml for version %s", version)
+            logger.debug("Successfully downloaded and cached primary.xml for version %s", version)
 
             return cached_file
 

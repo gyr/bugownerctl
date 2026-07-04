@@ -4,6 +4,7 @@ Loads configuration, resolves a product git reference, clones or updates the
 SLFO repository, and returns a context object bundling all resolved values.
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,8 @@ from bugownerctl.domain.ref_type import RefType
 from bugownerctl.exceptions import ConfigError
 from bugownerctl.repositories.git_repository import GitRepository, GitRepositoryImpl
 from bugownerctl.utils.config import load_config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,7 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
         ConfigError: If config file cannot be found.
         RuntimeError: If git operations fail.
     """
+    logger.info("preparing SLFO repo for version %s", version)
     try:
         config = load_config(config_file) or {}
     except FileNotFoundError as exc:
@@ -80,6 +84,7 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
 
     git_repo = GitRepositoryImpl()
     cache_dir.mkdir(parents=True, exist_ok=True)
+    logger.debug("cloning/updating %s at ref %s", slfo_git_url, git_ref)
     slfo_repo_path = git_repo.clone_or_update(
         repo_url=slfo_git_url,
         git_ref=git_ref,
