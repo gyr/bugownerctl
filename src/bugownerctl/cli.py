@@ -44,7 +44,12 @@ def create_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser with init, check, and query subcommands.
     """
     parser = argparse.ArgumentParser(
-        prog="bugownerctl", description="Bug ownership and package maintainership validation tool"
+        prog="bugownerctl",
+        description="Bug ownership and package maintainership validation tool",
+        epilog=(
+            "Global flags (-v/--verbose, -d/--debug, -q/--quiet) must precede the subcommand. "
+            "Example: bugownerctl -v check maintainership -r 16.1"
+        ),
     )
     parser.add_argument(
         "--version",
@@ -60,9 +65,22 @@ def create_parser() -> argparse.ArgumentParser:
         "-v", "--verbose", action="store_true", help="Enable verbose (INFO) logging"
     )
 
+    # Shared context parser: -r/--release and -c/--config are common to all five data-leaf
+    # subcommands.  Applying parents=[context] to each leaf avoids 5× duplication.
+    # add_help=False prevents a conflicting -h on the context itself.
+    context = argparse.ArgumentParser(add_help=False)
+    context.add_argument("-r", "--release", required=True, help="SLES version (e.g., '16.1')")
+    context.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to config file (searches standard locations when unset, default: %(default)s)",
+    )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # bugownerctl init
+    # bugownerctl init  (no -r/-c; init writes the config, it doesn't consume one)
     init_parser = subparsers.add_parser("init", help="Create initial configuration file")
     init_parser.add_argument(
         "--location",
@@ -80,17 +98,9 @@ def create_parser() -> argparse.ArgumentParser:
     # check maintainership
     maintainership_parser = check_subparsers.add_parser(
         "maintainership",
+        parents=[context],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="Validate maintainership data for inconsistencies and orphan packages",
-    )
-    maintainership_parser.add_argument(
-        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
-    )
-    maintainership_parser.add_argument(
-        "-c",
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to config file (default: search standard locations)",
     )
     maintainership_parser.add_argument(
         "--refresh-bulk-map",
@@ -112,17 +122,9 @@ def create_parser() -> argparse.ArgumentParser:
     # check whitelist
     whitelist_parser = check_subparsers.add_parser(
         "whitelist",
+        parents=[context],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="Validate that whitelisted packages are NOT shipped",
-    )
-    whitelist_parser.add_argument(
-        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
-    )
-    whitelist_parser.add_argument(
-        "-c",
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to config file (default: search standard locations)",
     )
     whitelist_parser.add_argument(
         "--refresh-bulk-map",
@@ -141,26 +143,20 @@ def create_parser() -> argparse.ArgumentParser:
     # check users
     users_parser = check_subparsers.add_parser(
         "users",
+        parents=[context],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="Validate that user logins in maintainership file are confirmed OBS accounts",
-    )
-    users_parser.add_argument("-r", "--release", required=True, help="SLES version (e.g., '16.1')")
-    users_parser.add_argument(
-        "-c",
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to config file (default: search standard locations)",
     )
     users_parser.add_argument(
         "--api",
         default="https://api.suse.de",
-        help="OBS API URL (default: https://api.suse.de)",
+        help="OBS API URL (default: %(default)s)",
     )
     users_parser.add_argument(
         "--batch-size",
         type=positive_int,
         default=50,
-        help="Max logins per OBS API call (default: 50)",
+        help="Max logins per OBS API call (default: %(default)s)",
     )
     users_parser.set_defaults(func=check.run_users)
 
@@ -169,35 +165,21 @@ def create_parser() -> argparse.ArgumentParser:
     query_subparsers = query_parser.add_subparsers(dest="query_command", required=True)
 
     package_parser = query_subparsers.add_parser(
-        "package", help="Check maintainership status of a package"
+        "package",
+        parents=[context],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Check maintainership status of a package",
     )
     package_parser.add_argument("package_name", help="Package name to check")
-    package_parser.add_argument(
-        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
-    )
-    package_parser.add_argument(
-        "-c",
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to config file (default: search standard locations)",
-    )
     package_parser.set_defaults(func=query.run_package)
 
     maintainer_parser = query_subparsers.add_parser(
-        "maintainer", help="List packages maintained by a user/group"
+        "maintainer",
+        parents=[context],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="List packages maintained by a user/group",
     )
     maintainer_parser.add_argument("maintainer_name", help="User or group name")
-    maintainer_parser.add_argument(
-        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
-    )
-    maintainer_parser.add_argument(
-        "-c",
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to config file (default: search standard locations)",
-    )
     maintainer_parser.set_defaults(func=query.run_maintainer)
 
     return parser

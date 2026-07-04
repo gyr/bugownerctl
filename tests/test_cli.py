@@ -683,3 +683,195 @@ class TestCheckUsersSubcommand:
         parser = create_parser()
         args = parser.parse_args(["check", "users", "-r", "16.1"])
         assert args.config is None
+
+
+class TestC13SharedContextParser:
+    """Tests for C13: shared context parser (-r/--release and -c/--config via parents=[context]).
+
+    All five data-leaf subcommands (check maintainership, check whitelist, check users,
+    query package, query maintainer) must expose -r/--release and -c/--config in their
+    --help output.  The root parser must carry an epilog noting that global flags precede
+    the subcommand.  ArgumentDefaultsHelpFormatter must be active so that argument
+    defaults appear in help text.
+    """
+
+    # ------------------------------------------------------------------ #
+    # check maintainership                                                 #
+    # ------------------------------------------------------------------ #
+
+    def test_check_maintainership_help_exits_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """check maintainership --help exits with code 0."""
+        parser = create_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["check", "maintainership", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_check_maintainership_help_shows_release_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """check maintainership --help output contains --release."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "maintainership", "--help"])
+        assert "--release" in capsys.readouterr().out
+
+    def test_check_maintainership_help_shows_config_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """check maintainership --help output contains --config."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "maintainership", "--help"])
+        assert "--config" in capsys.readouterr().out
+
+    # ------------------------------------------------------------------ #
+    # check whitelist                                                      #
+    # ------------------------------------------------------------------ #
+
+    def test_check_whitelist_help_exits_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """check whitelist --help exits with code 0."""
+        parser = create_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["check", "whitelist", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_check_whitelist_help_shows_release_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """check whitelist --help output contains --release."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "whitelist", "--help"])
+        assert "--release" in capsys.readouterr().out
+
+    def test_check_whitelist_help_shows_config_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """check whitelist --help output contains --config."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "whitelist", "--help"])
+        assert "--config" in capsys.readouterr().out
+
+    # ------------------------------------------------------------------ #
+    # check users                                                          #
+    # ------------------------------------------------------------------ #
+
+    def test_check_users_help_exits_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """check users --help exits with code 0."""
+        parser = create_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["check", "users", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_check_users_help_shows_release_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """check users --help output contains --release."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "users", "--help"])
+        assert "--release" in capsys.readouterr().out
+
+    def test_check_users_help_shows_config_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """check users --help output contains --config."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "users", "--help"])
+        assert "--config" in capsys.readouterr().out
+
+    # ------------------------------------------------------------------ #
+    # query package                                                        #
+    # ------------------------------------------------------------------ #
+
+    def test_query_package_help_exits_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """query package --help exits with code 0."""
+        parser = create_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["query", "package", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_query_package_help_shows_release_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """query package --help output contains --release."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "package", "--help"])
+        assert "--release" in capsys.readouterr().out
+
+    def test_query_package_help_shows_config_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """query package --help output contains --config."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "package", "--help"])
+        assert "--config" in capsys.readouterr().out
+
+    # ------------------------------------------------------------------ #
+    # query maintainer                                                     #
+    # ------------------------------------------------------------------ #
+
+    def test_query_maintainer_help_exits_zero(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """query maintainer --help exits with code 0."""
+        parser = create_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["query", "maintainer", "--help"])
+        assert exc_info.value.code == 0
+
+    def test_query_maintainer_help_shows_release_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """query maintainer --help output contains --release."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "maintainer", "--help"])
+        assert "--release" in capsys.readouterr().out
+
+    def test_query_maintainer_help_shows_config_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """query maintainer --help output contains --config."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "maintainer", "--help"])
+        assert "--config" in capsys.readouterr().out
+
+    # ------------------------------------------------------------------ #
+    # Epilog                                                               #
+    # ------------------------------------------------------------------ #
+
+    def test_root_parser_help_contains_epilog_about_global_flags(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Root parser --help output contains epilog noting global flags precede subcommand."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--help"])
+        captured = capsys.readouterr()
+        assert "precede" in captured.out
+
+    # ------------------------------------------------------------------ #
+    # ArgumentDefaultsHelpFormatter                                        #
+    # ------------------------------------------------------------------ #
+
+    def test_check_users_help_shows_batch_size_default_value(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """check users --help shows '(default: 50)' when ArgumentDefaultsHelpFormatter is active."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "users", "--help"])
+        captured = capsys.readouterr()
+        assert "(default: 50)" in captured.out
+
+    def test_check_maintainership_help_shows_refresh_bulk_map_default(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """check maintainership --help shows '(default: False)' for --refresh-bulk-map.
+
+        --refresh-bulk-map help text does NOT manually embed a default, so this only
+        passes when ArgumentDefaultsHelpFormatter is active on that subparser.
+        """
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["check", "maintainership", "--help"])
+        captured = capsys.readouterr()
+        assert "(default: False)" in captured.out
