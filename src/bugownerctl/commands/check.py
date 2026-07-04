@@ -33,7 +33,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = no issues, 2 = gating findings found)
     """
-    slfo_context = prepare_slfo_repo(args.version, args.config)
+    slfo_context = prepare_slfo_repo(args.release, args.config)
 
     maintainership_file_name = slfo_context.config.get(
         "maintainership_file", "_maintainership.json"
@@ -45,7 +45,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
     overrides_repo = NameOverridesRepositoryImpl()
 
     repo_metadata_file = metadata_repo.download_primary_metadata(
-        args.version, slfo_context.cache_dir
+        args.release, slfo_context.cache_dir
     )
 
     maintainership_file = validate_file_within_directory(
@@ -130,7 +130,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = no issues, 2 = gating findings found)
     """
-    slfo_context = prepare_slfo_repo(args.version, args.config)
+    slfo_context = prepare_slfo_repo(args.release, args.config)
 
     whitelist_file_name = slfo_context.config.get("whitelist_file", "whitelist_maintainership.json")
 
@@ -149,7 +149,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
     whitelist_service = WhitelistService(validation_service)
 
     repo_metadata_file = metadata_repo.download_primary_metadata(
-        args.version, slfo_context.cache_dir
+        args.release, slfo_context.cache_dir
     )
 
     shipped_packages = metadata_repo.parse_source_packages(repo_metadata_file)
@@ -213,7 +213,7 @@ def run_users(args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = all confirmed, 2 = any invalid or not found).
     """
-    slfo_context = prepare_slfo_repo(args.version, args.config)
+    slfo_context = prepare_slfo_repo(args.release, args.config)
     maintainership_file_name = slfo_context.config.get(
         "maintainership_file", "_maintainership.json"
     )

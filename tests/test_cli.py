@@ -24,13 +24,13 @@ class TestCreateParser:
     def test_parser_has_debug_flag(self) -> None:
         """Parser should support --debug flag."""
         parser = create_parser()
-        args = parser.parse_args(["--debug", "check", "maintainership", "-v", "16.1"])
+        args = parser.parse_args(["--debug", "check", "maintainership", "-r", "16.1"])
         assert args.debug is True
 
     def test_parser_debug_flag_defaults_to_false(self) -> None:
         """Debug flag should default to False."""
         parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
         assert args.debug is False
 
     def test_parser_requires_subcommand(self) -> None:
@@ -42,10 +42,10 @@ class TestCreateParser:
     def test_parser_has_check_maintainership_subcommand(self) -> None:
         """Parser should have 'check maintainership' subcommand."""
         parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
         assert args.command == "check"
         assert args.check_command == "maintainership"
-        assert args.version == "16.1"
+        assert args.release == "16.1"
 
     def test_check_maintainership_requires_version_flag(self) -> None:
         """check maintainership should require -v/--version flag."""
@@ -58,7 +58,7 @@ class TestCreateParser:
         from bugownerctl.commands import check
 
         parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
         assert args.func == check.run_maintainership
 
     def test_parser_rejects_whitelist_update_subcommand(self) -> None:
@@ -70,10 +70,10 @@ class TestCreateParser:
     def test_parser_has_check_whitelist_subcommand(self) -> None:
         """Parser should have 'check whitelist' subcommand with version flag."""
         parser = create_parser()
-        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
+        args = parser.parse_args(["check", "whitelist", "-r", "16.1"])
         assert args.command == "check"
         assert args.check_command == "whitelist"
-        assert args.version == "16.1"
+        assert args.release == "16.1"
 
     def test_check_whitelist_requires_version_flag(self) -> None:
         """check whitelist should require -v/--version flag."""
@@ -86,26 +86,26 @@ class TestCreateParser:
         from bugownerctl.commands import check
 
         parser = create_parser()
-        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
+        args = parser.parse_args(["check", "whitelist", "-r", "16.1"])
         assert args.func == check.run_whitelist
 
     def test_parser_has_query_package_subcommand(self) -> None:
         """Parser should have 'query package' subcommand."""
         parser = create_parser()
-        args = parser.parse_args(["query", "package", "test-pkg", "-v", "16.1"])
+        args = parser.parse_args(["query", "package", "test-pkg", "-r", "16.1"])
         assert args.command == "query"
         assert args.query_command == "package"
         assert args.package_name == "test-pkg"
-        assert args.version == "16.1"
+        assert args.release == "16.1"
 
     def test_parser_has_query_maintainer_subcommand(self) -> None:
         """Parser should have 'query maintainer' subcommand."""
         parser = create_parser()
-        args = parser.parse_args(["query", "maintainer", "testuser", "-v", "16.1"])
+        args = parser.parse_args(["query", "maintainer", "testuser", "-r", "16.1"])
         assert args.command == "query"
         assert args.query_command == "maintainer"
         assert args.maintainer_name == "testuser"
-        assert args.version == "16.1"
+        assert args.release == "16.1"
 
     def test_query_requires_subcommand(self) -> None:
         """Query should require a subcommand (package or maintainer)."""
@@ -118,7 +118,7 @@ class TestCreateParser:
         from bugownerctl.commands import query
 
         parser = create_parser()
-        args = parser.parse_args(["query", "package", "test-pkg", "-v", "16.1"])
+        args = parser.parse_args(["query", "package", "test-pkg", "-r", "16.1"])
         assert args.func == query.run_package
 
     def test_query_maintainer_wires_correct_handler(self) -> None:
@@ -126,7 +126,7 @@ class TestCreateParser:
         from bugownerctl.commands import query
 
         parser = create_parser()
-        args = parser.parse_args(["query", "maintainer", "testuser", "-v", "16.1"])
+        args = parser.parse_args(["query", "maintainer", "testuser", "-r", "16.1"])
         assert args.func == query.run_maintainer
 
     def test_query_package_requires_version_flag(self) -> None:
@@ -144,32 +144,32 @@ class TestCreateParser:
     def test_query_package_accepts_config_flag(self) -> None:
         """Query package should accept -c/--config flag."""
         parser = create_parser()
-        args = parser.parse_args(["query", "package", "foo", "-v", "16.1", "-c", "/x.yaml"])
+        args = parser.parse_args(["query", "package", "foo", "-r", "16.1", "-c", "/x.yaml"])
         assert args.config == Path("/x.yaml")
 
     def test_query_package_config_defaults_to_none(self) -> None:
         """Query package config flag should default to None when not provided."""
         parser = create_parser()
-        args = parser.parse_args(["query", "package", "foo", "-v", "16.1"])
+        args = parser.parse_args(["query", "package", "foo", "-r", "16.1"])
         assert args.config is None
 
     def test_query_maintainer_accepts_config_flag(self) -> None:
         """Query maintainer should accept -c/--config flag."""
         parser = create_parser()
-        args = parser.parse_args(["query", "maintainer", "foo", "-v", "16.1", "-c", "/x.yaml"])
+        args = parser.parse_args(["query", "maintainer", "foo", "-r", "16.1", "-c", "/x.yaml"])
         assert args.config == Path("/x.yaml")
 
     def test_query_maintainer_config_defaults_to_none(self) -> None:
         """Query maintainer config flag should default to None when not provided."""
         parser = create_parser()
-        args = parser.parse_args(["query", "maintainer", "foo", "-v", "16.1"])
+        args = parser.parse_args(["query", "maintainer", "foo", "-r", "16.1"])
         assert args.config is None
 
     def test_check_maintainership_accepts_config_flag(self) -> None:
         """check maintainership should accept --config flag."""
         parser = create_parser()
         args = parser.parse_args(
-            ["check", "maintainership", "-v", "16.1", "--config", "/custom/config.yaml"]
+            ["check", "maintainership", "-r", "16.1", "--config", "/custom/config.yaml"]
         )
         assert args.config == Path("/custom/config.yaml")
 
@@ -177,52 +177,52 @@ class TestCreateParser:
         """check maintainership should accept -c short form for config flag."""
         parser = create_parser()
         args = parser.parse_args(
-            ["check", "maintainership", "-v", "16.1", "-c", "/custom/config.yaml"]
+            ["check", "maintainership", "-r", "16.1", "-c", "/custom/config.yaml"]
         )
         assert args.config == Path("/custom/config.yaml")
 
     def test_check_maintainership_config_flag_defaults_to_none(self) -> None:
         """Config flag should default to None for check maintainership."""
         parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
         assert args.config is None
 
     def test_check_maintainership_refresh_bulk_map_defaults_to_false(self) -> None:
         """check maintainership --refresh-bulk-map should default to False."""
         parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-v", "16.1"])
+        args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
         assert args.refresh_bulk_map is False
 
     def test_check_maintainership_accepts_refresh_bulk_map_flag(self) -> None:
         """check maintainership should accept --refresh-bulk-map flag."""
         parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-v", "16.1", "--refresh-bulk-map"])
+        args = parser.parse_args(["check", "maintainership", "-r", "16.1", "--refresh-bulk-map"])
         assert args.refresh_bulk_map is True
 
     def test_check_whitelist_accepts_config_flag(self) -> None:
         """check whitelist should accept --config flag."""
         parser = create_parser()
         args = parser.parse_args(
-            ["check", "whitelist", "-v", "16.1", "--config", "/custom/config.yaml"]
+            ["check", "whitelist", "-r", "16.1", "--config", "/custom/config.yaml"]
         )
         assert args.config == Path("/custom/config.yaml")
 
     def test_check_whitelist_config_flag_defaults_to_none(self) -> None:
         """Config flag should default to None for check whitelist."""
         parser = create_parser()
-        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
+        args = parser.parse_args(["check", "whitelist", "-r", "16.1"])
         assert args.config is None
 
     def test_check_whitelist_refresh_bulk_map_defaults_to_false(self) -> None:
         """check whitelist --refresh-bulk-map should default to False."""
         parser = create_parser()
-        args = parser.parse_args(["check", "whitelist", "-v", "16.1"])
+        args = parser.parse_args(["check", "whitelist", "-r", "16.1"])
         assert args.refresh_bulk_map is False
 
     def test_check_whitelist_accepts_refresh_bulk_map_flag(self) -> None:
         """check whitelist should accept --refresh-bulk-map flag."""
         parser = create_parser()
-        args = parser.parse_args(["check", "whitelist", "-v", "16.1", "--refresh-bulk-map"])
+        args = parser.parse_args(["check", "whitelist", "-r", "16.1", "--refresh-bulk-map"])
         assert args.refresh_bulk_map is True
 
     def test_check_requires_subcommand(self) -> None:
@@ -623,10 +623,10 @@ class TestCheckUsersSubcommand:
     def test_check_users_parses_check_command_and_version(self) -> None:
         """check users -v 16.1 should parse check_command='users', version='16.1'."""
         parser = create_parser()
-        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        args = parser.parse_args(["check", "users", "-r", "16.1"])
         assert args.command == "check"
         assert args.check_command == "users"
-        assert args.version == "16.1"
+        assert args.release == "16.1"
 
     def test_check_users_requires_version_flag(self) -> None:
         """-v/--version is required for check users (raises SystemExit when omitted)."""
@@ -639,47 +639,47 @@ class TestCheckUsersSubcommand:
         from bugownerctl.commands import check
 
         parser = create_parser()
-        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        args = parser.parse_args(["check", "users", "-r", "16.1"])
         assert args.func == check.run_users
 
     def test_check_users_api_defaults_to_api_suse_de(self) -> None:
         """--api should default to 'https://api.suse.de' when not supplied."""
         parser = create_parser()
-        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        args = parser.parse_args(["check", "users", "-r", "16.1"])
         assert args.api == "https://api.suse.de"
 
     def test_check_users_batch_size_defaults_to_50(self) -> None:
         """--batch-size should default to 50 when not supplied."""
         parser = create_parser()
-        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        args = parser.parse_args(["check", "users", "-r", "16.1"])
         assert args.batch_size == 50
 
     def test_check_users_batch_size_zero_raises_system_exit(self) -> None:
         """--batch-size 0 is rejected by positive_int and raises SystemExit."""
         parser = create_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["check", "users", "-v", "16.1", "--batch-size", "0"])
+            parser.parse_args(["check", "users", "-r", "16.1", "--batch-size", "0"])
 
     def test_check_users_batch_size_negative_raises_system_exit(self) -> None:
         """--batch-size -1 is rejected by positive_int and raises SystemExit."""
         parser = create_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["check", "users", "-v", "16.1", "--batch-size", "-1"])
+            parser.parse_args(["check", "users", "-r", "16.1", "--batch-size", "-1"])
 
     def test_check_users_batch_size_valid_value_is_stored_as_int(self) -> None:
         """--batch-size 25 is accepted by positive_int and stored as int 25."""
         parser = create_parser()
-        args = parser.parse_args(["check", "users", "-v", "16.1", "--batch-size", "25"])
+        args = parser.parse_args(["check", "users", "-r", "16.1", "--batch-size", "25"])
         assert args.batch_size == 25
 
     def test_check_users_accepts_config_flag(self) -> None:
         """check users should accept -c/--config flag and store it as a Path."""
         parser = create_parser()
-        args = parser.parse_args(["check", "users", "-v", "16.1", "-c", "/custom/config.yaml"])
+        args = parser.parse_args(["check", "users", "-r", "16.1", "-c", "/custom/config.yaml"])
         assert args.config == Path("/custom/config.yaml")
 
     def test_check_users_config_flag_defaults_to_none(self) -> None:
         """Config flag should default to None for check users when not provided."""
         parser = create_parser()
-        args = parser.parse_args(["check", "users", "-v", "16.1"])
+        args = parser.parse_args(["check", "users", "-r", "16.1"])
         assert args.config is None

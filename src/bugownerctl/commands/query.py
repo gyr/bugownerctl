@@ -25,7 +25,7 @@ def run_package(args: argparse.Namespace) -> int:
         Exit code (0 = success)
     """
     logger.info("querying package %r...", args.package_name)
-    slfo_context = prepare_slfo_repo(args.version, args.config)
+    slfo_context = prepare_slfo_repo(args.release, args.config)
 
     maintainership_file_name = slfo_context.config.get(
         "maintainership_file", "_maintainership.json"
@@ -70,7 +70,7 @@ def run_maintainer(args: argparse.Namespace) -> int:
         Exit code (0 = success)
     """
     logger.info("querying maintainer %r...", args.maintainer_name)
-    slfo_context = prepare_slfo_repo(args.version, args.config)
+    slfo_context = prepare_slfo_repo(args.release, args.config)
 
     maintainership_file_name = slfo_context.config.get(
         "maintainership_file", "_maintainership.json"

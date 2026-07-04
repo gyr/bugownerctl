@@ -83,7 +83,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Validate maintainership data for inconsistencies and orphan packages",
     )
     maintainership_parser.add_argument(
-        "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
     )
     maintainership_parser.add_argument(
         "-c",
@@ -115,7 +115,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Validate that whitelisted packages are NOT shipped",
     )
     whitelist_parser.add_argument(
-        "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
     )
     whitelist_parser.add_argument(
         "-c",
@@ -143,7 +143,7 @@ def create_parser() -> argparse.ArgumentParser:
         "users",
         help="Validate that user logins in maintainership file are confirmed OBS accounts",
     )
-    users_parser.add_argument("-v", "--version", required=True, help="SLES version (e.g., '16.1')")
+    users_parser.add_argument("-r", "--release", required=True, help="SLES version (e.g., '16.1')")
     users_parser.add_argument(
         "-c",
         "--config",
@@ -173,7 +173,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     package_parser.add_argument("package_name", help="Package name to check")
     package_parser.add_argument(
-        "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
     )
     package_parser.add_argument(
         "-c",
@@ -189,7 +189,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     maintainer_parser.add_argument("maintainer_name", help="User or group name")
     maintainer_parser.add_argument(
-        "-v", "--version", required=True, help="SLES version (e.g., '16.1')"
+        "-r", "--release", required=True, help="SLES version (e.g., '16.1')"
     )
     maintainer_parser.add_argument(
         "-c",

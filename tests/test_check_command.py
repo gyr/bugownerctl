@@ -187,7 +187,7 @@ class TestCheckMaintainershipCommand:
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -227,7 +227,7 @@ class TestCheckMaintainershipCommand:
         cls_mock, _ = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -252,7 +252,7 @@ class TestCheckMaintainershipCommand:
         _, instance = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -283,7 +283,7 @@ class TestCheckMaintainershipCommand:
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         result = run_maintainership(args)
 
@@ -305,7 +305,7 @@ class TestCheckMaintainershipCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         result = run_maintainership(args)
 
@@ -326,7 +326,7 @@ class TestCheckMaintainershipCommand:
             ),
         )
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         result = run_maintainership(args)
         assert result == 0
@@ -346,7 +346,7 @@ class TestCheckMaintainershipCommand:
             ),
         )
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=True
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=True
         )
         result = run_maintainership(args)
         assert result == 2
@@ -367,7 +367,7 @@ class TestCheckMaintainershipCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -395,7 +395,7 @@ class TestCheckMaintainershipCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
             run_maintainership(args)
@@ -430,7 +430,7 @@ class TestCheckMaintainershipCommand:
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -463,7 +463,7 @@ class TestCheckMaintainershipCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
             run_maintainership(args)
@@ -484,7 +484,7 @@ class TestCheckMaintainershipCommand:
         _patch_validation_service(monkeypatch)  # default: empty result, unresolved=[]
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -494,14 +494,14 @@ class TestCheckMaintainershipCommand:
     def test_run_forwards_version_and_config_to_prepare_slfo_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward args.version and args.config to prepare_slfo_repo."""
+        """Should forward args.release and args.config to prepare_slfo_repo."""
         mock_prep, _ = _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
         args = argparse.Namespace(
-            version="16.1", debug=False, config=config_path, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=config_path, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -516,7 +516,7 @@ class TestCheckMaintainershipCommand:
         _, instance = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -532,7 +532,7 @@ class TestCheckMaintainershipCommand:
         _, instance = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=True, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=True, strict=False
         )
         run_maintainership(args)
 
@@ -548,7 +548,7 @@ class TestCheckMaintainershipCommand:
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -564,7 +564,7 @@ class TestCheckMaintainershipCommand:
         _, instance = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -589,7 +589,7 @@ class TestCheckWhitelistCommand:
         repos = _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         repos["maintainership"].assert_called_once()
@@ -629,7 +629,7 @@ class TestCheckWhitelistCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         # ValidationService called with slfo_context.git_repo (not a fresh GitRepositoryImpl).
@@ -649,7 +649,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         services["whitelist_cls"].assert_called_once_with(services["validation_service"])
@@ -673,7 +673,7 @@ class TestCheckWhitelistCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         services["whitelist_service"].check_whitelist.assert_called_once()
@@ -696,7 +696,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         result = run_whitelist(args)
 
         assert result == 0
@@ -712,7 +712,7 @@ class TestCheckWhitelistCommand:
             WhitelistCheckResult(inconsistent_packages=["pkg1", "pkg2"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         result = run_whitelist(args)
 
         assert result == 2
@@ -727,7 +727,7 @@ class TestCheckWhitelistCommand:
             monkeypatch,
             WhitelistCheckResult(inconsistent_packages=[], unresolved_names=["mystery"]),
         )
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         result = run_whitelist(args)
         assert result == 0
 
@@ -741,7 +741,7 @@ class TestCheckWhitelistCommand:
             monkeypatch,
             WhitelistCheckResult(inconsistent_packages=[], unresolved_names=["mystery"]),
         )
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=True)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=True)
         result = run_whitelist(args)
         assert result == 2
 
@@ -756,7 +756,7 @@ class TestCheckWhitelistCommand:
             WhitelistCheckResult(inconsistent_packages=["apache2", "kernel-source"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -774,7 +774,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -798,7 +798,7 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
             run_whitelist(args)
 
@@ -824,7 +824,7 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
             run_whitelist(args)
 
@@ -853,7 +853,7 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
             run_whitelist(args)
 
@@ -873,7 +873,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)  # default: empty result, unresolved=[]
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -882,14 +882,14 @@ class TestCheckWhitelistCommand:
     def test_run_forwards_version_and_config_to_prepare_slfo_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward args.version and args.config to prepare_slfo_repo."""
+        """Should forward args.release and args.config to prepare_slfo_repo."""
         mock_prep, _ = _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
         args = argparse.Namespace(
-            version="16.1", config=config_path, refresh_bulk_map=False, strict=False
+            release="16.1", config=config_path, refresh_bulk_map=False, strict=False
         )
         run_whitelist(args)
 
@@ -903,7 +903,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         mock_prep.assert_called_once_with("16.1", None)
@@ -916,7 +916,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
@@ -930,7 +930,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=True, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=True, strict=False)
         run_whitelist(args)
 
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
@@ -945,7 +945,7 @@ class TestCheckWhitelistCommand:
         _patch_services(monkeypatch)
         fake_slfo_context.git_repo.list_submodules.return_value = ["submodule1"]
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False, strict=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
@@ -1002,7 +1002,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         result = run_users(args)
 
@@ -1019,7 +1019,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         result = run_users(args)
 
@@ -1036,7 +1036,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         result = run_users(args)
 
@@ -1056,7 +1056,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
             run_users(args)
@@ -1078,7 +1078,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
@@ -1099,7 +1099,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
@@ -1120,7 +1120,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
@@ -1139,7 +1139,7 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
@@ -1157,7 +1157,7 @@ class TestCheckUsersCommand:
         _, service_instance = _patch_users_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
@@ -1174,7 +1174,7 @@ class TestCheckUsersCommand:
         _, service_instance = _patch_users_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1",
+            release="16.1",
             config=None,
             api="https://api.example.com",
             batch_size=25,
@@ -1208,7 +1208,7 @@ class TestCheckUsersCommand:
         monkeypatch.setattr("bugownerctl.commands.check.UserValidationService", service_cls)
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 

@@ -65,7 +65,7 @@ class TestRunPackage:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         # Verify repository was instantiated
@@ -92,7 +92,7 @@ class TestRunPackage:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         # Verify QueryService created with repository
@@ -118,7 +118,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         # Verify check_package_maintainership called with correct parameters
@@ -147,7 +147,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         captured = capsys.readouterr()
@@ -175,7 +175,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         captured = capsys.readouterr()
@@ -201,7 +201,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         captured = capsys.readouterr()
@@ -224,7 +224,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         result = run_package(args)
 
         assert result == 0
@@ -247,7 +247,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         call_args = mock_service.check_package_maintainership.call_args[0]
@@ -272,7 +272,7 @@ class TestRunPackage:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(package_name="test-pkg", version="16.1", config=None)
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
         run_package(args)
 
         mock_prep.assert_called_once_with("16.1", None)
@@ -298,7 +298,7 @@ class TestRunMaintainer:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         run_maintainer(args)
 
         # Verify repository was instantiated
@@ -321,7 +321,7 @@ class TestRunMaintainer:
         mock_service_cls = Mock(return_value=mock_service)
         monkeypatch.setattr("bugownerctl.commands.query.QueryService", mock_service_cls)
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         run_maintainer(args)
 
         # Verify QueryService created with repository
@@ -342,7 +342,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         run_maintainer(args)
 
         # Verify get_packages_by_maintainer called with correct parameters
@@ -366,7 +366,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         run_maintainer(args)
 
         captured = capsys.readouterr()
@@ -390,7 +390,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         run_maintainer(args)
 
         captured = capsys.readouterr()
@@ -408,7 +408,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         result = run_maintainer(args)
 
         assert result == 0
@@ -427,7 +427,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         run_maintainer(args)
 
         call_args = mock_service.get_packages_by_maintainer.call_args[0]
@@ -447,7 +447,7 @@ class TestRunMaintainer:
             "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
         )
 
-        args = argparse.Namespace(maintainer_name="user@example.com", version="16.1", config=None)
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
         run_maintainer(args)
 
         mock_prep.assert_called_once_with("16.1", None)
