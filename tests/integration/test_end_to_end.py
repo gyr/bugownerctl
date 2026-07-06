@@ -62,7 +62,7 @@ class TestValidateWorkflow:
             patch(
                 "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
             ) as mock_bulk_map,
-            patch("sys.argv", ["bugownerctl", "check", "maintainership", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_git.return_value = ["test-package", "another-package"]
@@ -115,10 +115,10 @@ class TestValidateWorkflow:
             patch(
                 "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
             ) as mock_bulk_map,
-            patch("sys.argv", ["bugownerctl", "check", "maintainership", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
-            mock_git.return_value = ["maintained-package"]
+            mock_git.return_value = ["maintained-package", "orphan-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"maintained-package", "orphan-package"}
             mock_bulk_map.return_value = BulkMap(
@@ -131,7 +131,7 @@ class TestValidateWorkflow:
             exit_code = main()
 
             # Verify - should report issues found
-            assert exit_code == 1, "Should return 1 when orphan packages found"
+            assert exit_code == 2, "Should return 2 when orphan packages found"
 
 
 class TestQueryPackageWorkflow:
@@ -159,7 +159,7 @@ class TestQueryPackageWorkflow:
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
-            patch("sys.argv", ["bugownerctl", "query", "package", "test-package", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "query", "package", "test-package", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path
             exit_code = main()
@@ -186,7 +186,7 @@ class TestQueryPackageWorkflow:
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch(
                 "sys.argv",
-                ["bugownerctl", "query", "package", "whitelisted-package", "-v", "16.1"],
+                ["bugownerctl", "query", "package", "whitelisted-package", "-r", "16.1"],
             ),
         ):
             mock_clone.return_value = tmp_path
@@ -212,7 +212,7 @@ class TestQueryPackageWorkflow:
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
-            patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path
             exit_code = main()
@@ -246,7 +246,7 @@ class TestQueryMaintainerWorkflow:
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
-            patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path
             exit_code = main()
@@ -275,7 +275,7 @@ class TestQueryMaintainerWorkflow:
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
-            patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path
             exit_code = main()
@@ -298,7 +298,7 @@ class TestQueryMaintainerWorkflow:
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
-            patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user", "-v", "16.1"]),
+            patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path
             exit_code = main()

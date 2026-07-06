@@ -13,6 +13,9 @@ from typing import Protocol
 from urllib.parse import urlparse
 
 from ..domain.ref_type import RefType
+from ..exceptions import MissingBinaryError
+
+logger = logging.getLogger(__name__)
 
 
 class GitRepository(Protocol):
@@ -123,7 +126,8 @@ class GitRepositoryImpl:
             CompletedProcess from subprocess.run
 
         Raises:
-            RuntimeError: If git command fails or git not found
+            MissingBinaryError: If git is not in PATH.
+            RuntimeError: If the git command exits non-zero.
         """
         try:
             return subprocess.run(
@@ -141,10 +145,8 @@ class GitRepositoryImpl:
                 f"Exit code: {e.returncode}\n"
                 f"Stderr: {e.stderr.strip()}"
             ) from e
-        except FileNotFoundError as e:
-            raise RuntimeError(
-                "'git' command not found. Ensure Git is installed and in your PATH."
-            ) from e
+        except FileNotFoundError as exc:
+            raise MissingBinaryError("git") from exc
 
     def list_submodules(self, repo_path: Path) -> list[str]:
         """Get list of git submodule names.
@@ -156,7 +158,8 @@ class GitRepositoryImpl:
             Sorted list of submodule names
 
         Raises:
-            RuntimeError: If git command fails or git not found
+            MissingBinaryError: If git is not in PATH.
+            RuntimeError: If the git command exits non-zero.
         """
         try:
             result = subprocess.run(
@@ -183,10 +186,8 @@ class GitRepositoryImpl:
 
             return sorted(names)
 
-        except FileNotFoundError as e:
-            raise RuntimeError(
-                "'git' command not found. Ensure Git is installed and in your PATH."
-            ) from e
+        except FileNotFoundError as exc:
+            raise MissingBinaryError("git") from exc
 
     def clone_or_update(
         self,
@@ -210,8 +211,9 @@ class GitRepositoryImpl:
             Path to local repository
 
         Raises:
-            ValueError: If inputs are invalid or path traversal detected
-            RuntimeError: If git operations fail
+            ValueError: If inputs are invalid or path traversal detected.
+            MissingBinaryError: If git is not in PATH.
+            RuntimeError: If git operations fail.
         """
         # Detect URL type and validate format
         is_ssh = self._is_ssh_url(repo_url)
@@ -261,25 +263,25 @@ class GitRepositoryImpl:
 
         if not repo_path.exists():
             # Clone repository
-            logging.info(f"Cloning {repo_url} into {repo_path}")
+            logger.info(f"Cloning {repo_url} into {repo_path}")
             self._run_git_command(
                 ["git", "clone", "--no-remote-submodules", repo_url, str(repo_path)]
             )
 
             # Checkout specified ref
-            logging.info(f"Checking out {ref_type.value} {git_ref}")
+            logger.info(f"Checking out {ref_type.value} {git_ref}")
             self._run_git_command(["git", "checkout", git_ref], cwd=str(repo_path))
         else:
             # Verify it's a valid git repository
             if not (repo_path / ".git").exists():
                 raise RuntimeError(f"Path exists but is not a git repository: {repo_path}")
 
-            logging.info(f"Updating repository {repo_path}")
+            logger.info(f"Updating repository {repo_path}")
 
             # Repository exists - update it
             if ref_type == RefType.BRANCH:
                 # For branches: fetch and reset to latest
-                logging.debug(f"Fetching latest changes for branch {git_ref}")
+                logger.debug(f"Fetching latest changes for branch {git_ref}")
                 self._run_git_command(
                     ["git", "fetch", "--prune", "origin", git_ref], cwd=str(repo_path)
                 )
@@ -292,13 +294,13 @@ class GitRepositoryImpl:
 
                 # Switch branch if needed
                 if current_ref != git_ref:
-                    logging.info(f"Switching from {current_ref} to {git_ref}")
+                    logger.info(f"Switching from {current_ref} to {git_ref}")
                     self._run_git_command(["git", "checkout", git_ref], cwd=str(repo_path))
 
                 # Reset to remote branch state
                 # Validate ref doesn't contain slash (except for remote refs we create)
                 remote_ref = f"origin/{git_ref}"
-                logging.debug(f"Resetting to {remote_ref}")
+                logger.debug(f"Resetting to {remote_ref}")
                 self._run_git_command(
                     ["git", "reset", "--hard", remote_ref],
                     cwd=str(repo_path),
@@ -306,11 +308,11 @@ class GitRepositoryImpl:
             else:
                 # For tags/commits: fetch all branches then checkout
                 # Tags/commits may be on any branch, so we need all branches
-                logging.debug("Fetching all branches to ensure tag/commit is available")
+                logger.debug("Fetching all branches to ensure tag/commit is available")
                 self._run_git_command(["git", "fetch", "--prune", "origin"], cwd=str(repo_path))
 
                 # Checkout the tag/commit
-                logging.info(f"Checking out {ref_type.value} {git_ref}")
+                logger.info(f"Checking out {ref_type.value} {git_ref}")
                 self._run_git_command(["git", "checkout", git_ref], cwd=str(repo_path))
 
         return repo_path

@@ -31,6 +31,7 @@ from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
 from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +88,10 @@ class ObsBulkSourceInfoRepository(Protocol):
         Raises:
             ValueError: If `project` contains characters outside [A-Za-z0-9:_.+-]
                 or exceeds 200 chars, or `cache_dir` is not absolute.
-            RuntimeError: If `osc api` exits non-zero, times out, `osc` is not
-                installed, or the response is not parseable as <sourceinfolist>.
+            MissingBinaryError: If osc is not in PATH.
+            NetworkTimeoutError: If the osc api subprocess exceeds the timeout.
+            RuntimeError: If `osc api` exits non-zero or the response is not
+                parseable as <sourceinfolist>.
         """
         ...
 
@@ -247,11 +250,9 @@ class ObsBulkSourceInfoRepositoryImpl:
                 timeout=timeout,
             )
         except FileNotFoundError as exc:
-            raise RuntimeError(
-                "osc executable not found; install with `zypper install osc` or `pip install osc`"
-            ) from exc
+            raise MissingBinaryError("osc") from exc
         except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"osc api {path!r} timed out after {timeout}s") from exc
+            raise NetworkTimeoutError(f"osc api {path!r}", timeout) from exc
 
         if proc.returncode != 0:
             stderr = proc.stderr.decode(errors="replace") if proc.stderr else ""

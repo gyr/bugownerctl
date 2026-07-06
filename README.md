@@ -23,30 +23,43 @@ pip install -e .
 bugownerctl init
 
 # Validate maintainership for SLES 16.1
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
 
 # Check whitelist against shipped packages
-bugownerctl check whitelist -v 16.1
+bugownerctl check whitelist -r 16.1
 
 # Validate user logins in maintainership file are confirmed OBS accounts
-bugownerctl check users -v 16.1
+bugownerctl check users -r 16.1
 
 # Check package maintainership
-bugownerctl query package apache2
+bugownerctl query package apache2 -r 16.1
 
 # List packages maintained by user
-bugownerctl query maintainer user1
+bugownerctl query maintainer user1 -r 16.1
 ```
 
 ## Commands
 
 ### Global flags
 
+Global flags must be placed **before** the subcommand name:
+
 ```bash
-bugownerctl --version   # print installed version and exit
-bugownerctl --help      # show subcommands
-bugownerctl --debug … # enable debug logging for any subcommand
+bugownerctl --version            # print installed version and exit
+bugownerctl --help               # show subcommands
+bugownerctl -q check …           # quiet: ERROR only
+bugownerctl -v check …           # verbose: INFO on stderr
+bugownerctl -d check …           # debug: DEBUG on stderr
 ```
+
+| Flag | Level | What you see |
+|------|-------|--------------|
+| `-q, --quiet` | ERROR | errors only |
+| *(none)* | WARNING | warnings + errors |
+| `-v, --verbose` | INFO | progress + warnings + errors |
+| `-d, --debug` | DEBUG | everything |
+
+Results always go to **stdout**. Log records go to **stderr**.
 
 ### `bugownerctl init`
 
@@ -97,7 +110,7 @@ bugownerctl init --force
 Next steps:
   1. Edit config: /home/user/.config/bugownerctl/config.yaml
   2. Update slfo_git_url and products
-  3. Run: bugownerctl check maintainership -v 16.1
+  3. Run: bugownerctl check maintainership -r 16.1
 ```
 
 ---
@@ -108,13 +121,25 @@ Validates package maintainership data for consistency.
 
 **Usage:**
 ```bash
-bugownerctl check maintainership -v <version> [--config <path>] [--debug]
+bugownerctl check maintainership -r <version> [--config <path>] [--strict] [--refresh-bulk-map]
 ```
 
 **Options:**
-- `-v, --version` - SLES version (required, e.g., "16.1")
+- `-r, --release` - SLES version (required, e.g., "16.1")
 - `-c, --config` - Path to config file (optional, uses search hierarchy)
-- `-d, --debug` - Enable debug logging
+- `--strict` - Also gate on secondary findings (see table below)
+- `--refresh-bulk-map` - Force re-fetch of OBS bulk source-info map, ignoring cache
+- `-v, --verbose` - Enable verbose (INFO) logging (global flag, must precede subcommand)
+- `-d, --debug` - Enable debug logging (global flag, must precede subcommand)
+
+**Gate / `--strict` table:**
+
+| Finding | Default gate | With `--strict` |
+|---------|-------------|-----------------|
+| Orphan packages | exit 2 | exit 2 |
+| Shipped-not-in-submodule | — (informational) | exit 2 |
+| Unresolved names | — (informational) | exit 2 |
+| Maintained-without-submodule | — (informational) | exit 2 |
 
 **What it checks:**
 - Orphan packages (in repo, no maintainer)
@@ -131,28 +156,27 @@ bugownerctl check maintainership -v <version> [--config <path>] [--debug]
 **Examples:**
 ```bash
 # Validate SLES 16.1 (uses config search hierarchy)
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
 
 # Validate with explicit config file
-bugownerctl check maintainership -v 16.1 --config /custom/config.yaml
+bugownerctl check maintainership -r 16.1 --config /custom/config.yaml
 
-# Validate with debug logging
-bugownerctl check maintainership -v 16.0 --debug
+# Validate with debug logging (global flag before subcommand)
+bugownerctl -d check maintainership -r 16.0
 
 # Use environment variable for config
 export BUGOWNERCTL_CONFIG=/path/to/config.yaml
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
+
+# Also gate on secondary findings
+bugownerctl check maintainership -r 16.1 --strict
 ```
 
 **Exit codes:**
-- `0` - No issues found
-- `1` - Issues found (orphans, unmaintained, etc.)
-
-**Output:**
-- Orphan packages list
-- Unmaintained submodules list
-- Shipped packages not in submodules
-- New binary→source mappings discovered
+- `0` - No gating findings
+- `2` - Gating findings present (orphan packages; or secondary findings with `--strict`)
+- `64` - Usage/config error (missing `-r`, missing config file)
+- `127` - `git` binary not found
 
 ---
 
@@ -164,12 +188,21 @@ Validates that whitelisted packages are NOT shipped in the distribution.
 
 **Usage:**
 ```bash
-bugownerctl check whitelist -v <version> [--config <path>]
+bugownerctl check whitelist -r <version> [--config <path>] [--strict] [--refresh-bulk-map]
 ```
 
 **Options:**
-- `-v, --version` - SLES version (required)
+- `-r, --release` - SLES version (required)
 - `-c, --config` - Path to config file (optional, uses search hierarchy)
+- `--strict` - Also gate on unresolved names (see table below)
+- `--refresh-bulk-map` - Force re-fetch of OBS bulk source-info map, ignoring cache
+
+**Gate / `--strict` table:**
+
+| Finding | Default gate | With `--strict` |
+|---------|-------------|-----------------|
+| Inconsistent packages | exit 2 | exit 2 |
+| Unresolved names | — (informational) | exit 2 |
 
 **What it does:**
 - Downloads repository metadata (primary.xml.gz)
@@ -182,30 +215,33 @@ bugownerctl check whitelist -v <version> [--config <path>]
 **Examples:**
 ```bash
 # Check whitelist with automatic config discovery
-bugownerctl check whitelist -v 16.1
+bugownerctl check whitelist -r 16.1
 
 # Check whitelist with explicit config
-bugownerctl check whitelist -v 16.1 --config /path/to/config.yaml
+bugownerctl check whitelist -r 16.1 --config /path/to/config.yaml
+
+# Also gate on unresolved names
+bugownerctl check whitelist -r 16.1 --strict
 ```
 
 **Exit codes:**
 - `0` - No inconsistencies found (all whitelisted packages are NOT shipped)
-- `1` - Inconsistencies found (some whitelisted packages ARE shipped)
+- `2` - Inconsistencies found (some whitelisted packages ARE shipped); or unresolved names with `--strict`
+- `64` - Usage/config error (missing `-r`, missing config file)
+- `127` - `git` binary not found
 
-**Output:**
+**Output (clean):**
 ```
-INFO: No inconsistencies found. All whitelisted packages are NOT shipped.
+No inconsistencies found. All whitelisted packages are NOT shipped.
 ```
 
-or:
-
+**Output (with inconsistencies):**
 ```
-INFO: Found 3 packages that are BOTH shipped AND whitelisted (inconsistency).
-INFO: Inconsistent packages (should NOT be shipped if whitelisted):
-INFO: - package1
-INFO: - package2
-INFO: - package3
-INFO: Discovered 5 new binary→source mappings.
+Found 3 packages that are BOTH shipped AND whitelisted (inconsistency).
+Inconsistent packages (should NOT be shipped if whitelisted):
+- package1
+- package2
+- package3
 ```
 
 **Whitelist File Location:**
@@ -246,11 +282,11 @@ cause maintainership data to reference invalid accounts. Groups are not checked 
 
 **Usage:**
 ```bash
-bugownerctl check users -v <version> [--config <path>] [--api <url>] [--batch-size <n>]
+bugownerctl check users -r <version> [--config <path>] [--api <url>] [--batch-size <n>]
 ```
 
 **Options:**
-- `-v, --version` - SLES version (required, e.g., "16.1")
+- `-r, --release` - SLES version (required, e.g., "16.1")
 - `-c, --config` - Path to config file (optional, uses search hierarchy)
 - `--api` - OBS API base URL (default: `https://api.suse.de`)
 - `--batch-size` - Max logins per OBS API call (default: `50`, must be ≥ 1)
@@ -265,48 +301,44 @@ bugownerctl check users -v <version> [--config <path>] [--api <url>] [--batch-si
 **Examples:**
 ```bash
 # Validate user logins for SLES 16.1
-bugownerctl check users -v 16.1
+bugownerctl check users -r 16.1
 
 # Use a different OBS instance
-bugownerctl check users -v 16.1 --api https://api.opensuse.org
+bugownerctl check users -r 16.1 --api https://api.opensuse.org
 
 # Use a smaller batch size
-bugownerctl check users -v 16.1 --batch-size 25
+bugownerctl check users -r 16.1 --batch-size 25
 
 # With explicit config file
-bugownerctl check users -v 16.1 --config /path/to/config.yaml
+bugownerctl check users -r 16.1 --config /path/to/config.yaml
 ```
 
 **Exit codes:**
 - `0` - All user logins are confirmed OBS accounts
-- `1` - One or more logins are invalid or not found in OBS
+- `2` - One or more logins are invalid or not found in OBS
+- `64` - Usage/config error
+- `124` - `osc` API call timed out
+- `127` - `osc` binary not found
 
 **Output (when issues found):**
 ```
-INFO: Found 5 confirmed OBS accounts.
-INFO: Confirmed accounts:
-INFO: - user1
-INFO: - user2
-INFO: - user3
-INFO: - user4
-INFO: - user5
-INFO: Found 1 invalid (locked / non-confirmed) accounts.
-INFO: Invalid accounts:
-INFO: - lockeduser
-INFO: Found 2 accounts not found in OBS.
-INFO: Accounts not found in OBS:
-INFO: - ghost1
-INFO: - ghost2
-INFO: 3 of 8 users are not confirmed OBS accounts.
+Found 5 confirmed OBS accounts.
+Found 1 invalid (locked / non-confirmed) accounts.
+Invalid accounts:
+- lockeduser
+Found 2 accounts not found in OBS.
+Accounts not found in OBS:
+- ghost1
+- ghost2
+3 of 8 users are not confirmed OBS accounts.
 ```
+
+Note: confirmed account names are only shown on **stderr** with `-v/--verbose`. The confirmed **count** is always shown on stdout.
 
 **Output (all confirmed):**
 ```
-INFO: Found 8 confirmed OBS accounts.
-INFO: Confirmed accounts:
-INFO: - user1
-...
-INFO: All 8 users are confirmed OBS accounts.
+Found 8 confirmed OBS accounts.
+All 8 users are confirmed OBS accounts.
 ```
 
 **Requirements:**
@@ -321,19 +353,19 @@ Check maintainership status of a package.
 
 **Usage:**
 ```bash
-bugownerctl query package <package_name> -v <version> [-c <config>]
+bugownerctl query package <package_name> -r <version> [-c <config>]
 ```
 
 **Examples:**
 ```bash
 # Check if apache2 is maintained
-bugownerctl query package apache2 -v 16.1
+bugownerctl query package apache2 -r 16.1
 
 # Check whitelisted package
-bugownerctl query package legacy-pkg -v 16.1
+bugownerctl query package legacy-pkg -r 16.1
 
 # With explicit config
-bugownerctl query package apache2 -v 16.1 --config /path/to/config.yaml
+bugownerctl query package apache2 -r 16.1 --config /path/to/config.yaml
 ```
 
 **Exit codes:**
@@ -369,19 +401,19 @@ List all packages maintained by a user or group.
 
 **Usage:**
 ```bash
-bugownerctl query maintainer <maintainer_name> -v <version> [-c <config>]
+bugownerctl query maintainer <maintainer_name> -r <version> [-c <config>]
 ```
 
 **Examples:**
 ```bash
 # List packages for user
-bugownerctl query maintainer user1 -v 16.1
+bugownerctl query maintainer user1 -r 16.1
 
 # List packages for group
-bugownerctl query maintainer team1 -v 16.1
+bugownerctl query maintainer team1 -r 16.1
 
 # With explicit config
-bugownerctl query maintainer user1 -v 16.1 --config /path/to/config.yaml
+bugownerctl query maintainer user1 -r 16.1 --config /path/to/config.yaml
 ```
 
 **Exit codes:**
@@ -404,6 +436,24 @@ Packages (5):
   - package2
   - package3
 ```
+
+---
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Clean — no gating findings |
+| 1 | Internal/unexpected error; missing data file |
+| 2 | Gating findings present (see `--strict`) |
+| 64 | Usage/config error: bad arguments, missing or invalid config file |
+| 124 | Network/subprocess timeout (`osc`, HTTP) |
+| 127 | Required binary missing (`git`, `osc`) |
+| 130 | SIGINT (Ctrl+C) |
+
+Exit code `2` means findings that require action. Exit code `1` is reserved for unexpected
+failures (bugs, missing data files). These are distinct so CI pipelines can tell
+"distro has orphans — act" from "`osc` not on PATH — fix infra".
 
 ---
 
@@ -434,22 +484,22 @@ The tool uses a **standard search hierarchy** to find configuration:
 **Examples:**
 ```bash
 # Let tool find config automatically (searches hierarchy)
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
 
 # Explicit config (highest priority, skips search)
-bugownerctl check maintainership -v 16.1 --config /ci/config.yaml
+bugownerctl check maintainership -r 16.1 --config /ci/config.yaml
 
 # Environment variable (second priority)
 export BUGOWNERCTL_CONFIG=/team/shared-config.yaml
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
 
 # Create user config (recommended first step)
 bugownerctl init
 ```
 
 **Error handling:**
-- If explicit `--config` or `BUGOWNERCTL_CONFIG` is set but file doesn't exist → **hard error**
-- If no config found in search hierarchy → **clear error showing all searched locations**
+- If explicit `--config` or `BUGOWNERCTL_CONFIG` is set but file doesn't exist → **exit 64** (config error)
+- If no config found in search hierarchy → **exit 64** with clear error showing all searched locations
 
 ### Config File Format
 
@@ -583,7 +633,7 @@ rm -rf ~/.cache/bugownerctl/repodata/16.1/
 rm -rf ~/.cache/bugownerctl/repodata/
 
 # Cache will automatically rebuild on next run
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
 ```
 
 **Performance impact:**
@@ -770,10 +820,10 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 
 | Old Script | New Command |
 |------------|-------------|
-| `validate_maintainership.py -v 16.1` | `bugownerctl check maintainership -v 16.1` |
-| `validate_maintainer.py -v 16.1` | `bugownerctl check users -v 16.1` (new) |
+| `validate_maintainership.py -v 16.1` | `bugownerctl check maintainership -r 16.1` |
+| `validate_maintainer.py -v 16.1` | `bugownerctl check users -r 16.1` (new) |
 | N/A | `bugownerctl query maintainer <user>` (new) |
-| N/A | `bugownerctl check whitelist -v <version>` (new) |
+| N/A | `bugownerctl check whitelist -r <version>` (new) |
 | N/A | `bugownerctl init` (new) |
 
 **Migration steps:**
@@ -803,14 +853,14 @@ bugownerctl init
 bugownerctl init --location local
 
 # Option 3: Explicitly specify config location
-bugownerctl check maintainership -v 16.1 --config /path/to/config.yaml
+bugownerctl check maintainership -r 16.1 --config /path/to/config.yaml
 
 # Option 4: Use environment variable
 export BUGOWNERCTL_CONFIG=/path/to/config.yaml
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
 
 # View search locations (error message shows all paths checked)
-bugownerctl check maintainership -v 16.1  # If no config found, shows search hierarchy
+bugownerctl check maintainership -r 16.1  # If no config found, shows search hierarchy
 ```
 
 **"Config file exists" (when running init)**
@@ -859,7 +909,7 @@ firefox htmlcov/index.html
 rm -rf ~/.cache/bugownerctl/repodata/16.1/
 
 # Retry validation (will re-download)
-bugownerctl check maintainership -v 16.1
+bugownerctl check maintainership -r 16.1
 ```
 
 **"Cache corruption or stale data"**
@@ -876,7 +926,7 @@ rm -rf ~/.cache/bugownerctl/repodata/16.0/
 **"OBS bulk map is stale or corrupt"**
 ```bash
 # Force re-fetch without touching repodata cache
-bugownerctl check maintainership -v 16.1 --refresh-bulk-map
+bugownerctl check maintainership -r 16.1 --refresh-bulk-map
 
 # Or delete the cache files manually (re-fetched on next run)
 rm -f ~/.cache/bugownerctl/obs_bulk_map.xml ~/.cache/bugownerctl/obs_bulk_map.meta.json

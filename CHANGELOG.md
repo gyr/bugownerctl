@@ -4,26 +4,66 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.6.0] - 2026-07-06
 
 ### Added
 
 - `check users` subcommand: validates that user logins in `_maintainership.json` are confirmed
   OBS accounts. Extracts all unique user logins (groups are not checked), queries OBS
-  `/search/person` in batches, and prints categorised lists of confirmed, invalid (locked /
-  non-confirmed), and not-found accounts with `INFO:` output. Exits `0` if all logins are
-  confirmed, `1` if any are invalid or not found. Options: `-v/--version` (required),
-  `-c/--config`, `--api` (default `https://api.suse.de`), `--batch-size` (default `50`).
+  `/search/person` in batches, and classifies each login as confirmed, invalid (locked /
+  non-confirmed), or not found. Exits `0` if all logins are confirmed, `2` if any are invalid
+  or not found. Options: `-r/--release` (required), `-c/--config`, `--api` (default
+  `https://api.suse.de`), `--batch-size` (default `50`).
+
+- Per-case exit codes mirroring `orphan-scan`: `0` (clean), `1` (unexpected/internal error),
+  `2` (gating findings present), `64` (usage/config error — `EX_USAGE`), `124` (network/
+  subprocess timeout), `127` (required binary missing), `130` (SIGINT). Previously all
+  failures collapsed to `1`.
+
+- `--strict` flag on `check maintainership` and `check whitelist`. Without `--strict`, only
+  the primary gating sets trigger exit `2`. With `--strict`, secondary findings also gate:
+  - `check maintainership`: additionally gates on `shipped_not_in_submodule`,
+    `unresolved_names`, and `maintained_packages_without_submodule`.
+  - `check whitelist`: additionally gates on `unresolved_names`.
+  Findings are always printed regardless of `--strict`.
+
+- `-q/--quiet` and `-v/--verbose` global flags joined with the existing `-d/--debug` in a
+  mutually-exclusive group at the root parser. Must precede the subcommand (e.g.
+  `bugownerctl -v check maintainership -r 16.1`). Level mapping: `-q` → ERROR, default →
+  WARNING, `-v` → INFO, `-d` → DEBUG. Results go to stdout; log records go to stderr.
 
 ### Changed
 
 - **BREAKING:** Python minimum raised from `3.10` to `3.13`. Runtime and CI both require
   Python ≥ 3.13.
+- **BREAKING:** SLES version flag renamed from `-v/--version` to `-r/--release` on all five
+  data-leaf subcommands (`check maintainership`, `check whitelist`, `check users`,
+  `query package`, `query maintainer`). The root-level `--version` (print installed version
+  and exit) is unaffected. Any automation passing `-v 16.1` must be updated to `-r 16.1`.
+- **BREAKING:** `check maintainership`, `check whitelist`, and `check users` now exit `2`
+  when gating findings are present (was `1`). Exit `1` is reserved for unexpected/internal
+  errors and missing data files. Update any CI gate that tests for `[ $? -eq 1 ]`.
+- **BREAKING:** `check maintainership` no longer gates on `shipped_not_in_submodule` by
+  default. Only `orphan_packages` triggers exit `2` in the default mode. Pass `--strict`
+  to restore the old behaviour (plus additionally gate on `unresolved_names` and
+  `maintained_packages_without_submodule`).
+- **BREAKING:** Missing config file now exits `64` (`EX_USAGE`) instead of `1`. Applies when
+  `--config` or `BUGOWNERCTL_CONFIG` points to a non-existent file, or when no config is
+  found in the search hierarchy.
 - `lxml` dependency replaced by `defusedxml>=0.7.1`. `lxml` was unused in `src/`; `defusedxml`
   is now the active XML parser at all three parse sites.
+- Log output: results (counts, lists, summaries) go to **stdout** and are always visible.
+  Detail lists for non-gating secondary findings and the confirmed-users name list go to
+  **stderr** via the module logger (visible at `-v/--verbose`). The `INFO:` literal prefix
+  has been removed from all `print()` output.
 
 ### Security
 
+- **VULN-003:** `obs_person_repository.py` now resolves the `osc` binary via `shutil.which`
+  before `subprocess.run`. If `osc` is not on `PATH`, a `MissingBinaryError` is raised
+  immediately (exit `127`) instead of letting `subprocess.run` raise `FileNotFoundError`
+  with a less precise message. The `FileNotFoundError` catch is kept as a race-condition net
+  (binary vanishes after `which`).
 - All XML parse sites now use **defusedxml** instead of `xml.etree.ElementTree`, with
   `forbid_dtd=True` on every parse call. Affected: `obs_bulk_source_info_repository.py`
   (bulk map), `repo_metadata_repository.py` (`repomd.xml` and `primary.xml.gz`),

@@ -8,12 +8,14 @@ Tests cover:
   - Failure modes (non-zero exit, timeout, osc not installed).
 """
 
+import logging
 import subprocess
 from unittest.mock import Mock, patch
 from urllib.parse import unquote
 
 import pytest
 
+from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 from bugownerctl.repositories.obs_person_repository import (
     DEFAULT_OBS_API,
     ObsPersonRepository,
@@ -64,8 +66,11 @@ class TestInputValidation:
         with pytest.raises(ValueError):
             repo.query_persons(["bad login"])
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_valid_login_chars_accepted(self, mock_run: Mock) -> None:
+    def test_valid_login_chars_accepted(self, mock_run: Mock, mock_which: Mock) -> None:
         """Login with valid chars must not raise."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsPersonRepositoryImpl()
@@ -116,8 +121,13 @@ class TestInputValidation:
 
 
 class TestSubprocessInvocation:
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_query_persons_runs_osc_api_with_correct_argv(self, mock_run: Mock) -> None:
+    def test_query_persons_runs_osc_api_with_correct_argv(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """One login 'alice': argv must match expected pattern."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsPersonRepositoryImpl()
@@ -125,7 +135,7 @@ class TestSubprocessInvocation:
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
         argv = args[0]
-        assert argv[0] == "osc"
+        assert argv[0] == "/usr/bin/osc"
         assert argv[1] == "-A"
         assert argv[2] == DEFAULT_OBS_API
         assert argv[3] == "api"
@@ -138,8 +148,13 @@ class TestSubprocessInvocation:
         # text=True must NOT be set — bytes stdout required
         assert kwargs.get("text") is not True
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_query_persons_url_contains_encoded_xpath(self, mock_run: Mock) -> None:
+    def test_query_persons_url_contains_encoded_xpath(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """Path must contain URL-encoded XPath matching @login='alice'."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsPersonRepositoryImpl()
@@ -149,28 +164,51 @@ class TestSubprocessInvocation:
         # Decoding must yield the expected XPath prefix
         assert unquote(path).startswith("/search/person?match=(@login='alice')")
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_subprocess_nonzero_raises_runtime_error(self, mock_run: Mock) -> None:
+    def test_subprocess_nonzero_raises_runtime_error(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """Non-zero returncode must raise RuntimeError mentioning 'osc'."""
         mock_run.return_value = _make_proc(returncode=1, stderr=b"auth failed")
         repo = ObsPersonRepositoryImpl()
         with pytest.raises(RuntimeError, match="osc"):
             repo.query_persons(["alice"])
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_subprocess_timeout_raises_runtime_error(self, mock_run: Mock) -> None:
-        """TimeoutExpired must raise RuntimeError mentioning timed out or timeout."""
+    def test_subprocess_timeout_raises_network_timeout_error(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
+        """TimeoutExpired must raise NetworkTimeoutError."""
         mock_run.side_effect = subprocess.TimeoutExpired("osc", 30)
         repo = ObsPersonRepositoryImpl()
-        with pytest.raises(RuntimeError, match="timed out|timeout"):
+        with pytest.raises(NetworkTimeoutError):
             repo.query_persons(["alice"])
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_osc_not_installed_raises_runtime_error(self, mock_run: Mock) -> None:
-        """FileNotFoundError must raise RuntimeError matching 'osc executable not found'."""
+    def test_osc_not_installed_raises_missing_binary_error(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
+        """FileNotFoundError must raise MissingBinaryError."""
         mock_run.side_effect = FileNotFoundError("osc")
         repo = ObsPersonRepositoryImpl()
-        with pytest.raises(RuntimeError, match="osc executable not found"):
+        with pytest.raises(MissingBinaryError):
+            repo.query_persons(["alice"])
+
+    @patch("bugownerctl.repositories.obs_person_repository.shutil.which")
+    def test_shutil_which_returns_none_raises_missing_binary_error(self, mock_which: Mock) -> None:
+        """shutil.which('osc') returning None must raise MissingBinaryError before subprocess."""
+        mock_which.return_value = None
+        repo = ObsPersonRepositoryImpl()
+        with pytest.raises(MissingBinaryError):
             repo.query_persons(["alice"])
 
 
@@ -179,8 +217,13 @@ class TestSubprocessInvocation:
 
 
 class TestBatchBoundary:
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_exactly_50_logins_produces_one_subprocess_call(self, mock_run: Mock) -> None:
+    def test_exactly_50_logins_produces_one_subprocess_call(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """50 logins with default batch_size=50 → exactly 1 subprocess call."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsPersonRepositoryImpl()
@@ -188,8 +231,13 @@ class TestBatchBoundary:
         repo.query_persons(logins)
         assert mock_run.call_count == 1
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_exactly_51_logins_produces_two_subprocess_calls(self, mock_run: Mock) -> None:
+    def test_exactly_51_logins_produces_two_subprocess_calls(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """51 logins with default batch_size=50 → exactly 2 subprocess calls."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsPersonRepositoryImpl()
@@ -197,8 +245,11 @@ class TestBatchBoundary:
         repo.query_persons(logins)
         assert mock_run.call_count == 2
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_custom_batch_size_respected(self, mock_run: Mock) -> None:
+    def test_custom_batch_size_respected(self, mock_run: Mock, mock_which: Mock) -> None:
         """10 logins, batch_size=3 → ceil(10/3)=4 subprocess calls."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsPersonRepositoryImpl()
@@ -206,8 +257,11 @@ class TestBatchBoundary:
         repo.query_persons(logins, batch_size=3)
         assert mock_run.call_count == 4
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_default_batch_size_is_50(self, mock_run: Mock) -> None:
+    def test_default_batch_size_is_50(self, mock_run: Mock, mock_which: Mock) -> None:
         """100 logins with default batch_size → exactly 2 subprocess calls."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsPersonRepositoryImpl()
@@ -221,8 +275,11 @@ class TestBatchBoundary:
 
 
 class TestXmlParse:
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_parse_returns_login_state_mapping(self, mock_run: Mock) -> None:
+    def test_parse_returns_login_state_mapping(self, mock_run: Mock, mock_which: Mock) -> None:
         """Valid XML with two persons returns login→state mapping."""
         xml = (
             b"<directory>"
@@ -235,8 +292,13 @@ class TestXmlParse:
         result = repo.query_persons(["alice", "bob"])
         assert result == {"alice": "confirmed", "bob": "locked"}
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_parse_person_without_state_returns_none(self, mock_run: Mock) -> None:
+    def test_parse_person_without_state_returns_none(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """Person element with no <state> child maps to None."""
         xml = b"<directory><person><login>alice</login></person></directory>"
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
@@ -244,8 +306,13 @@ class TestXmlParse:
         result = repo.query_persons(["alice"])
         assert result == {"alice": None}
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_login_absent_from_response_is_absent_from_result(self, mock_run: Mock) -> None:
+    def test_login_absent_from_response_is_absent_from_result(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """Login not present in XML response is absent from the returned dict."""
         xml = (
             b"<directory><person><login>alice</login><state>confirmed</state></person></directory>"
@@ -255,42 +322,73 @@ class TestXmlParse:
         result = repo.query_persons(["alice", "bob"])
         assert result == {"alice": "confirmed"}
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_malformed_xml_raises_runtime_error(self, mock_run: Mock) -> None:
+    def test_malformed_xml_raises_runtime_error(self, mock_run: Mock, mock_which: Mock) -> None:
         """Malformed XML bytes raise RuntimeError."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"not xml at all <<<")
         repo = ObsPersonRepositoryImpl()
         with pytest.raises(RuntimeError):
             repo.query_persons(["alice"])
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_doctype_in_person_response_raises_runtime_error(self, mock_run: Mock) -> None:
+    def test_doctype_in_person_response_raises_runtime_error(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """DOCTYPE in response raises RuntimeError with 'DOCTYPE' in message."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<!DOCTYPE foo><directory/>")
         repo = ObsPersonRepositoryImpl()
         with pytest.raises(RuntimeError, match="DOCTYPE"):
             repo.query_persons(["alice"])
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_oversized_response_raises_runtime_error(self, mock_run: Mock) -> None:
+    def test_oversized_response_raises_runtime_error(
+        self, mock_run: Mock, mock_which: Mock
+    ) -> None:
         """Response exceeding 50 MB raises RuntimeError with 'exceeds' in message."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"x" * (51 * 1024 * 1024))
         repo = ObsPersonRepositoryImpl()
         with pytest.raises(RuntimeError, match="exceeds"):
             repo.query_persons(["alice"])
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_person_without_login_element_is_skipped(self, mock_run: Mock) -> None:
-        """<person> with no <login> child is silently skipped."""
+    def test_person_without_login_element_is_skipped(
+        self, mock_run: Mock, mock_which: Mock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """<person> with no <login> child is skipped with a WARNING log."""
         xml = b"<directory><person><state>confirmed</state></person></directory>"
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        result = ObsPersonRepositoryImpl().query_persons(["alice"])
+        with caplog.at_level(
+            logging.WARNING, logger="bugownerctl.repositories.obs_person_repository"
+        ):
+            result = ObsPersonRepositoryImpl().query_persons(["alice"])
         assert result == {}
+        assert "skipping person record" in caplog.text
 
+    @patch(
+        "bugownerctl.repositories.obs_person_repository.shutil.which", return_value="/usr/bin/osc"
+    )
     @patch("bugownerctl.repositories.obs_person_repository.subprocess.run")
-    def test_person_with_empty_login_element_is_skipped(self, mock_run: Mock) -> None:
-        """<person> with empty <login/> is silently skipped."""
+    def test_person_with_empty_login_element_is_skipped(
+        self, mock_run: Mock, mock_which: Mock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """<person> with empty <login/> is skipped with a WARNING log."""
         xml = b"<directory><person><login/><state>confirmed</state></person></directory>"
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        result = ObsPersonRepositoryImpl().query_persons(["alice"])
+        with caplog.at_level(
+            logging.WARNING, logger="bugownerctl.repositories.obs_person_repository"
+        ):
+            result = ObsPersonRepositoryImpl().query_persons(["alice"])
         assert result == {}
+        assert "skipping person record" in caplog.text

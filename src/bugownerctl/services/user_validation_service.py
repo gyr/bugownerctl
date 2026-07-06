@@ -4,11 +4,14 @@ Validates OBS user logins referenced in a maintainership file against the OBS
 person API and classifies each login as confirmed, invalid, or not found.
 """
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepository
 from bugownerctl.repositories.obs_person_repository import ObsPersonRepository
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -79,6 +82,7 @@ class UserValidationService:
         if not all_logins:
             return UserValidationResult(confirmed=[], invalid=[], not_found=[])
 
+        logger.info("validating %d logins...", len(all_logins))
         person_map = self.person_repo.query_persons(all_logins, api, batch_size=batch_size)
 
         confirmed: list[str] = []

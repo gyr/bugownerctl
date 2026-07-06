@@ -20,6 +20,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 from bugownerctl.repositories.obs_bulk_source_info_repository import (
     MAX_XML_BYTES,
     ObsBulkSourceInfoRepository,
@@ -135,19 +136,21 @@ class TestSubprocessInvocation:
             repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_subprocess_timeout_raises_runtime_error(
+    def test_load_bulk_map_subprocess_timeout_raises_network_timeout_error(
         self, mock_run: Mock, tmp_path: Path
     ) -> None:
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="osc", timeout=120)
         repo = ObsBulkSourceInfoRepositoryImpl()
-        with pytest.raises(RuntimeError, match="timed out|timeout"):
+        with pytest.raises(NetworkTimeoutError, match="timed out"):
             repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_osc_not_installed_raises_helpful_error(self, mock_run: Mock, tmp_path: Path) -> None:
+    def test_osc_not_installed_raises_missing_binary_error(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
         mock_run.side_effect = FileNotFoundError("osc")
         repo = ObsBulkSourceInfoRepositoryImpl()
-        with pytest.raises(RuntimeError, match="osc executable not found"):
+        with pytest.raises(MissingBinaryError, match="osc"):
             repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
 
 

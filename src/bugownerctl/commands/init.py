@@ -8,6 +8,8 @@ import shutil
 from importlib.resources import files
 from pathlib import Path
 
+from bugownerctl.exit_codes import ExitCode
+
 
 def run(args: argparse.Namespace) -> int:
     """Create initial config file from bundled example.
@@ -30,7 +32,7 @@ def run(args: argparse.Namespace) -> int:
         target_path = Path("/etc/bugownerctl/config.yaml")
     else:
         print(f"Error: Invalid location '{args.location}'")
-        return 1
+        return ExitCode.ERROR
 
     # Resolve path for security (prevents traversal)
     target_path = target_path.resolve()
@@ -39,7 +41,7 @@ def run(args: argparse.Namespace) -> int:
     if target_path.exists() and not args.force:
         print(f"Error: Config file already exists: {target_path}")
         print("Use --force to overwrite")
-        return 1
+        return ExitCode.ERROR
 
     if target_path.exists() and args.force:
         print(f"Overwriting existing config: {target_path}")
@@ -51,10 +53,10 @@ def run(args: argparse.Namespace) -> int:
         example_path = Path(str(example_traversable))
         if not example_path.exists():
             print("Error: Bundled config example not found")
-            return 1
+            return ExitCode.ERROR
     except Exception as e:
         print(f"Error: Failed to locate bundled example: {e}")
-        return 1
+        return ExitCode.ERROR
 
     # Create parent directory if needed
     try:
@@ -62,7 +64,7 @@ def run(args: argparse.Namespace) -> int:
     except PermissionError as e:
         print(f"Error: Permission denied creating directory: {target_path.parent}")
         print(f"  {e}")
-        return 1
+        return ExitCode.ERROR
 
     # Copy example to target
     try:
@@ -70,10 +72,10 @@ def run(args: argparse.Namespace) -> int:
     except PermissionError as e:
         print(f"Error: Permission denied writing config: {target_path}")
         print(f"  {e}")
-        return 1
+        return ExitCode.ERROR
     except Exception as e:
         print(f"Error: Failed to copy config: {e}")
-        return 1
+        return ExitCode.ERROR
 
     # Print success message
     print(f"✓ Created {'user' if args.location == 'user' else args.location} config")
@@ -84,4 +86,4 @@ def run(args: argparse.Namespace) -> int:
     print("  2. Update slfo_git_url and products")
     print("  3. Run: bugownerctl check maintainership -v 16.1")
 
-    return 0
+    return ExitCode.OK

@@ -1,6 +1,7 @@
 """Tests for check command handlers (maintainership and whitelist)."""
 
 import argparse
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -185,7 +186,9 @@ class TestCheckMaintainershipCommand:
         repos = _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         repos["maintainership"].assert_called_once()
@@ -223,7 +226,9 @@ class TestCheckMaintainershipCommand:
 
         cls_mock, _ = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         cls_mock.assert_called_once_with(
@@ -246,7 +251,9 @@ class TestCheckMaintainershipCommand:
 
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         # Verify download_primary_metadata called with version
@@ -275,15 +282,17 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         result = run_maintainership(args)
 
         assert result == 0
 
-    def test_run_returns_one_when_orphan_packages_found(
+    def test_run_returns_two_when_orphan_packages_found(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should return 1 exit code when orphan packages found."""
+        """Should return 2 exit code when orphan packages found."""
         _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
@@ -295,10 +304,52 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         result = run_maintainership(args)
 
-        assert result == 1
+        assert result == 2
+
+    def test_run_returns_zero_for_shipped_not_in_submodule_without_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """shipped_not_in_submodule alone does NOT gate without --strict."""
+        _patch_maint_prep(monkeypatch)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(
+            monkeypatch,
+            ValidationResult(
+                orphan_packages=[],
+                maintained_packages_without_submodule=[],
+                shipped_not_in_submodule=["pkg1"],
+            ),
+        )
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        result = run_maintainership(args)
+        assert result == 0
+
+    def test_run_returns_two_for_shipped_not_in_submodule_with_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """shipped_not_in_submodule gates when --strict is set."""
+        _patch_maint_prep(monkeypatch)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(
+            monkeypatch,
+            ValidationResult(
+                orphan_packages=[],
+                maintained_packages_without_submodule=[],
+                shipped_not_in_submodule=["pkg1"],
+            ),
+        )
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=True
+        )
+        result = run_maintainership(args)
+        assert result == 2
 
     def test_run_prints_orphan_packages(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -315,7 +366,9 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
@@ -323,10 +376,13 @@ class TestCheckMaintainershipCommand:
         assert "pkg1" in captured.out
         assert "pkg2" in captured.out
 
-    def test_output_format_matches_old_script_with_info_prefix_and_set_labels(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    def test_output_format_count_on_stdout_detail_on_stderr(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Should print output with INFO prefix and SET labels matching old script format."""
+        """Count lines on stdout (no INFO prefix); detail lists on stderr via logger.info."""
         _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
@@ -338,54 +394,62 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
-        run_maintainership(args)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
+            run_maintainership(args)
 
         captured = capsys.readouterr()
         output = captured.out
 
-        # Verify INFO prefix on all output lines
-        assert "INFO: Found 2 maintained packages without an equivalent git submodule." in output
-        assert "INFO: Maintained packages without an equivalent git submodule:" in output
-        assert "INFO: - maintained1" in output
-        assert "INFO: - maintained2" in output
+        # Count lines on stdout (no INFO prefix)
+        assert "Found 2 maintained packages without an equivalent git submodule." in output
+        assert "Found 1 shipped packages not found in git submodule." in output
+        assert "Found 2 orphan packages." in output
+        assert "Orphan packages:" in output
+        assert "- orphan1" in output
+        assert "- orphan2" in output
 
-        assert "INFO: Found 1 shipped packages not found in git submodule." in output
-        assert "INFO: Shipped packages not found in git submodule:" in output
-        assert "INFO: - shipped1" in output
+        # Detail lists on stderr (caplog)
+        assert "Maintained packages without an equivalent git submodule:" in caplog.text
+        assert "maintained1" in caplog.text
+        assert "maintained2" in caplog.text
+        assert "Shipped packages not found in git submodule:" in caplog.text
+        assert "shipped1" in caplog.text
 
-        assert "INFO: Found 2 orphan packages." in output
-        assert "INFO: Orphan packages:" in output
-        assert "INFO: - orphan1" in output
-        assert "INFO: - orphan2" in output
+        # INFO prefix must NOT appear on stdout
+        assert "INFO:" not in output
 
-        # Verify no emoji in output
-        assert "[OK]" not in output  # placeholder for check mark
-        # Original assertions used emoji characters; keep ASCII-only here.
-
-    def test_output_format_shows_empty_state_messages(
+    def test_output_format_clean_run_confirms_gating_sets_only(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Should print INFO messages for empty result sets."""
+        """Gating clean-run confirmation on stdout; SET1 empty-case removed entirely."""
         _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
         output = captured.out
 
+        assert "No orphan packages found." in output
         assert (
-            "INFO: No maintained packages without an equivalent git submodule were found." in output
+            "No maintained packages without an equivalent git submodule were found." not in output
         )
-        assert "INFO: No orphan packages found." in output
+        assert "INFO:" not in output
 
     def test_validate_prints_unresolved_names_section(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Should print the unresolved-names section when unresolved_names is non-empty."""
+        """Count line on stdout (lowercase); header + bullet on stderr via logger.info."""
         _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
@@ -398,12 +462,18 @@ class TestCheckMaintainershipCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
-        run_maintainership(args)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
+            run_maintainership(args)
 
         captured = capsys.readouterr()
-        assert "Names with no source mapping" in captured.out
-        assert "mystery-pkg" in captured.out
+        # Count line (lowercase "names") on stdout
+        assert "names with no source mapping" in captured.out
+        # Header (uppercase) and bullet on stderr
+        assert "Names with no source mapping" in caplog.text
+        assert "mystery-pkg" in caplog.text
 
     def test_validate_omits_unresolved_section_when_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -413,7 +483,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)  # default: empty result, unresolved=[]
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         captured = capsys.readouterr()
@@ -422,14 +494,14 @@ class TestCheckMaintainershipCommand:
     def test_run_forwards_version_and_config_to_prepare_slfo_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward args.version and args.config to prepare_slfo_repo."""
+        """Should forward args.release and args.config to prepare_slfo_repo."""
         mock_prep, _ = _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
         args = argparse.Namespace(
-            version="16.1", debug=False, config=config_path, refresh_bulk_map=False
+            release="16.1", debug=False, config=config_path, refresh_bulk_map=False, strict=False
         )
         run_maintainership(args)
 
@@ -443,7 +515,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         call_kwargs = instance.validate_all.call_args[1]
@@ -457,7 +531,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=True)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=True, strict=False
+        )
         run_maintainership(args)
 
         call_kwargs = instance.validate_all.call_args[1]
@@ -471,7 +547,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         mock_prep.assert_called_once_with("16.1", None)
@@ -485,7 +563,9 @@ class TestCheckMaintainershipCommand:
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", debug=False, config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
         run_maintainership(args)
 
         instance.validate_all.assert_called_once()
@@ -509,7 +589,7 @@ class TestCheckWhitelistCommand:
         repos = _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         repos["maintainership"].assert_called_once()
@@ -549,7 +629,7 @@ class TestCheckWhitelistCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         # ValidationService called with slfo_context.git_repo (not a fresh GitRepositoryImpl).
@@ -569,7 +649,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         services["whitelist_cls"].assert_called_once_with(services["validation_service"])
@@ -593,7 +673,7 @@ class TestCheckWhitelistCommand:
 
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         services["whitelist_service"].check_whitelist.assert_called_once()
@@ -616,15 +696,15 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         result = run_whitelist(args)
 
         assert result == 0
 
-    def test_run_returns_one_when_inconsistencies_found(
+    def test_run_returns_two_when_inconsistencies_found(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should return 1 exit code when inconsistencies found."""
+        """Should return 2 exit code when inconsistencies found."""
         _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
@@ -632,15 +712,43 @@ class TestCheckWhitelistCommand:
             WhitelistCheckResult(inconsistent_packages=["pkg1", "pkg2"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         result = run_whitelist(args)
 
-        assert result == 1
+        assert result == 2
 
-    def test_run_prints_inconsistent_packages_with_info_prefix(
+    def test_run_returns_zero_for_unresolved_names_without_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """unresolved_names alone does NOT gate without --strict."""
+        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(inconsistent_packages=[], unresolved_names=["mystery"]),
+        )
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        result = run_whitelist(args)
+        assert result == 0
+
+    def test_run_returns_two_for_unresolved_names_with_strict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """unresolved_names gates when --strict is set."""
+        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(
+            monkeypatch,
+            WhitelistCheckResult(inconsistent_packages=[], unresolved_names=["mystery"]),
+        )
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=True)
+        result = run_whitelist(args)
+        assert result == 2
+
+    def test_run_prints_inconsistent_packages_on_stdout(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Should print inconsistent packages with INFO prefix."""
+        """Inconsistent packages (gating) print on stdout without INFO prefix."""
         _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
@@ -648,33 +756,38 @@ class TestCheckWhitelistCommand:
             WhitelistCheckResult(inconsistent_packages=["apache2", "kernel-source"]),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
-        assert "INFO: Found 2 packages that are BOTH shipped AND whitelisted" in captured.out
-        assert "INFO: Inconsistent packages" in captured.out
-        assert "INFO: - apache2" in captured.out
-        assert "INFO: - kernel-source" in captured.out
+        assert "Found 2 packages that are BOTH shipped AND whitelisted" in captured.out
+        assert "Inconsistent packages" in captured.out
+        assert "- apache2" in captured.out
+        assert "- kernel-source" in captured.out
+        assert "INFO:" not in captured.out
 
     def test_run_prints_success_message_when_no_issues(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Should print success message with INFO prefix when no issues."""
+        """Clean-run confirmation on stdout without INFO prefix."""
         _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
-        assert "INFO: No inconsistencies found" in captured.out
+        assert "No inconsistencies found" in captured.out
+        assert "INFO:" not in captured.out
 
     def test_whitelist_prints_unresolved_names_section(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Should print the unresolved-names section when unresolved_names is non-empty."""
+        """Count line on stdout (lowercase); header + bullet on stderr via logger.info."""
         _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
@@ -685,17 +798,22 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
-        run_whitelist(args)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
+            run_whitelist(args)
 
         captured = capsys.readouterr()
-        assert "Names with no source mapping" in captured.out
-        assert "mystery-pkg" in captured.out
+        assert "names with no source mapping" in captured.out
+        assert "Names with no source mapping" in caplog.text
+        assert "mystery-pkg" in caplog.text
 
     def test_verdict_printed_after_unresolved_section_when_no_inconsistencies(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Verdict line must be printed LAST, after the unresolved-names diagnostic."""
+        """Count line (stdout) must appear before verdict (stdout); header in caplog."""
         _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
@@ -706,20 +824,25 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
-        run_whitelist(args)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
+            run_whitelist(args)
 
         captured = capsys.readouterr()
-        unresolved_idx = captured.out.index("Names with no source mapping")
+        unresolved_idx = captured.out.index("names with no source mapping")
         verdict_idx = captured.out.index("No inconsistencies found")
         assert unresolved_idx < verdict_idx, (
-            f"Verdict must come AFTER unresolved-names section, got:\n{captured.out}"
+            f"Verdict must come AFTER unresolved-names count, got:\n{captured.out}"
         )
+        assert "Names with no source mapping" in caplog.text
 
     def test_verdict_printed_after_unresolved_section_when_inconsistencies_present(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Inconsistency verdict block must come LAST, after the unresolved-names diagnostic."""
+        """Inconsistency verdict block must come after unresolved-names count on stdout."""
         _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
@@ -730,15 +853,17 @@ class TestCheckWhitelistCommand:
             ),
         )
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
-        run_whitelist(args)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
+            run_whitelist(args)
 
         captured = capsys.readouterr()
-        unresolved_idx = captured.out.index("Names with no source mapping")
+        unresolved_idx = captured.out.index("names with no source mapping")
         verdict_idx = captured.out.index("BOTH shipped AND whitelisted")
         assert unresolved_idx < verdict_idx, (
-            f"Verdict must come AFTER unresolved-names section, got:\n{captured.out}"
+            f"Verdict must come AFTER unresolved-names count, got:\n{captured.out}"
         )
+        assert "Names with no source mapping" in caplog.text
 
     def test_whitelist_omits_unresolved_section_when_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -748,7 +873,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)  # default: empty result, unresolved=[]
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         captured = capsys.readouterr()
@@ -757,13 +882,15 @@ class TestCheckWhitelistCommand:
     def test_run_forwards_version_and_config_to_prepare_slfo_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward args.version and args.config to prepare_slfo_repo."""
+        """Should forward args.release and args.config to prepare_slfo_repo."""
         mock_prep, _ = _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
         config_path = Path("/custom/config.yaml")
-        args = argparse.Namespace(version="16.1", config=config_path, refresh_bulk_map=False)
+        args = argparse.Namespace(
+            release="16.1", config=config_path, refresh_bulk_map=False, strict=False
+        )
         run_whitelist(args)
 
         mock_prep.assert_called_once_with("16.1", config_path)
@@ -776,7 +903,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         mock_prep.assert_called_once_with("16.1", None)
@@ -789,7 +916,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
@@ -803,7 +930,7 @@ class TestCheckWhitelistCommand:
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=True)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=True, strict=False)
         run_whitelist(args)
 
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
@@ -818,7 +945,7 @@ class TestCheckWhitelistCommand:
         _patch_services(monkeypatch)
         fake_slfo_context.git_repo.list_submodules.return_value = ["submodule1"]
 
-        args = argparse.Namespace(version="16.1", config=None, refresh_bulk_map=False)
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
         fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
@@ -875,16 +1002,16 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         result = run_users(args)
 
         assert result == 0
 
-    def test_run_returns_one_when_invalid_accounts_found(
+    def test_run_returns_two_when_invalid_accounts_found(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Returns 1 when result.invalid is non-empty."""
+        """Returns 2 when result.invalid is non-empty."""
         _patch_maint_prep(monkeypatch)
         _patch_users_service(
             monkeypatch,
@@ -892,16 +1019,16 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         result = run_users(args)
 
-        assert result == 1
+        assert result == 2
 
-    def test_run_returns_one_when_not_found_accounts_found(
+    def test_run_returns_two_when_not_found_accounts_found(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Returns 1 when result.not_found is non-empty."""
+        """Returns 2 when result.not_found is non-empty."""
         _patch_maint_prep(monkeypatch)
         _patch_users_service(
             monkeypatch,
@@ -909,16 +1036,19 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         result = run_users(args)
 
-        assert result == 1
+        assert result == 2
 
     def test_run_prints_confirmed_section_when_non_empty(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Confirmed section (Found N..., Confirmed accounts:, - login) prints when non-empty."""
+        """Confirmed count on stdout; Confirmed accounts header + bullets on stderr."""
         _patch_maint_prep(monkeypatch)
         _patch_users_service(
             monkeypatch,
@@ -926,19 +1056,21 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
-        run_users(args)
+        with caplog.at_level(logging.INFO, logger="bugownerctl.commands.check"):
+            run_users(args)
 
         captured = capsys.readouterr()
-        assert "INFO: Found 1 confirmed OBS accounts." in captured.out
-        assert "INFO: Confirmed accounts:" in captured.out
-        assert "INFO: - gyr" in captured.out
+        assert "Found 1 confirmed OBS accounts." in captured.out
+        assert "Confirmed accounts:" in caplog.text
+        assert "gyr" in caplog.text
+        assert "INFO:" not in captured.out
 
     def test_run_prints_invalid_section_when_non_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Invalid section prints with INFO prefix when result.invalid is non-empty."""
+        """Invalid section (gating) prints on stdout without INFO prefix."""
         _patch_maint_prep(monkeypatch)
         _patch_users_service(
             monkeypatch,
@@ -946,19 +1078,20 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
         captured = capsys.readouterr()
-        assert "INFO: Found 1 invalid (locked / non-confirmed) accounts." in captured.out
-        assert "INFO: Invalid accounts:" in captured.out
-        assert "INFO: - locked-user" in captured.out
+        assert "Found 1 invalid (locked / non-confirmed) accounts." in captured.out
+        assert "Invalid accounts:" in captured.out
+        assert "- locked-user" in captured.out
+        assert "INFO:" not in captured.out
 
     def test_run_prints_not_found_section_when_non_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Not-found section prints with INFO prefix when result.not_found is non-empty."""
+        """Not-found section (gating) prints on stdout without INFO prefix."""
         _patch_maint_prep(monkeypatch)
         _patch_users_service(
             monkeypatch,
@@ -966,19 +1099,20 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
         captured = capsys.readouterr()
-        assert "INFO: Found 1 accounts not found in OBS." in captured.out
-        assert "INFO: Accounts not found in OBS:" in captured.out
-        assert "INFO: - ghost" in captured.out
+        assert "Found 1 accounts not found in OBS." in captured.out
+        assert "Accounts not found in OBS:" in captured.out
+        assert "- ghost" in captured.out
+        assert "INFO:" not in captured.out
 
     def test_run_prints_all_confirmed_summary_when_no_invalid_or_not_found(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Prints 'All N users are confirmed' summary when invalid and not_found are empty."""
+        """Clean-run summary on stdout without INFO prefix."""
         _patch_maint_prep(monkeypatch)
         _patch_users_service(
             monkeypatch,
@@ -986,17 +1120,18 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
         captured = capsys.readouterr()
-        assert "INFO: All 2 users are confirmed OBS accounts." in captured.out
+        assert "All 2 users are confirmed OBS accounts." in captured.out
+        assert "INFO:" not in captured.out
 
     def test_run_prints_failure_summary_when_any_invalid_or_not_found(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Prints 'X of N users are not confirmed' summary when any invalid or not_found."""
+        """Failure summary on stdout without INFO prefix."""
         _patch_maint_prep(monkeypatch)
         _patch_users_service(
             monkeypatch,
@@ -1004,13 +1139,14 @@ class TestCheckUsersCommand:
         )
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
         captured = capsys.readouterr()
         # 1 invalid + 1 not_found = 2; total = 1 + 1 + 1 = 3
-        assert "INFO: 2 of 3 users are not confirmed OBS accounts." in captured.out
+        assert "2 of 3 users are not confirmed OBS accounts." in captured.out
+        assert "INFO:" not in captured.out
 
     def test_run_resolves_maintainership_file_from_slfo_repo_path(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1021,7 +1157,7 @@ class TestCheckUsersCommand:
         _, service_instance = _patch_users_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 
@@ -1038,7 +1174,7 @@ class TestCheckUsersCommand:
         _, service_instance = _patch_users_service(monkeypatch)
 
         args = argparse.Namespace(
-            version="16.1",
+            release="16.1",
             config=None,
             api="https://api.example.com",
             batch_size=25,
@@ -1072,7 +1208,7 @@ class TestCheckUsersCommand:
         monkeypatch.setattr("bugownerctl.commands.check.UserValidationService", service_cls)
 
         args = argparse.Namespace(
-            version="16.1", config=None, api="https://api.suse.de", batch_size=50
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
         )
         run_users(args)
 

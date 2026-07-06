@@ -186,8 +186,13 @@ class ValidationService:
         shipped_packages = self.metadata_repo.parse_source_packages(repo_metadata_file)
         submodules = self.git_repo.list_submodules(git_dir)
 
+        logger.info("starting validate_all for %d shipped packages", len(shipped_packages))
         maintained_packages_without_submodule = self.find_maintained_packages_without_submodule(
             maintainership_data, submodules
+        )
+        logger.debug(
+            "found %d maintained packages without submodule",
+            len(maintained_packages_without_submodule),
         )
 
         # Pre-load bulk_map and overrides exactly once here so
