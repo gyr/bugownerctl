@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.1] - 2026-07-06
+
+### Removed
+
+- Deprecated legacy script `validate_maintainership.py` (fully superseded by `bugownerctl` /
+  `MaintainershipRepositoryImpl.load`) and its redundant test `tests/test_maintainer_data.py`,
+  whose stale `from lxml import etree` broke `scripts/check.sh` at the pytest step.
+
 ## [0.6.0] - 2026-07-06
 
 ### Added

@@ -816,7 +816,7 @@ See `IMPLEMENTATION_PLAN.md` for detailed architecture.
 
 ## Migration from Legacy Scripts
 
-**`validate_maintainership.py` is deprecated but still present. All other legacy scripts have been removed.**
+**All legacy scripts, including `validate_maintainership.py`, have been removed.**
 
 | Old Script | New Command |
 |------------|-------------|
