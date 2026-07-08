@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.2] - 2026-07-08
+
+### Added
+
+- Configurable TLS certificate verification for repo-metadata downloads via a new optional
+  `verify` config key. Accepts `true` (default — verify with the default trust store, honoring
+  `REQUESTS_CA_BUNDLE`), `false` (disable verification), or a path to a CA bundle (e.g.
+  `/etc/ssl/ca-bundle.pem` for the SUSE internal CA). The value is validated at load time: a
+  non-bool/non-string type (such as the YAML int `verify: 0`) and an empty or whitespace-only
+  string are both rejected with a `ConfigError`, preventing a silent fall-through to disabled
+  TLS.
+
+### Fixed
+
+- `check maintainership` and `check whitelist` no longer hardcode `verify=False` when
+  downloading `repomd.xml` and `primary.xml.gz`, which unconditionally disabled TLS
+  verification and emitted `InsecureRequestWarning`. Verification now defaults to on and is
+  driven by the `verify` config key above.
+
 ## [0.6.1] - 2026-07-06
 
 ### Removed
