@@ -628,6 +628,136 @@ class TestDownloadPrimaryMetadata:
         assert result.exists()
         assert result.read_bytes() == primary_content
 
+    @patch("requests.get")
+    def test_download_primary_metadata_verify_defaults_to_true(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should pass verify=True to both requests.get calls by default."""
+        # Arrange
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha256">abc123</checksum>
+  </data>
+</repomd>"""
+
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        mock_primary_response = Mock()
+        primary_content = b"primary xml content"
+        mock_primary_response.content = primary_content
+        mock_primary_response.iter_content = Mock(
+            return_value=[
+                primary_content[i : i + 8192] for i in range(0, len(primary_content), 8192)
+            ]
+        )
+        mock_primary_response.raise_for_status = Mock()
+
+        mock_get.side_effect = [mock_repomd_response, mock_primary_response]
+
+        repo = RepoMetadataRepositoryImpl()
+        cache_dir = tmp_path / "cache"
+
+        # Act
+        repo.download_primary_metadata("16.1", cache_dir)
+
+        # Assert - both calls should receive verify=True
+        repomd_call_verify = mock_get.call_args_list[0][1].get("verify")
+        primary_call_verify = mock_get.call_args_list[1][1].get("verify")
+        assert repomd_call_verify is True, "repomd.xml call should use verify=True"
+        assert primary_call_verify is True, "primary.xml call should use verify=True"
+
+    @patch("requests.get")
+    def test_download_primary_metadata_verify_false_passed_through(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should pass verify=False to both requests.get calls when specified."""
+        # Arrange
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha256">abc123</checksum>
+  </data>
+</repomd>"""
+
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        mock_primary_response = Mock()
+        primary_content = b"primary xml content"
+        mock_primary_response.content = primary_content
+        mock_primary_response.iter_content = Mock(
+            return_value=[
+                primary_content[i : i + 8192] for i in range(0, len(primary_content), 8192)
+            ]
+        )
+        mock_primary_response.raise_for_status = Mock()
+
+        mock_get.side_effect = [mock_repomd_response, mock_primary_response]
+
+        repo = RepoMetadataRepositoryImpl(verify=False)
+        cache_dir = tmp_path / "cache"
+
+        # Act
+        repo.download_primary_metadata("16.1", cache_dir)
+
+        # Assert - both calls should receive verify=False
+        repomd_call_verify = mock_get.call_args_list[0][1].get("verify")
+        primary_call_verify = mock_get.call_args_list[1][1].get("verify")
+        assert repomd_call_verify is False, "repomd.xml call should use verify=False"
+        assert primary_call_verify is False, "primary.xml call should use verify=False"
+
+    @patch("requests.get")
+    def test_download_primary_metadata_verify_ca_bundle_path_passed_through(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should pass custom CA bundle path to both requests.get calls when specified."""
+        # Arrange
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha256">abc123</checksum>
+  </data>
+</repomd>"""
+
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        mock_primary_response = Mock()
+        primary_content = b"primary xml content"
+        mock_primary_response.content = primary_content
+        mock_primary_response.iter_content = Mock(
+            return_value=[
+                primary_content[i : i + 8192] for i in range(0, len(primary_content), 8192)
+            ]
+        )
+        mock_primary_response.raise_for_status = Mock()
+
+        mock_get.side_effect = [mock_repomd_response, mock_primary_response]
+
+        repo = RepoMetadataRepositoryImpl(verify="/etc/ssl/ca-bundle.pem")
+        cache_dir = tmp_path / "cache"
+
+        # Act
+        repo.download_primary_metadata("16.1", cache_dir)
+
+        # Assert - both calls should receive custom CA bundle path
+        repomd_call_verify = mock_get.call_args_list[0][1].get("verify")
+        primary_call_verify = mock_get.call_args_list[1][1].get("verify")
+        assert repomd_call_verify == "/etc/ssl/ca-bundle.pem", (
+            "repomd.xml call should use custom CA bundle"
+        )
+        assert primary_call_verify == "/etc/ssl/ca-bundle.pem", (
+            "primary.xml call should use custom CA bundle"
+        )
+
 
 class TestParseSourcePackagesDefusedxml:
     """Defusedxml hardening tests for parse_source_packages."""

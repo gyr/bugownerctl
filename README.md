@@ -519,6 +519,13 @@ maintainership_file: _maintainership.json
 # Whitelist file name
 whitelist_file: whitelist_maintainership.json
 
+# TLS certificate verification for repo-metadata downloads (optional)
+#   true   -> verify with default trust store (default; honors REQUESTS_CA_BUNDLE)
+#   false  -> disable verification (insecure; emits an InsecureRequestWarning)
+#   <path> -> use a specific CA bundle, e.g. /etc/ssl/ca-bundle.pem (SUSE internal CA)
+# An empty or null value is rejected with a config error.
+# verify: /etc/ssl/ca-bundle.pem
+
 # Product version mappings
 products:
   - version: "16.0"

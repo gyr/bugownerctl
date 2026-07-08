@@ -6,8 +6,10 @@ Executes check subcommands for maintainership validation and whitelist verificat
 import argparse
 import logging
 from importlib.resources import as_file, files
+from typing import Any
 
 from bugownerctl.commands.repo_prep import prepare_slfo_repo
+from bugownerctl.exceptions import ConfigError
 from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.repositories.name_overrides_repository import NameOverridesRepositoryImpl
@@ -22,6 +24,32 @@ from bugownerctl.services.whitelist_service import WhitelistService
 from bugownerctl.utils.file_utils import validate_file_within_directory
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_verify(config: dict[str, Any]) -> bool | str:
+    """Read and validate the TLS `verify` setting from config.
+
+    Args:
+        config: Loaded configuration dictionary.
+
+    Returns:
+        The verify setting: True/False, or a path to a CA bundle.
+
+    Raises:
+        ConfigError: If `verify` is present but not a bool or str, or if
+            it is an empty or whitespace-only string.
+    """
+    verify = config.get("verify", True)
+    if not isinstance(verify, (bool, str)):
+        raise ConfigError(
+            f"Invalid 'verify' config: expected bool or path string, got {type(verify).__name__}"
+        )
+    if isinstance(verify, str) and not verify.strip():
+        raise ConfigError(
+            "Invalid 'verify' config: empty or whitespace-only string not allowed "
+            "(would disable TLS verification)"
+        )
+    return verify
 
 
 def run_maintainership(args: argparse.Namespace) -> int:
@@ -39,8 +67,9 @@ def run_maintainership(args: argparse.Namespace) -> int:
         "maintainership_file", "_maintainership.json"
     )
 
+    verify = _resolve_verify(slfo_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
-    metadata_repo = RepoMetadataRepositoryImpl()
+    metadata_repo = RepoMetadataRepositoryImpl(verify=verify)
     bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
 
@@ -134,8 +163,9 @@ def run_whitelist(args: argparse.Namespace) -> int:
 
     whitelist_file_name = slfo_context.config.get("whitelist_file", "whitelist_maintainership.json")
 
+    verify = _resolve_verify(slfo_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
-    metadata_repo = RepoMetadataRepositoryImpl()
+    metadata_repo = RepoMetadataRepositoryImpl(verify=verify)
     bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
 

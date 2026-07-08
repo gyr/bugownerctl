@@ -10,6 +10,7 @@ import pytest
 
 from bugownerctl.commands.check import run_maintainership, run_users, run_whitelist
 from bugownerctl.commands.repo_prep import SlfoRepoContext
+from bugownerctl.exceptions import ConfigError
 from bugownerctl.services.user_validation_service import UserValidationResult
 from bugownerctl.services.validation_service import ValidationResult
 from bugownerctl.services.whitelist_service import WhitelistCheckResult
@@ -574,6 +575,111 @@ class TestCheckMaintainershipCommand:
         assert call_kwargs["maintainership_file"] == expected_maintainership
         assert call_kwargs["git_dir"] == slfo_repo_path
 
+    def test_run_passes_verify_from_config_to_metadata_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should read verify from config and pass to RepoMetadataRepositoryImpl."""
+        config_with_verify = _MAINT_BASE_CONFIG.copy()
+        config_with_verify["verify"] = "/etc/ssl/ca-bundle.pem"
+        _patch_maint_prep(monkeypatch, config=config_with_verify)
+        repos = _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        run_maintainership(args)
+
+        repos["metadata"].assert_called_once_with(verify="/etc/ssl/ca-bundle.pem")
+
+    def test_run_passes_verify_default_true_when_not_in_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should default verify=True when config has no verify key."""
+        # _MAINT_BASE_CONFIG already has no verify key
+        _patch_maint_prep(monkeypatch)
+        repos = _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        run_maintainership(args)
+
+        repos["metadata"].assert_called_once_with(verify=True)
+
+    def test_run_rejects_verify_as_int_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is int 0."""
+        config_with_int = _MAINT_BASE_CONFIG.copy()
+        config_with_int["verify"] = 0
+        _patch_maint_prep(monkeypatch, config=config_with_int)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with pytest.raises(ConfigError, match="Invalid 'verify' config"):
+            run_maintainership(args)
+
+    def test_run_rejects_verify_as_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is a list."""
+        config_with_list = _MAINT_BASE_CONFIG.copy()
+        config_with_list["verify"] = []
+        _patch_maint_prep(monkeypatch, config=config_with_list)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with pytest.raises(ConfigError, match="Invalid 'verify' config"):
+            run_maintainership(args)
+
+    def test_run_rejects_verify_as_empty_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is an empty string."""
+        config_with_empty = _MAINT_BASE_CONFIG.copy()
+        config_with_empty["verify"] = ""
+        _patch_maint_prep(monkeypatch, config=config_with_empty)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with pytest.raises(ConfigError, match="empty or whitespace-only"):
+            run_maintainership(args)
+
+    def test_run_rejects_verify_as_whitespace_only_string(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should raise ConfigError when config verify is whitespace-only."""
+        config_with_whitespace = _MAINT_BASE_CONFIG.copy()
+        config_with_whitespace["verify"] = "   "
+        _patch_maint_prep(monkeypatch, config=config_with_whitespace)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with pytest.raises(ConfigError, match="empty or whitespace-only"):
+            run_maintainership(args)
+
+    def test_run_rejects_verify_as_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is explicitly None."""
+        config_with_none = _MAINT_BASE_CONFIG.copy()
+        config_with_none["verify"] = None
+        _patch_maint_prep(monkeypatch, config=config_with_none)
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with pytest.raises(ConfigError, match="Invalid 'verify' config"):
+            run_maintainership(args)
+
 
 # ---------------------------------------------------------------------------
 # Tests for run_whitelist (formerly whitelist-check command)
@@ -951,6 +1057,97 @@ class TestCheckWhitelistCommand:
         fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
             fake_slfo_context.slfo_repo_path
         )
+
+    def test_run_passes_verify_from_config_to_metadata_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should read verify from config and pass to RepoMetadataRepositoryImpl."""
+        config_with_verify = _WHITELIST_BASE_CONFIG.copy()
+        config_with_verify["verify"] = "/etc/ssl/ca-bundle.pem"
+        _patch_whitelist_prep(monkeypatch, config=config_with_verify)
+        repos = _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        run_whitelist(args)
+
+        repos["metadata"].assert_called_once_with(verify="/etc/ssl/ca-bundle.pem")
+
+    def test_run_passes_verify_default_true_when_not_in_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should default verify=True when config has no verify key."""
+        # _WHITELIST_BASE_CONFIG already has no verify key
+        _patch_whitelist_prep(monkeypatch)
+        repos = _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        run_whitelist(args)
+
+        repos["metadata"].assert_called_once_with(verify=True)
+
+    def test_run_rejects_verify_as_int_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is int 0."""
+        config_with_int = _WHITELIST_BASE_CONFIG.copy()
+        config_with_int["verify"] = 0
+        _patch_whitelist_prep(monkeypatch, config=config_with_int)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with pytest.raises(ConfigError, match="Invalid 'verify' config"):
+            run_whitelist(args)
+
+    def test_run_rejects_verify_as_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is a list."""
+        config_with_list = _WHITELIST_BASE_CONFIG.copy()
+        config_with_list["verify"] = []
+        _patch_whitelist_prep(monkeypatch, config=config_with_list)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with pytest.raises(ConfigError, match="Invalid 'verify' config"):
+            run_whitelist(args)
+
+    def test_run_rejects_verify_as_empty_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is an empty string."""
+        config_with_empty = _WHITELIST_BASE_CONFIG.copy()
+        config_with_empty["verify"] = ""
+        _patch_whitelist_prep(monkeypatch, config=config_with_empty)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with pytest.raises(ConfigError, match="empty or whitespace-only"):
+            run_whitelist(args)
+
+    def test_run_rejects_verify_as_whitespace_only_string(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should raise ConfigError when config verify is whitespace-only."""
+        config_with_whitespace = _WHITELIST_BASE_CONFIG.copy()
+        config_with_whitespace["verify"] = "   "
+        _patch_whitelist_prep(monkeypatch, config=config_with_whitespace)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with pytest.raises(ConfigError, match="empty or whitespace-only"):
+            run_whitelist(args)
+
+    def test_run_rejects_verify_as_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Should raise ConfigError when config verify is explicitly None."""
+        config_with_none = _WHITELIST_BASE_CONFIG.copy()
+        config_with_none["verify"] = None
+        _patch_whitelist_prep(monkeypatch, config=config_with_none)
+        _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with pytest.raises(ConfigError, match="Invalid 'verify' config"):
+            run_whitelist(args)
 
 
 # ---------------------------------------------------------------------------

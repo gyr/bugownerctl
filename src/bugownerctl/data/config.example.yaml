@@ -16,6 +16,15 @@ slfo_git_url: gitea@src.suse.de:products/SLFO.git
 # Optional: defaults to ~/.cache/bugownerctl
 # cache_dir: ~/.cache/bugownerctl
 
+# TLS certificate verification for repo-metadata downloads
+# Optional: defaults to true (uses system/certifi trust store; honors REQUESTS_CA_BUNDLE)
+#   true   -> verify with default trust store
+#   false  -> disable verification (insecure; emits an InsecureRequestWarning)
+#   <path> -> use a specific CA bundle, e.g. /etc/ssl/ca-bundle.pem (SUSE internal CA)
+# Note: an empty or null value (e.g. `verify:` with nothing after it) is rejected
+#   with a ConfigError, to enforce explicit bool or path-string configuration.
+# verify: /etc/ssl/ca-bundle.pem
+
 # Product versions to validate
 # REQUIRED: Update with versions you need to test
 products:
