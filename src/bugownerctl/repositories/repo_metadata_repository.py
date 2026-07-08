@@ -59,16 +59,20 @@ class RepoMetadataRepository(Protocol):
 class RepoMetadataRepositoryImpl:
     """Implementation of repository metadata operations."""
 
-    def __init__(self, base_url: str | None = None):
+    def __init__(self, base_url: str | None = None, verify: bool | str = True):
         """Initialize repository metadata repository.
 
         Args:
             base_url: Base URL for repository metadata (defaults to SUSE IBS repo)
+            verify: TLS certificate verification setting. True uses default trust store
+                and honors REQUESTS_CA_BUNDLE; False disables verification; str provides
+                path to a CA bundle file.
         """
         self.base_url = (
             base_url
             or "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{version}:/PUBLISH/product/"
         )
+        self.verify = verify
 
     def download_primary_metadata(self, version: str, cache_dir: Path) -> Path:
         """Download and cache primary repository metadata.
@@ -100,10 +104,7 @@ class RepoMetadataRepositoryImpl:
         logger.debug("Downloading repomd.xml for version %s", version)
         try:
             repomd_url = self.base_url.format(version=version) + "repodata/repomd.xml"
-            # NOTE: verify=False is required to access internal SUSE infrastructure
-            # that uses self-signed certificates. This is acceptable for internal use
-            # but should NOT be used in production environments with untrusted sources.
-            repomd_response = requests.get(repomd_url, verify=False, timeout=30)
+            repomd_response = requests.get(repomd_url, verify=self.verify, timeout=30)
             repomd_response.raise_for_status()
 
             # Cache repomd.xml for future use
@@ -194,8 +195,9 @@ class RepoMetadataRepositoryImpl:
         logger.debug("Downloading primary.xml for version %s", version)
         try:
             primary_url = self.base_url.format(version=version) + primary_href
-            # NOTE: verify=False is required for internal SUSE infrastructure (see above)
-            primary_response = requests.get(primary_url, verify=False, timeout=30, stream=True)
+            primary_response = requests.get(
+                primary_url, verify=self.verify, timeout=30, stream=True
+            )
             primary_response.raise_for_status()
 
             # Write to cache using streaming (memory-efficient)
