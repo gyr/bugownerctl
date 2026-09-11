@@ -1,7 +1,7 @@
 """CLI entry point for bugownerctl package.
 
 This module provides the command-line interface with subcommands for
-init, check, and query subcommands.
+init, check, query, and diff subcommands.
 """
 
 import argparse
@@ -10,7 +10,7 @@ import sys
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 
-from bugownerctl.commands import check, init, query
+from bugownerctl.commands import check, diff, init, query
 from bugownerctl.exceptions import (
     BugownerctlError,
     ConfigError,
@@ -41,7 +41,7 @@ def create_parser() -> argparse.ArgumentParser:
     """Create CLI argument parser with subcommands.
 
     Returns:
-        Configured ArgumentParser with init, check, and query subcommands.
+        Configured ArgumentParser with init, check, query, and diff subcommands.
     """
     parser = argparse.ArgumentParser(
         prog="bugownerctl",
@@ -65,18 +65,22 @@ def create_parser() -> argparse.ArgumentParser:
         "-v", "--verbose", action="store_true", help="Enable verbose (INFO) logging"
     )
 
-    # Shared context parser: -r/--release and -c/--config are common to all five data-leaf
-    # subcommands.  Applying parents=[context] to each leaf avoids 5× duplication.
-    # add_help=False prevents a conflicting -h on the context itself.
-    context = argparse.ArgumentParser(add_help=False)
-    context.add_argument("-r", "--release", required=True, help="SLES version (e.g., '16.1')")
-    context.add_argument(
+    # Shared parents.  config_only carries -c/--config, which every config-consuming leaf
+    # needs; context adds the required -r/--release on top of it, for the five data-leaf
+    # subcommands that resolve a product version.  `diff` uses config_only, since it reads
+    # two git refs directly and has no release to resolve.  Applying these as parents avoids
+    # duplicating the flags per leaf; add_help=False prevents a conflicting -h on the parents.
+    config_only = argparse.ArgumentParser(add_help=False)
+    config_only.add_argument(
         "-c",
         "--config",
         type=Path,
         default=None,
         help="Path to config file (searches standard locations when unset, default: %(default)s)",
     )
+
+    context = argparse.ArgumentParser(add_help=False, parents=[config_only])
+    context.add_argument("-r", "--release", required=True, help="SLES version (e.g., '16.1')")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -181,6 +185,33 @@ def create_parser() -> argparse.ArgumentParser:
     )
     maintainer_parser.add_argument("maintainer_name", help="User or group name")
     maintainer_parser.set_defaults(func=query.run_maintainer)
+
+    # bugownerctl diff  (parents=[config_only], not [context]: there is no release to resolve)
+    diff_parser = subparsers.add_parser(
+        "diff", help="Compare maintainership between two SLFO git refs"
+    )
+    diff_subparsers = diff_parser.add_subparsers(dest="diff_command", required=True)
+
+    diff_maintainership_parser = diff_subparsers.add_parser(
+        "maintainership",
+        parents=[config_only],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Diff _maintainership.json between two git refs and write CSV",
+    )
+    diff_maintainership_parser.add_argument(
+        "ref_a", help="Branch or tag name to read first (commit SHAs are not servable)"
+    )
+    diff_maintainership_parser.add_argument(
+        "ref_b", help="Branch or tag name to compare against (commit SHAs are not servable)"
+    )
+    diff_maintainership_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Path to write the CSV to (writes to stdout when unset, default: %(default)s)",
+    )
+    diff_maintainership_parser.set_defaults(func=diff.run_maintainership)
 
     return parser
 

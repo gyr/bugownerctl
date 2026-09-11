@@ -875,3 +875,95 @@ class TestC13SharedContextParser:
             parser.parse_args(["check", "maintainership", "--help"])
         captured = capsys.readouterr()
         assert "(default: False)" in captured.out
+
+
+class TestDiffMaintainershipSubcommand:
+    """Tests for the `diff maintainership` subcommand wiring.
+
+    Unlike the five data-leaf subcommands, `diff` reads two git refs directly
+    from a remote and never resolves a product version, so it inherits the
+    config-only parent parser and must parse without -r/--release.
+    """
+
+    def test_diff_maintainership_parses_without_release_flag(self) -> None:
+        """diff maintainership takes two positional refs and no -r/--release."""
+        parser = create_parser()
+        args = parser.parse_args(["diff", "maintainership", "SLFO-1.1.1", "main"])
+        assert args.command == "diff"
+        assert args.diff_command == "maintainership"
+        assert args.ref_a == "SLFO-1.1.1"
+        assert args.ref_b == "main"
+
+    def test_diff_maintainership_namespace_has_no_release_attribute(self) -> None:
+        """The parent parser is config-only: no release attribute must leak in."""
+        parser = create_parser()
+        args = parser.parse_args(["diff", "maintainership", "a", "b"])
+        assert not hasattr(args, "release")
+
+    def test_diff_maintainership_rejects_release_flag(self) -> None:
+        """-r is not defined for diff maintainership, so passing it is a usage error."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["diff", "maintainership", "a", "b", "-r", "16.1"])
+
+    def test_diff_maintainership_wires_correct_handler(self) -> None:
+        """diff maintainership should wire diff.run_maintainership as handler."""
+        from bugownerctl.commands import diff
+
+        parser = create_parser()
+        args = parser.parse_args(["diff", "maintainership", "a", "b"])
+        assert args.func == diff.run_maintainership
+
+    def test_diff_maintainership_accepts_config_flag(self) -> None:
+        """diff maintainership should accept -c/--config as a Path."""
+        parser = create_parser()
+        args = parser.parse_args(["diff", "maintainership", "a", "b", "-c", "/tmp/cfg.yaml"])
+        assert args.config == Path("/tmp/cfg.yaml")
+
+    def test_diff_maintainership_config_flag_defaults_to_none(self) -> None:
+        """Config flag should default to None for diff maintainership."""
+        parser = create_parser()
+        args = parser.parse_args(["diff", "maintainership", "a", "b"])
+        assert args.config is None
+
+    def test_diff_maintainership_accepts_output_flag(self) -> None:
+        """diff maintainership should accept -o/--output as a Path."""
+        parser = create_parser()
+        args = parser.parse_args(["diff", "maintainership", "a", "b", "-o", "/tmp/out.csv"])
+        assert args.output == Path("/tmp/out.csv")
+
+    def test_diff_maintainership_output_flag_defaults_to_none(self) -> None:
+        """Output flag should default to None (meaning stdout)."""
+        parser = create_parser()
+        args = parser.parse_args(["diff", "maintainership", "a", "b"])
+        assert args.output is None
+
+    def test_diff_requires_subcommand(self) -> None:
+        """diff alone should exit: a subcommand is required."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["diff"])
+
+    def test_diff_maintainership_requires_both_refs(self) -> None:
+        """diff maintainership with a single ref is a usage error."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["diff", "maintainership", "a"])
+
+    def test_diff_maintainership_help_shows_config_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """diff maintainership --help output contains --config."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["diff", "maintainership", "--help"])
+        assert "--config" in capsys.readouterr().out
+
+    def test_diff_maintainership_help_omits_release_flag(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """diff maintainership --help output must not advertise --release."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["diff", "maintainership", "--help"])
+        assert "--release" not in capsys.readouterr().out
