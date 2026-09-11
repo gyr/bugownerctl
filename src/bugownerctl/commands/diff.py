@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TextIO
 
+from bugownerctl.domain.maintainership_diff import MaintainershipDiffRow
 from bugownerctl.exceptions import ConfigError
 from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.remote_archive_repository import (
@@ -39,6 +40,31 @@ def _render_cell(maintainers: tuple[str, ...] | None) -> str:
     if maintainers is None:
         return ""
     return " ".join(maintainers)
+
+
+def _render_change(row: MaintainershipDiffRow) -> str:
+    """Classify a diff row as one of the three transitions it can represent.
+
+    The maintainer cells cannot carry this themselves: a package absent at a ref
+    and one present there with no maintainers both render as the empty string,
+    so the reader of the CSV alone cannot tell "nobody owns it now" from "it is
+    not shipped there any more". This column is what separates them.
+
+    Args:
+        row: One row from `diff_snapshots`.
+
+    Returns:
+        "added" when the package is absent at the first ref, "removed" when it
+        is absent at the second, "changed" when it is present at both. The three
+        are exhaustive: `diff_snapshots` emits a row only where the two sides
+        differ, and the package name came from the union of both snapshots' keys,
+        so both sides being absent cannot occur.
+    """
+    if row.maintainers_a is None:
+        return "added"
+    if row.maintainers_b is None:
+        return "removed"
+    return "changed"
 
 
 @contextlib.contextmanager
@@ -116,13 +142,14 @@ def run_maintainership(
 
     with _open_output(args.output) as handle:
         writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow(["package", args.ref_a, args.ref_b])
+        writer.writerow(["package", args.ref_a, args.ref_b, "change"])
         for row in rows:
             writer.writerow(
                 [
                     row.package,
                     _render_cell(row.maintainers_a),
                     _render_cell(row.maintainers_b),
+                    _render_change(row),
                 ]
             )
 

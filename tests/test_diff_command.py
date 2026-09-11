@@ -79,7 +79,9 @@ class TestRunMaintainership:
         exit_code = run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
 
         assert exit_code == 0
-        assert capsys.readouterr().out == "package,v1,v2\npkg-a,alice bob group:team,bob\n"
+        assert capsys.readouterr().out == (
+            "package,v1,v2,change\npkg-a,alice bob group:team,bob,changed\n"
+        )
 
     def test_header_holds_the_two_refs_exactly_as_typed(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -96,22 +98,28 @@ class TestRunMaintainership:
         run_maintainership(args, archive_repo=repo)
 
         header = capsys.readouterr().out.splitlines()[0]
-        assert header == "package,refs/tags/SLFO-1.1.1,main"
+        assert header == "package,refs/tags/SLFO-1.1.1,main,change"
 
     def test_package_absent_from_one_ref_renders_empty_cell(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """A package missing at a ref gets an empty cell on that side."""
+        """A package missing at a ref gets an empty cell on that side.
+
+        Both directions run at once, so since the change column landed this
+        pins that column's direction as well as the cell contents.
+        """
         repo = FakeArchiveRepository(
             {
                 "v1": snapshot_bytes({"gone": {"users": ["alice"]}}),
-                "v2": snapshot_bytes({"added": {"users": ["bob"]}}),
+                "v2": snapshot_bytes({"arrived": {"users": ["bob"]}}),
             }
         )
 
         run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
 
-        assert capsys.readouterr().out == "package,v1,v2\nadded,,bob\ngone,alice,\n"
+        assert capsys.readouterr().out == (
+            "package,v1,v2,change\narrived,,bob,added\ngone,alice,,removed\n"
+        )
 
     def test_package_present_but_unowned_renders_empty_cell(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -121,6 +129,10 @@ class TestRunMaintainership:
         Distinct from the absent case above: `diff_snapshots` hands back `()`
         here and `None` there, and both must reach the CSV as "". This is the
         row an operator reads the report to find.
+
+        Since the change column landed it is also the only test stopping that
+        column from being derived from an empty second cell: the row must read
+        `changed`, not `removed`, because pkg-a is still present at v2.
         """
         repo = FakeArchiveRepository(
             {
@@ -131,7 +143,7 @@ class TestRunMaintainership:
 
         run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
 
-        assert capsys.readouterr().out == "package,v1,v2\npkg-a,alice,\n"
+        assert capsys.readouterr().out == "package,v1,v2,change\npkg-a,alice,,changed\n"
 
     def test_each_snapshot_is_parsed_under_the_ref_it_was_fetched_from(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -162,6 +174,66 @@ class TestRunMaintainership:
             "Package 'orphan-b' has no maintainers at ref 'v2'",
         ]
 
+    def test_change_column_names_which_of_the_three_transitions_happened(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The fourth column classifies each row as added, removed or changed.
+
+        All three words appear in one run, which pins each to its own transition
+        rather than only pinning the vocabulary.
+
+        The two orphan rows are what make this test irreplaceable, and they are
+        the reason its packages are not simply added and removed ones -- those
+        states are already pinned twice over elsewhere in this file. A package
+        can arrive already unowned or leave having been unowned, so a row whose
+        maintainer cells are empty on *both* sides is reachable in either
+        direction, and nothing else here exercises that. Without these two rows
+        a classifier that consults the opposite side's maintainers to decide,
+        `"added" if row.maintainers_b else "removed"`, passes the whole suite.
+        """
+        repo = FakeArchiveRepository(
+            {
+                "v1": snapshot_bytes(
+                    {"dying-orphan": {"users": []}, "reowned": {"users": ["alice"]}}
+                ),
+                "v2": snapshot_bytes(
+                    {"newborn-orphan": {"users": []}, "reowned": {"users": ["bob"]}}
+                ),
+            }
+        )
+
+        run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
+
+        assert capsys.readouterr().out == (
+            "package,v1,v2,change\n"
+            "dying-orphan,,,removed\n"
+            "newborn-orphan,,,added\n"
+            "reowned,alice,bob,changed\n"
+        )
+
+    def test_change_column_separates_an_absent_package_from_an_unowned_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The column resolves the empty cell's two meanings, which is why it exists.
+
+        Both rows here render an identical `,,bob` tail: `absent` was not in v1
+        at all, `unowned` was in v1 with no maintainers. Only the fourth column
+        tells them apart, so this fails for any implementation that derives the
+        word from the rendered cell being empty instead of from `None`.
+        """
+        repo = FakeArchiveRepository(
+            {
+                "v1": snapshot_bytes({"unowned": {"users": [], "groups": []}}),
+                "v2": snapshot_bytes({"absent": {"users": ["bob"]}, "unowned": {"users": ["bob"]}}),
+            }
+        )
+
+        run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
+
+        assert capsys.readouterr().out == (
+            "package,v1,v2,change\nabsent,,bob,added\nunowned,,bob,changed\n"
+        )
+
     def test_no_differences_writes_header_only_and_returns_zero(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -172,7 +244,7 @@ class TestRunMaintainership:
         exit_code = run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
 
         assert exit_code == 0
-        assert capsys.readouterr().out == "package,v1,v2\n"
+        assert capsys.readouterr().out == "package,v1,v2,change\n"
 
     def test_output_flag_writes_utf8_file_without_carriage_returns(self, tmp_path: Path) -> None:
         """`-o FILE` writes UTF-8 bytes with bare \\n line endings.
@@ -198,7 +270,7 @@ class TestRunMaintainership:
 
         written = target.read_bytes()
         assert b"\r" not in written
-        assert written == "package,v1,v2\npkg-ä,alice,bob\n".encode()
+        assert written == "package,v1,v2,change\npkg-ä,alice,bob,changed\n".encode()
 
     def test_stdout_stays_open_after_writing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
