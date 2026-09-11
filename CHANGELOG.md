@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] - 2026-09-11
+
+### Added
+
+- `diff maintainership` subcommand: compares `_maintainership.json` between two SLFO git refs and
+  writes the differing packages as CSV to stdout, or to a file with `-o/--output`. Both refs are
+  read straight from the remote with `git archive --remote` — in memory, with no clone, checkout
+  or cache — so the report always reflects current server state rather than a possibly stale local
+  copy. Roughly 1 second per ref. Reads `slfo_git_url` and `maintainership_file` from config; it
+  takes no `-r/--release`, since it addresses git refs directly and has no product version to
+  resolve. A package's maintainer set is its `users` merged with its `groups`, group-sourced names
+  prefixed `group:`, compared as a set so reordering in the source file never shows up as a
+  difference. Differences are the expected result and always exit `0`. Commit SHAs are not
+  supported: `git archive --remote` serves only branch and tag names, and the ref-not-found error
+  says so. See [ADR 0003](docs/adr/0003-remote-ref-maintainership-diff.md).
+
 ## [0.6.2] - 2026-07-08
 
 ### Added

@@ -36,6 +36,9 @@ bugownerctl query package apache2 -r 16.1
 
 # List packages maintained by user
 bugownerctl query maintainer user1 -r 16.1
+
+# Compare maintainership between two SLFO git refs
+bugownerctl diff maintainership slfo-main slfo-1.3
 ```
 
 ## Commands
@@ -436,6 +439,90 @@ Packages (5):
   - package2
   - package3
 ```
+
+---
+
+### `bugownerctl diff maintainership`
+
+Report how package maintainership differs between two SLFO git refs, as CSV.
+
+The two refs are read **straight from the remote**, in memory — nothing is cloned, checked out or
+cached, so the answer always reflects the current server state. Roughly 1 second per ref.
+
+**Usage:**
+```bash
+bugownerctl diff maintainership <ref_a> <ref_b> [-o <file>] [-c <config>]
+```
+
+**Arguments:**
+- `ref_a` - Branch or tag name to read first
+- `ref_b` - Branch or tag name to compare against
+
+> **Commit SHAs are not supported.** `git archive --remote` serves only branch and tag names. A
+> SHA is rejected by the remote as an unknown ref — you get an error and exit `64`, with a hint
+> saying so, not an empty report. Use `slfo-1.3`, not `abcdef1`.
+
+**Options:**
+- `-o, --output` - Write the CSV to this file (default: stdout)
+- `-c, --config` - Path to config file (searches standard locations when unset)
+
+There is **no `-r/--release`** here: the command addresses two git refs directly and has no product
+version to resolve.
+
+**Examples:**
+```bash
+# Compare the development branch against a released one
+bugownerctl diff maintainership slfo-main slfo-1.3
+
+# Write the report to a file for a spreadsheet
+bugownerctl diff maintainership slfo-main slfo-1.3 -o divergence.csv
+```
+
+**Exit codes:**
+- `0` - Comparison completed (differences are the expected result, not an error)
+- `1` - Malformed maintainership document at a ref, or any other `git archive` failure —
+  SSH authentication, unreachable host, unrecognised server error
+- `64` - Unknown or malformed ref, file absent at a ref, or a config that is missing or lacks
+  `slfo_git_url`
+- `124` - The `git archive` call exceeded its 60 s timeout
+- `127` - `git` not found in PATH
+
+**Config keys used:**
+- `slfo_git_url` - the remote to read from (required)
+- `maintainership_file` - the file to compare (default: `_maintainership.json`)
+
+**Comparison semantics:**
+
+A package's maintainer set is its `users` entries merged with its `groups` entries, with
+group-sourced names prefixed `group:`. Comparison is set-based, so reordering inside the JSON
+never shows up as a difference. A row is emitted only when the two maintainer sets differ, or when
+the package exists in exactly one ref. The top-level `project` key is not compared.
+
+> The `group:` prefix records **which JSON list a name came from**, not whether it is really a
+> group. Some group names are listed under `users` in SLFO and so render untagged — a data issue
+> upstream, faithfully reported here.
+
+**Output:**
+
+CSV with `\n` line endings. A file written with `-o` is always UTF-8; output on stdout uses the
+locale encoding. The header is `package` followed by the two refs exactly as typed.
+Cells hold the maintainer names sorted alphabetically and joined by a space; an **empty cell** means
+either that the package is absent from that ref, or that it is present with no maintainers at all.
+Rows are sorted by package name.
+
+```csv
+package,slfo-main,slfo-1.3
+pkg-a,group:team-one,group:team-two
+pkg-b,group:team-two,alice
+pkg-c,team-one,bob
+pkg-d,group:team-one,carol
+```
+
+**Requirements:** every run needs network access and working credentials for `slfo_git_url` — an
+SSH key, for the default `gitea@src.suse.de` remote. There is no offline mode.
+
+See [ADR 0003](docs/adr/0003-remote-ref-maintainership-diff.md) for why the file is fetched this
+way.
 
 ---
 
