@@ -7,6 +7,11 @@ top-level `project` key, duplicate names collapsing, two packages keeping their
 maintainers separate, and the warning emitted for a package with no
 maintainers, whether its lists are empty or null.
 
+Ambiguity warnings cover the three name shapes a maintainer cell cannot
+represent — whitespace-bearing, empty, and a user name already starting with
+`group:` — their precedence, their once-per-name-per-ref deduplication, and the
+ordinary names and ordinary groups that must stay silent.
+
 Untrusted-payload rejection covers every narrowing branch: undecodable bytes,
 malformed JSON, an over-long integer literal, a non-object document, a missing
 or non-object `packages`, a non-object package entry, a non-list, non-null
@@ -22,6 +27,7 @@ sorting by package name, set semantics over member order, and input immutability
 """
 
 import dataclasses
+import json
 import logging
 from pathlib import Path
 
@@ -188,6 +194,334 @@ class TestParseTaggedSnapshot:
             parse_tagged_snapshot(payload, ref)
 
         assert [record.getMessage() for record in caplog.records] == [expected]
+
+
+# ---------------------------------------------------------------------------
+# parse_tagged_snapshot — names that render ambiguously in a maintainer cell
+
+
+def _document(packages: dict[str, dict[str, list[str]]]) -> bytes:
+    """Encode a maintainership document carrying the given package entries.
+
+    Built rather than written as a byte literal because these tests carry names
+    holding tabs, newlines and a no-break space, which a literal would have to
+    escape twice and would make unreadable.
+
+    Args:
+        packages: Mapping of package name to its raw 'users'/'groups' lists.
+
+    Returns:
+        The UTF-8 encoded JSON document.
+    """
+    return json.dumps({"project": "SLFO:1.3", "packages": packages}).encode()
+
+
+class TestParseTaggedSnapshotAmbiguousNames:
+    """Tests for the warnings on maintainer names that a CSV cell cannot represent.
+
+    `commands/diff.py` renders a maintainer set into one cell by joining the
+    names with a space, so a name holding whitespace, an empty name and a user
+    name already starting with 'group:' all produce a cell the reader cannot
+    decode back. None of them is an error: the parse still succeeds and the
+    snapshot is unchanged, the operator is only told the cell is untrustworthy.
+    """
+
+    @pytest.mark.parametrize(
+        "name",
+        ["ali ce", "ali\tce", "ali\nce", "ali\u00a0ce"],
+        ids=["space", "tab", "newline", "no_break_space"],
+    )
+    def test_whitespace_in_a_user_name_is_warned(
+        self, name: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should warn for any whitespace in a name, not just a literal space.
+
+        The cell joins names with a space, but a tab or a newline breaks the CSV
+        reader just as badly, and a no-break space is invisible to the operator
+        reading the cell. The tab, newline and no-break space cases fail against
+        a check written as `" " in name`.
+        """
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(_document({"vim": {"users": [name]}}), "slfo-1.3")
+
+        assert result == {"vim": frozenset({name})}
+        assert [record.getMessage() for record in caplog.records] == [
+            f"Maintainer name {name!r} at ref 'slfo-1.3' renders ambiguously: it holds "
+            f"whitespace, and maintainer cells join names with a space "
+            f"(first seen in package 'vim')"
+        ]
+
+    def test_an_empty_user_name_is_warned(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Should warn for an empty user name, which contributes an invisible cell token."""
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(_document({"vim": {"users": ["", "alice"]}}), "slfo-1.3")
+
+        assert result == {"vim": frozenset({"", "alice"})}
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name '' at ref 'slfo-1.3' renders ambiguously: it comes from an "
+            "empty name, so it identifies no maintainer (first seen in package 'vim')"
+        ]
+
+    def test_an_empty_group_name_is_warned(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Should warn for an empty group name, whose tagged form 'group:' is not empty.
+
+        This is what forbids testing emptiness against the tagged string: after
+        prefixing, an empty group name is the six-character 'group:' and an
+        emptiness check applied there would let it through silently.
+        """
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(_document({"vim": {"groups": [""]}}), "slfo-1.3")
+
+        assert result == {"vim": frozenset({"group:"})}
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name 'group:' at ref 'slfo-1.3' renders ambiguously: it comes from an "
+            "empty name, so it identifies no maintainer (first seen in package 'vim')"
+        ]
+
+    def test_a_user_named_like_a_tagged_group_is_warned_and_collapses_into_it(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should warn once when a user 'group:x' and a real group 'x' tag to the same string.
+
+        This is the concrete harm: the two are byte-identical after tagging, so
+        they collapse into one set member and neither the diff nor the CSV
+        reader can tell the user from the group. The single record also pins
+        that the group does not warn a second time under the same tagged name.
+        """
+        payload = _document({"vim": {"users": ["group:x"], "groups": ["x"]}})
+
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(payload, "slfo-1.3")
+
+        assert result == {"vim": frozenset({"group:x"})}
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name 'group:x' at ref 'slfo-1.3' renders ambiguously: a user name "
+            "starting with 'group:' renders identically to a group "
+            "(first seen in package 'vim')"
+        ]
+
+    def test_an_unambiguous_name_does_not_reserve_its_key_against_a_later_ambiguous_one(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should key the seen-set on names that warned, never on every name encountered.
+
+        A group 'x' and a user 'group:x' tag to the same string, but only the
+        user is ambiguous. If the seen-set recorded every tagged name rather
+        than only the warned ones, the harmless group in the first package would
+        occupy the 'group:x' slot and silence the real finding in the second.
+
+        Verified by mutation: hoisting `warned_names.add(tagged)` out of the
+        `if reason is not None:` block passes every other test in this file and
+        fails only this one.
+        """
+        payload = _document({"a-first": {"groups": ["x"]}, "b-second": {"users": ["group:x"]}})
+
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(payload, "slfo-1.3")
+
+        assert result == {"a-first": frozenset({"group:x"}), "b-second": frozenset({"group:x"})}
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name 'group:x' at ref 'slfo-1.3' renders ambiguously: a user name "
+            "starting with 'group:' renders identically to a group "
+            "(first seen in package 'b-second')"
+        ]
+
+    def test_a_group_literally_named_with_the_prefix_is_not_warned(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should keep the 'group:' reason to users-sourced names, even for a group named 'group:x'.
+
+        Such a group tags to 'group:group:x' and collides only with a *user*
+        named 'group:group:x' — which the users-sourced rule already reports, so
+        the collision is covered from the side that can act on it. Verified by
+        mutation: dropping the `from_users` guard makes this the only failing
+        test.
+        """
+        payload = _document({"vim": {"groups": ["group:x"]}})
+
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(payload, "slfo-1.3")
+
+        assert result == {"vim": frozenset({"group:group:x"})}
+        assert [record.getMessage() for record in caplog.records] == []
+
+    @pytest.mark.parametrize(
+        ("entry", "reason"),
+        [
+            (
+                {"users": ["group:a b"]},
+                "a user name starting with 'group:' renders identically to a group",
+            ),
+            (
+                {"groups": ["a b"]},
+                "it holds whitespace, and maintainer cells join names with a space",
+            ),
+        ],
+        ids=["user_source_reports_the_collapse", "group_source_reports_the_whitespace"],
+    )
+    def test_the_collapse_reason_wins_over_whitespace(
+        self, entry: dict[str, list[str]], reason: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should report the 'group:' collapse, not the whitespace, for a doubly ambiguous name.
+
+        Both cases tag to the same 'group:a b'. From the users list the name is
+        ambiguous twice over, and the collapse is the reason that must win: it
+        is the only class that loses data, silently merging two distinct
+        maintainers into one set member, whereas whitespace only makes the cell
+        unreadable — and the whitespace is visible anyway in the !r-quoted name
+        this very message carries. From the groups list the collapse rule does
+        not apply, so the same tagged name is reported for its whitespace; that
+        case is what stops the reasons being swapped wholesale rather than
+        reordered.
+        """
+        with caplog.at_level(logging.WARNING):
+            parse_tagged_snapshot(_document({"vim": entry}), "slfo-1.3")
+
+        assert [record.getMessage() for record in caplog.records] == [
+            f"Maintainer name 'group:a b' at ref 'slfo-1.3' renders ambiguously: {reason} "
+            f"(first seen in package 'vim')"
+        ]
+
+    def test_a_repeated_ambiguous_name_warns_once_naming_the_first_package(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should warn once per name per ref, naming the package it was first seen in.
+
+        A single maintainer typically owns hundreds of packages, so warning per
+        occurrence would emit hundreds of identical lines for one bad name.
+        """
+        payload = _document(
+            {
+                "vim": {"users": ["ali ce"]},
+                "emacs": {"users": ["ali ce"]},
+                "nano": {"users": ["ali ce"]},
+            }
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(payload, "slfo-1.3")
+
+        assert result == {
+            "vim": frozenset({"ali ce"}),
+            "emacs": frozenset({"ali ce"}),
+            "nano": frozenset({"ali ce"}),
+        }
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name 'ali ce' at ref 'slfo-1.3' renders ambiguously: it holds "
+            "whitespace, and maintainer cells join names with a space "
+            "(first seen in package 'vim')"
+        ]
+
+    def test_dedup_does_not_carry_across_calls(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Should warn once per ref, so the same bad name at both refs of a diff is reported twice.
+
+        One call parses one ref. State kept across calls — a module-level or
+        default-argument seen-set — would silence the second ref entirely.
+        """
+        payload = _document({"vim": {"users": ["ali ce"]}})
+
+        with caplog.at_level(logging.WARNING):
+            parse_tagged_snapshot(payload, "slfo-1.2")
+            parse_tagged_snapshot(payload, "slfo-1.3")
+
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name 'ali ce' at ref 'slfo-1.2' renders ambiguously: it holds "
+            "whitespace, and maintainer cells join names with a space "
+            "(first seen in package 'vim')",
+            "Maintainer name 'ali ce' at ref 'slfo-1.3' renders ambiguously: it holds "
+            "whitespace, and maintainer cells join names with a space "
+            "(first seen in package 'vim')",
+        ]
+
+    @pytest.mark.parametrize("ref", ["slfo-1.2", "slfo-1.3"], ids=["first_ref", "second_ref"])
+    def test_the_ambiguity_warning_names_the_ref(
+        self, ref: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should name the ref the payload was read from, as the no-maintainers warning does.
+
+        Two refs are pinned because one would pass just as well against a ref
+        hardcoded into the message.
+        """
+        with caplog.at_level(logging.WARNING):
+            parse_tagged_snapshot(_document({"vim": {"users": ["ali ce"]}}), ref)
+
+        assert [record.getMessage() for record in caplog.records] == [
+            f"Maintainer name 'ali ce' at ref {ref!r} renders ambiguously: it holds "
+            f"whitespace, and maintainer cells join names with a space "
+            f"(first seen in package 'vim')"
+        ]
+
+    def test_ordinary_names_are_never_warned_about(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Should stay silent for a document whose names are all unambiguous.
+
+        Ordinary groups are the load-bearing part: every group's tagged name
+        starts with 'group:' by construction, so a rule reading the tagged name
+        instead of the raw one would warn about all of them. 'group-editors' and
+        'grouper' are here because they are the near misses -- a prefix test
+        written against 'group' rather than 'group:' warns about both.
+        """
+        payload = _document(
+            {
+                "vim": {"users": ["alice", "bob"], "groups": ["editors"]},
+                "emacs": {"users": ["carol"], "groups": ["group-editors", "grouper"]},
+            }
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(payload, "slfo-1.3")
+
+        assert result == {
+            "vim": frozenset({"alice", "bob", "group:editors"}),
+            "emacs": frozenset({"carol", "group:group-editors", "group:grouper"}),
+        }
+        assert [record.getMessage() for record in caplog.records] == []
+
+    def test_a_sole_empty_maintainer_is_ambiguous_not_unmaintained(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should warn about the empty name only, not about the package having no maintainers.
+
+        The set holds one member, the empty string, so the package is not
+        unmaintained even though its cell renders as blank exactly like an
+        unmaintained one. Emitting both warnings would tell the operator two
+        contradictory things about the same package.
+        """
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(_document({"vim": {"users": [""]}}), "slfo-1.3")
+
+        assert result == {"vim": frozenset({""})}
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name '' at ref 'slfo-1.3' renders ambiguously: it comes from an "
+            "empty name, so it identifies no maintainer (first seen in package 'vim')"
+        ]
+
+    def test_the_snapshot_is_unchanged_by_every_ambiguity_class_at_once(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should return exactly the sets it returned before the warnings existed.
+
+        The warnings are diagnostics: no name is dropped, renamed or escaped on
+        the way into the snapshot, and the ambiguous members survive verbatim so
+        the diff still compares them.
+        """
+        payload = _document({"vim": {"users": ["", "a b", "group:x"], "groups": ["x", ""]}})
+
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(payload, "slfo-1.3")
+
+        assert result == {"vim": frozenset({"", "a b", "group:x", "group:"})}
+        assert [record.getMessage() for record in caplog.records] == [
+            "Maintainer name '' at ref 'slfo-1.3' renders ambiguously: it comes from an "
+            "empty name, so it identifies no maintainer (first seen in package 'vim')",
+            "Maintainer name 'a b' at ref 'slfo-1.3' renders ambiguously: it holds "
+            "whitespace, and maintainer cells join names with a space "
+            "(first seen in package 'vim')",
+            "Maintainer name 'group:x' at ref 'slfo-1.3' renders ambiguously: a user name "
+            "starting with 'group:' renders identically to a group "
+            "(first seen in package 'vim')",
+            "Maintainer name 'group:' at ref 'slfo-1.3' renders ambiguously: it comes from an "
+            "empty name, so it identifies no maintainer (first seen in package 'vim')",
+        ]
 
 
 # ---------------------------------------------------------------------------
