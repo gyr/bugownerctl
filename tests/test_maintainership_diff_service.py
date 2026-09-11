@@ -2,14 +2,15 @@
 
 Parsing (`parse_tagged_snapshot`) covers the `group:` tagging of group-sourced
 names, a user and a like-named group staying distinct, absent `users`/`groups`
-keys, the ignored top-level `project` key, duplicate names collapsing, two
-packages keeping their maintainers separate, and the warning emitted for a
-package with no maintainers.
+keys, null `users`/`groups` parsing exactly as an absent key does, the ignored
+top-level `project` key, duplicate names collapsing, two packages keeping their
+maintainers separate, and the warning emitted for a package with no
+maintainers, whether its lists are empty or null.
 
 Untrusted-payload rejection covers every narrowing branch: undecodable bytes,
 malformed JSON, an over-long integer literal, a non-object document, a missing
-or non-object `packages`, a non-object package entry, a non-list
-`users`/`groups`, and a non-string name.
+or non-object `packages`, a non-object package entry, a non-list, non-null
+`users`/`groups`, and a non-string name (null included) inside those lists.
 
 Diffing (`diff_snapshots`) covers one-sided packages, differing sets, identical
 sets emitting nothing, the absent-versus-present-but-unmaintained distinction,
@@ -75,14 +76,57 @@ class TestParseTaggedSnapshot:
             (b'{"packages": {"vim": {"users": ["alice"]}}}', frozenset({"alice"})),
             (b'{"packages": {"vim": {"groups": ["editors"]}}}', frozenset({"group:editors"})),
             (b'{"packages": {"vim": {}}}', frozenset()),
+            (
+                b'{"packages": {"vim": {"users": null, "groups": ["editors"]}}}',
+                frozenset({"group:editors"}),
+            ),
+            (
+                b'{"packages": {"vim": {"users": ["alice"], "groups": null}}}',
+                frozenset({"alice"}),
+            ),
+            (b'{"packages": {"vim": {"users": null, "groups": null}}}', frozenset()),
         ],
-        ids=["groups_key_absent", "users_key_absent", "both_keys_absent"],
+        ids=[
+            "groups_key_absent",
+            "users_key_absent",
+            "both_keys_absent",
+            "users_null",
+            "groups_null",
+            "both_null",
+        ],
     )
-    def test_absent_name_list_contributes_nothing(
+    def test_absent_or_null_name_list_contributes_nothing(
         self, payload: bytes, expected: frozenset[str]
     ) -> None:
-        """Should treat a missing 'users' or 'groups' key as an empty list."""
+        """Should treat a missing or null 'users'/'groups' key as an empty list.
+
+        Real SLFO branches write null where an empty list is meant. Measured on
+        slfo-1.2 on 2026-09-11: 1538 packages carry "users": null and 1344 carry
+        "groups": null, which made the diff command unusable against that ref.
+        """
         assert parse_tagged_snapshot(payload) == {"vim": expected}
+
+    def test_both_name_lists_null_is_logged_as_a_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should warn naming the package when both name lists are null, as for empty lists.
+
+        Null is normalized to the empty list, so it reaches the same
+        no-maintainers warning as `{"users": [], "groups": []}`; there is no
+        separate null warning.
+        """
+        payload = b'{"packages": {"abseil-cpp": {"users": null, "groups": null}}}'
+
+        with caplog.at_level(logging.WARNING):
+            result = parse_tagged_snapshot(payload)
+
+        assert result == {"abseil-cpp": frozenset()}
+        # The whole record list, not a substring: a substring assertion still
+        # passes when a second, null-specific warning is emitted alongside the
+        # shared one, which is exactly what this test exists to forbid.
+        assert [record.getMessage() for record in caplog.records] == [
+            "Package 'abseil-cpp' has no maintainers in this snapshot"
+        ]
 
     def test_top_level_project_key_is_ignored(self) -> None:
         """Should ignore the top-level 'project' key rather than surfacing it as a package."""
@@ -204,11 +248,21 @@ class TestParseTaggedSnapshotRejections:
         ("payload", "key", "type_name"),
         [
             (b'{"packages": {"vim": {"users": "alice"}}}', "users", "str"),
-            (b'{"packages": {"vim": {"users": null}}}', "users", "NoneType"),
+            # Falsy but not null: pins that the normalization tests `is None`
+            # rather than truthiness, so these keep raising rather than being
+            # silently read as an empty list.
+            (b'{"packages": {"vim": {"users": ""}}}', "users", "str"),
+            (b'{"packages": {"vim": {"groups": false}}}', "groups", "bool"),
             (b'{"packages": {"vim": {"groups": "editors"}}}', "groups", "str"),
             (b'{"packages": {"vim": {"groups": {}}}}', "groups", "dict"),
         ],
-        ids=["users_string", "users_null", "groups_string", "groups_object"],
+        ids=[
+            "users_string",
+            "users_empty_string",
+            "groups_false",
+            "groups_string",
+            "groups_object",
+        ],
     )
     def test_non_list_name_container_raises_runtime_error(
         self, payload: bytes, key: str, type_name: str

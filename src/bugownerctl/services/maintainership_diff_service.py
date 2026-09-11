@@ -13,8 +13,9 @@ def parse_tagged_snapshot(payload: bytes) -> dict[str, frozenset[str]]:
 
     The maintainer set of a package is its `users` entries plus its `groups`
     entries, each group name prefixed with `group:` so that a user and a group
-    sharing a name stay distinguishable. A missing `users` or `groups` key
-    contributes nothing. The top-level `project` key is ignored.
+    sharing a name stay distinguishable. A missing `users` or `groups` key, or
+    one whose value is JSON null, contributes nothing. The top-level `project`
+    key is ignored.
 
     The payload comes from a remote git ref and is untrusted, so every value
     read from the parsed document is narrowed before use.
@@ -78,7 +79,13 @@ def parse_tagged_snapshot(payload: bytes) -> dict[str, frozenset[str]]:
 
         maintainers: set[str] = set()
         for key, prefix in (("users", ""), ("groups", "group:")):
-            names: object = entry.get(key, [])
+            # Real SLFO branches such as slfo-1.2 write JSON null where an empty
+            # list is meant, so null and an absent key normalize alike. `is None`,
+            # not truthiness: a falsy "" / 0 / {} is still the wrong shape and must
+            # raise.
+            names: object = entry.get(key)
+            if names is None:
+                names = []
             if not isinstance(names, list):
                 raise RuntimeError(
                     f"'{key}' of package {package!r} must be a list, got {type(names).__name__}"
