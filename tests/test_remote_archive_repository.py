@@ -1,6 +1,6 @@
-"""Tests for the remote archive repository's tar extraction.
+"""Tests for the remote archive repository.
 
-Tests cover:
+Tar extraction (`_extract_single_regular_file`) covers:
   - Happy path: one regular member matching the expected path.
   - Member-count violations (zero members, more than one member).
   - Non-regular member types (directory, symlink, hardlink, device, fifo).
@@ -8,16 +8,23 @@ Tests cover:
   - Member size over the cap, rejected from the header.
   - Compressed archives, which git archive never emits.
   - Unreadable archives and a missing extraction stream.
+
+Ref validation (`_validate_ref`) covers accepted refs plus each rejection
+branch: empty, leading '-', '..' traversal, and out-of-allowlist characters.
 """
 
 import gzip
 import io
+import re
 import tarfile
 
 import pytest
 
 from bugownerctl.repositories import remote_archive_repository
-from bugownerctl.repositories.remote_archive_repository import _extract_single_regular_file
+from bugownerctl.repositories.remote_archive_repository import (
+    _extract_single_regular_file,
+    _validate_ref,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -139,3 +146,64 @@ class TestExtractSingleRegularFile:
 
         with pytest.raises(RuntimeError, match="'_maintainership.json' has no readable content"):
             _extract_single_regular_file(tar_bytes, "_maintainership.json")
+
+
+# ---------------------------------------------------------------------------
+# _validate_ref
+
+
+class TestValidateRef:
+    """Tests for _validate_ref()."""
+
+    @pytest.mark.parametrize("ref", ["slfo-1.3", "refs/heads/slfo-main"], ids=["tag", "full_ref"])
+    def test_accepts_valid_ref(self, ref: str) -> None:
+        """Should accept a plain tag name and a fully qualified ref path."""
+        _validate_ref(ref)
+
+    @pytest.mark.parametrize("ref", ["", "   ", "\t\n"], ids=["empty", "spaces", "whitespace"])
+    def test_rejects_empty_ref(self, ref: str) -> None:
+        """Should raise ValueError for an empty or whitespace-only ref."""
+        with pytest.raises(ValueError, match="must not be empty"):
+            _validate_ref(ref)
+
+    @pytest.mark.parametrize(
+        "ref", ["--upload-pack=touch /tmp/pwned", "-o"], ids=["upload_pack", "short_option"]
+    )
+    def test_rejects_ref_starting_with_dash(self, ref: str) -> None:
+        """Should raise ValueError naming the ref when it could be read as a git option."""
+        with pytest.raises(ValueError, match=rf"cannot start with '-': {re.escape(ref)}"):
+            _validate_ref(ref)
+
+    @pytest.mark.parametrize(
+        "ref", ["../../etc/passwd", "refs/heads/..", "a..b"], ids=["traversal", "trailing", "range"]
+    )
+    def test_rejects_ref_containing_double_dot(self, ref: str) -> None:
+        """Should raise ValueError naming the ref when it contains a '..' path traversal."""
+        with pytest.raises(ValueError, match=rf"Path traversal.*{re.escape(ref)}"):
+            _validate_ref(ref)
+
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            "slfo;rm -rf /",
+            "slfo 1.3",
+            "$(id)",
+            "slfo\nmain",
+            "main\n",
+            "refs/heads/main~1",
+            "sl'fo",
+        ],
+        ids=[
+            "semicolon",
+            "space",
+            "substitution",
+            "interior_newline",
+            "trailing_newline",
+            "tilde",
+            "quote",
+        ],
+    )
+    def test_rejects_ref_with_characters_outside_the_allowlist(self, ref: str) -> None:
+        """Should raise ValueError naming the ref when it holds characters outside [\\w./-]."""
+        with pytest.raises(ValueError, match="Invalid git reference format"):
+            _validate_ref(ref)
