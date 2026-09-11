@@ -1,17 +1,46 @@
 """Remote archive repository.
 
-Extracts a single file from the tar stream produced by
-``git archive --remote=<url> <ref> -- <path>``, entirely in memory, and
-validates the git ref before it can reach that command line.
+Fetches a single file from a remote git repository with
+``git archive --remote=<url> <ref> -- <path>`` and extracts it from the
+resulting tar stream entirely in memory: nothing is cloned and nothing is
+written to disk.
 """
 
 import io
+import os
 import re
+import shutil
+import subprocess
 import tarfile
+from typing import Protocol
+
+from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 
 # The measured payload (`_maintainership.json` on SLFO) is ~307 KB; the cap
 # leaves ~50x headroom while bounding what a remote can make this process read.
 MAX_TAR_MEMBER_BYTES = 16 * 1024 * 1024
+
+# Cap on the whole tar stream. This does NOT bound what
+# subprocess.run(capture_output=True) buffers: by the time we can measure
+# proc.stdout, the pipe has already been drained into memory in full. What it
+# bounds is what `tarfile` is asked to parse, which is the amplification stage:
+# tar's block size is a fixed 512 bytes and an empty member costs one header
+# block, so a 32 MiB tar can carry 65,536 members and getmembers() materialises
+# a TarInfo object for every one of them.
+MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+
+# Transports this feature can legitimately need. Pinning GIT_ALLOW_PROTOCOL is
+# the only lever that actually holds: it overrides the operator's gitconfig, an
+# inherited GIT_ALLOW_PROTOCOL, and an inherited GIT_CONFIG_COUNT alike, whereas
+# `-c protocol.ext.allow=never` loses to the environment variable. It is also
+# the only defence against `url.<x>.insteadOf`, which rewrites a benign-looking
+# https:// URL into ext:: *inside* git, after any Python-side check on repo_url
+# has already passed. Without this, an attacker who can plant a config file in
+# the working directory (see utils/config.py's CWD-first search order) gets
+# command execution on a host whose gitconfig re-enables the ext transport.
+_ALLOWED_GIT_PROTOCOLS = "ssh:https:http:git:file"
+
+_DEFAULT_TIMEOUT = 60  # seconds
 
 
 def _validate_ref(ref: str) -> None:
@@ -101,3 +130,103 @@ def _extract_single_regular_file(tar_bytes: bytes, expected_path: str) -> bytes:
         raise RuntimeError(
             f"git archive output for {expected_path!r} is not a readable tar archive: {exc}"
         ) from exc
+
+
+class RemoteArchiveRepository(Protocol):
+    """Fetch a single file from a remote git repository without cloning it."""
+
+    def fetch_file(self, repo_url: str, ref: str, file_path: str) -> bytes:
+        """Return the content of ``file_path`` at ``ref`` in ``repo_url``.
+
+        Args:
+            repo_url: Git remote URL, as accepted by ``git archive --remote``.
+            ref: Branch or tag name to read the file from.
+            file_path: Name of a file in the repository root. It must not
+                contain ``/``: ``git archive`` emits a directory member for
+                every path component, and this extraction accepts exactly one
+                member. Note that git treats this as a pathspec, so a value
+                containing glob metacharacters can match several files and will
+                be rejected for the same reason.
+
+        Returns:
+            The file's content as bytes.
+
+        Raises:
+            ValueError: If ``ref`` or ``file_path`` is malformed, if the remote
+                does not serve ``ref``, or if ``file_path`` does not exist at
+                ``ref``. All four are operator input, so they share exit 64.
+            MissingBinaryError: If ``git`` is not in PATH.
+            NetworkTimeoutError: If the ``git archive`` subprocess exceeds the
+                timeout.
+            RuntimeError: If ``git archive`` exits non-zero for any other
+                reason, or its output is not a single-file tar archive.
+        """
+        ...
+
+
+class RemoteArchiveRepositoryImpl:
+    """Adapter backed by ``git archive --remote``."""
+
+    def fetch_file(self, repo_url: str, ref: str, file_path: str) -> bytes:
+        _validate_ref(ref)
+        if "/" in file_path:
+            raise ValueError(
+                f"file_path must name a file in the repository root, got {file_path!r}: "
+                "git archive emits a directory member for every path component, "
+                "and this extraction accepts exactly one member."
+            )
+
+        git_bin = shutil.which("git")
+        if git_bin is None:
+            raise MissingBinaryError("git")
+        # stdin=DEVNULL plus GIT_TERMINAL_PROMPT=0 make an unauthenticated
+        # remote fail fast instead of blocking on a credential prompt. We do
+        # NOT force `ssh -o BatchMode=yes`: BatchMode also refuses passphrase
+        # prompts, which breaks passphrase-protected keys that are not already
+        # loaded into an ssh-agent — a working setup we must not penalise.
+        try:
+            proc = subprocess.run(
+                [git_bin, "archive", f"--remote={repo_url}", ref, "--", file_path],
+                capture_output=True,
+                check=False,
+                timeout=_DEFAULT_TIMEOUT,
+                stdin=subprocess.DEVNULL,
+                env={
+                    **os.environ,
+                    "GIT_TERMINAL_PROMPT": "0",
+                    "GIT_ALLOW_PROTOCOL": _ALLOWED_GIT_PROTOCOLS,
+                },
+            )
+        except FileNotFoundError as exc:
+            raise MissingBinaryError("git") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise NetworkTimeoutError(
+                f"git archive --remote={repo_url!r} {ref!r}", _DEFAULT_TIMEOUT
+            ) from exc
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode(errors="replace") if proc.stderr else ""
+            # These two strings come from the *server*, and git's messages are
+            # gettext-translated, so matching them is best-effort: a non-English
+            # server falls through to the generic branch below and the operator
+            # still sees the raw stderr. Forcing LC_ALL=C would not help, since
+            # the locale that matters is the remote's, not ours.
+            if "remote: fatal: no such ref:" in stderr:
+                raise ValueError(
+                    f"Remote {repo_url} does not serve ref {ref!r}. Check the spelling; "
+                    "note also that git archive --remote serves only branch and tag "
+                    "names, never a commit SHA."
+                )
+            if "did not match any files" in stderr:
+                raise ValueError(f"File {file_path!r} does not exist at ref {ref!r} in {repo_url}")
+            raise RuntimeError(
+                f"git archive --remote={repo_url} {ref} failed (exit {proc.returncode}):\n{stderr}"
+            )
+
+        if len(proc.stdout) > MAX_ARCHIVE_BYTES:
+            raise RuntimeError(
+                f"git archive output for {file_path!r} is {len(proc.stdout)} bytes, "
+                f"which exceeds the {MAX_ARCHIVE_BYTES} byte cap"
+            )
+
+        return _extract_single_regular_file(proc.stdout, file_path)
