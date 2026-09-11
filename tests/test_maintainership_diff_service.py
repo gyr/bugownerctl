@@ -48,13 +48,17 @@ class TestParseTaggedSnapshot:
             b' "packages": {"vim": {"users": ["alice"], "groups": ["editors"]}}}'
         )
 
-        assert parse_tagged_snapshot(payload) == {"vim": frozenset({"alice", "group:editors"})}
+        assert parse_tagged_snapshot(payload, "slfo-test") == {
+            "vim": frozenset({"alice", "group:editors"})
+        }
 
     def test_user_and_group_of_the_same_name_do_not_collide(self) -> None:
         """Should keep a user and a like-named group as two distinct maintainers."""
         payload = b'{"packages": {"vim": {"users": ["editors"], "groups": ["editors"]}}}'
 
-        assert parse_tagged_snapshot(payload) == {"vim": frozenset({"editors", "group:editors"})}
+        assert parse_tagged_snapshot(payload, "slfo-test") == {
+            "vim": frozenset({"editors", "group:editors"})
+        }
 
     def test_each_package_keeps_its_own_maintainers(self) -> None:
         """Should not leak maintainers from one package into the next.
@@ -65,7 +69,7 @@ class TestParseTaggedSnapshot:
         """
         payload = b'{"packages": {"vim": {"users": ["alice"]}, "emacs": {"groups": ["editors"]}}}'
 
-        assert parse_tagged_snapshot(payload) == {
+        assert parse_tagged_snapshot(payload, "slfo-test") == {
             "vim": frozenset({"alice"}),
             "emacs": frozenset({"group:editors"}),
         }
@@ -104,7 +108,7 @@ class TestParseTaggedSnapshot:
         slfo-1.2 on 2026-09-11: 1538 packages carry "users": null and 1344 carry
         "groups": null, which made the diff command unusable against that ref.
         """
-        assert parse_tagged_snapshot(payload) == {"vim": expected}
+        assert parse_tagged_snapshot(payload, "slfo-test") == {"vim": expected}
 
     def test_both_name_lists_null_is_logged_as_a_warning(
         self, caplog: pytest.LogCaptureFixture
@@ -118,31 +122,33 @@ class TestParseTaggedSnapshot:
         payload = b'{"packages": {"abseil-cpp": {"users": null, "groups": null}}}'
 
         with caplog.at_level(logging.WARNING):
-            result = parse_tagged_snapshot(payload)
+            result = parse_tagged_snapshot(payload, "slfo-1.3")
 
         assert result == {"abseil-cpp": frozenset()}
         # The whole record list, not a substring: a substring assertion still
         # passes when a second, null-specific warning is emitted alongside the
         # shared one, which is exactly what this test exists to forbid.
         assert [record.getMessage() for record in caplog.records] == [
-            "Package 'abseil-cpp' has no maintainers in this snapshot"
+            "Package 'abseil-cpp' has no maintainers at ref 'slfo-1.3'"
         ]
 
     def test_top_level_project_key_is_ignored(self) -> None:
         """Should ignore the top-level 'project' key rather than surfacing it as a package."""
         payload = b'{"project": "SLFO:1.3", "packages": {"vim": {"users": ["alice"]}}}'
 
-        assert parse_tagged_snapshot(payload) == {"vim": frozenset({"alice"})}
+        assert parse_tagged_snapshot(payload, "slfo-test") == {"vim": frozenset({"alice"})}
 
     def test_empty_packages_object_yields_empty_snapshot(self) -> None:
         """Should return an empty snapshot for a document holding no packages."""
-        assert parse_tagged_snapshot(b'{"project": "SLFO:1.3", "packages": {}}') == {}
+        assert parse_tagged_snapshot(b'{"project": "SLFO:1.3", "packages": {}}', "slfo-test") == {}
 
     def test_duplicate_names_collapse_into_one_member(self) -> None:
         """Should collapse a repeated name into a single set member."""
         payload = b'{"packages": {"vim": {"users": ["alice", "alice"], "groups": ["e", "e"]}}}'
 
-        assert parse_tagged_snapshot(payload) == {"vim": frozenset({"alice", "group:e"})}
+        assert parse_tagged_snapshot(payload, "slfo-test") == {
+            "vim": frozenset({"alice", "group:e"})
+        }
 
     def test_empty_maintainer_set_is_logged_as_a_warning(
         self, caplog: pytest.LogCaptureFixture
@@ -151,10 +157,37 @@ class TestParseTaggedSnapshot:
         payload = b'{"packages": {"vim": {"users": [], "groups": []}}}'
 
         with caplog.at_level(logging.WARNING):
-            result = parse_tagged_snapshot(payload)
+            result = parse_tagged_snapshot(payload, "slfo-1.2")
 
         assert result == {"vim": frozenset()}
-        assert "vim" in caplog.text
+        assert [record.getMessage() for record in caplog.records] == [
+            "Package 'vim' has no maintainers at ref 'slfo-1.2'"
+        ]
+
+    @pytest.mark.parametrize(
+        ("ref", "expected"),
+        [
+            ("slfo-1.2", "Package 'abseil-cpp' has no maintainers at ref 'slfo-1.2'"),
+            ("slfo-1.3", "Package 'abseil-cpp' has no maintainers at ref 'slfo-1.3'"),
+        ],
+        ids=["first_ref", "second_ref"],
+    )
+    def test_the_no_maintainers_warning_names_the_ref(
+        self, ref: str, expected: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should name the ref the payload was read from in the no-maintainers warning.
+
+        One diff run parses two refs, so a warning saying only "this snapshot"
+        leaves the operator unable to tell which ref the unmaintained package
+        came from. Two refs are pinned because one would pass just as well
+        against a ref hardcoded into the message.
+        """
+        payload = b'{"packages": {"abseil-cpp": {"users": [], "groups": []}}}'
+
+        with caplog.at_level(logging.WARNING):
+            parse_tagged_snapshot(payload, ref)
+
+        assert [record.getMessage() for record in caplog.records] == [expected]
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +209,7 @@ class TestParseTaggedSnapshotRejections:
     def test_undecodable_payload_raises_runtime_error(self, payload: bytes, message: str) -> None:
         """Should raise RuntimeError when the payload is not decodable JSON."""
         with pytest.raises(RuntimeError, match=message):
-            parse_tagged_snapshot(payload)
+            parse_tagged_snapshot(payload, "slfo-test")
 
     @pytest.mark.parametrize(
         ("payload", "type_name"),
@@ -191,7 +224,7 @@ class TestParseTaggedSnapshotRejections:
     def test_non_object_document_raises_runtime_error(self, payload: bytes, type_name: str) -> None:
         """Should raise RuntimeError naming the type when the document is not an object."""
         with pytest.raises(RuntimeError, match=f"must be a JSON object, got {type_name}"):
-            parse_tagged_snapshot(payload)
+            parse_tagged_snapshot(payload, "slfo-test")
 
     def test_oversized_integer_literal_raises_runtime_error(self) -> None:
         """Should raise RuntimeError, not ValueError, for an over-long integer literal.
@@ -205,12 +238,12 @@ class TestParseTaggedSnapshotRejections:
         payload = b'{"packages": {"vim": {"users": [' + b"1" * 5000 + b"]}}}"
 
         with pytest.raises(RuntimeError, match="holds an unparseable value"):
-            parse_tagged_snapshot(payload)
+            parse_tagged_snapshot(payload, "slfo-test")
 
     def test_missing_packages_key_raises_runtime_error(self) -> None:
         """Should raise RuntimeError naming 'packages' when the key is absent."""
         with pytest.raises(RuntimeError, match="missing the 'packages' key"):
-            parse_tagged_snapshot(b'{"project": "SLFO:1.3"}')
+            parse_tagged_snapshot(b'{"project": "SLFO:1.3"}', "slfo-test")
 
     @pytest.mark.parametrize(
         ("payload", "type_name"),
@@ -226,7 +259,7 @@ class TestParseTaggedSnapshotRejections:
         with pytest.raises(
             RuntimeError, match=f"'packages' must be a JSON object, got {type_name}"
         ):
-            parse_tagged_snapshot(payload)
+            parse_tagged_snapshot(payload, "slfo-test")
 
     @pytest.mark.parametrize(
         ("payload", "type_name"),
@@ -242,7 +275,7 @@ class TestParseTaggedSnapshotRejections:
     ) -> None:
         """Should raise RuntimeError naming the package when its entry is not an object."""
         with pytest.raises(RuntimeError, match=f"Package 'vim'.*JSON object, got {type_name}"):
-            parse_tagged_snapshot(payload)
+            parse_tagged_snapshot(payload, "slfo-test")
 
     @pytest.mark.parametrize(
         ("payload", "key", "type_name"),
@@ -271,7 +304,7 @@ class TestParseTaggedSnapshotRejections:
         with pytest.raises(
             RuntimeError, match=f"'{key}' of package 'vim' must be a list, got {type_name}"
         ):
-            parse_tagged_snapshot(payload)
+            parse_tagged_snapshot(payload, "slfo-test")
 
     @pytest.mark.parametrize(
         ("payload", "key", "type_name"),
@@ -290,7 +323,7 @@ class TestParseTaggedSnapshotRejections:
         with pytest.raises(
             RuntimeError, match=f"'{key}' of package 'vim' must hold strings, got {type_name}"
         ):
-            parse_tagged_snapshot(payload)
+            parse_tagged_snapshot(payload, "slfo-test")
 
 
 # ---------------------------------------------------------------------------
@@ -390,10 +423,10 @@ class TestDiffSnapshots:
     def test_member_order_in_the_source_json_never_produces_a_row(self) -> None:
         """Should compare as sets, so reordering names in the source JSON changes nothing."""
         a = parse_tagged_snapshot(
-            b'{"packages": {"vim": {"users": ["alice", "bob"], "groups": ["x", "y"]}}}'
+            b'{"packages": {"vim": {"users": ["alice", "bob"], "groups": ["x", "y"]}}}', "slfo-test"
         )
         b = parse_tagged_snapshot(
-            b'{"packages": {"vim": {"users": ["bob", "alice"], "groups": ["y", "x"]}}}'
+            b'{"packages": {"vim": {"users": ["bob", "alice"], "groups": ["y", "x"]}}}', "slfo-test"
         )
 
         assert diff_snapshots(a, b) == []
@@ -434,4 +467,6 @@ class TestNormalizationDivergence:
         loaded = MaintainershipRepositoryImpl().load(file_path)
 
         assert loaded.packages["vim"] == ["alice", "editors"]
-        assert parse_tagged_snapshot(self.DOCUMENT)["vim"] == frozenset({"alice", "group:editors"})
+        tagged = parse_tagged_snapshot(self.DOCUMENT, "slfo-test")
+
+        assert tagged["vim"] == frozenset({"alice", "group:editors"})

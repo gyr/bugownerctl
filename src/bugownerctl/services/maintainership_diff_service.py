@@ -8,7 +8,7 @@ from ..domain.maintainership_diff import MaintainershipDiffRow
 logger = logging.getLogger(__name__)
 
 
-def parse_tagged_snapshot(payload: bytes) -> dict[str, frozenset[str]]:
+def parse_tagged_snapshot(payload: bytes, ref: str) -> dict[str, frozenset[str]]:
     """Parse a `_maintainership.json` payload into tagged maintainer sets.
 
     The maintainer set of a package is its `users` entries plus its `groups`
@@ -33,6 +33,8 @@ def parse_tagged_snapshot(payload: bytes) -> dict[str, frozenset[str]]:
 
     Args:
         payload: Raw bytes of a `_maintainership.json` document.
+        ref: Git ref the payload was read from. Used only to name the source in
+            warnings.
 
     Returns:
         Mapping of package name to the frozenset of its tagged maintainers.
@@ -98,12 +100,15 @@ def parse_tagged_snapshot(payload: bytes) -> dict[str, frozenset[str]]:
                     )
                 maintainers.add(f"{prefix}{name}")
 
-        # !r, not quotes: the package name is remote-controlled, and repr escapes
-        # embedded newlines and terminal control sequences that would otherwise
-        # forge a log record here or clear the operator's screen from stderr via
-        # the messages above. For an ordinary name repr renders identically.
+        # !r on both, not quotes: repr escapes embedded newlines and terminal
+        # control sequences that would otherwise forge a log record here or
+        # clear the operator's screen from stderr via the messages above. For an
+        # ordinary name it renders identically. It is load-bearing for the
+        # package name, which is remote-controlled; the ref reaches us from argv
+        # through _validate_ref's allowlist and so needs only delimiting today.
+        # Applied to both regardless, so the guarantee survives a new caller.
         if not maintainers:
-            logger.warning(f"Package {package!r} has no maintainers in this snapshot")
+            logger.warning(f"Package {package!r} has no maintainers at ref {ref!r}")
         snapshot[package] = frozenset(maintainers)
 
     return snapshot

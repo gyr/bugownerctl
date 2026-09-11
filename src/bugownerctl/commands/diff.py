@@ -106,10 +106,10 @@ def run_maintainership(
 
     logger.info("diffing %s between %r and %r", maintainership_file, args.ref_a, args.ref_b)
     snapshot_a = parse_tagged_snapshot(
-        repo.fetch_file(slfo_git_url, args.ref_a, maintainership_file)
+        repo.fetch_file(slfo_git_url, args.ref_a, maintainership_file), args.ref_a
     )
     snapshot_b = parse_tagged_snapshot(
-        repo.fetch_file(slfo_git_url, args.ref_b, maintainership_file)
+        repo.fetch_file(slfo_git_url, args.ref_b, maintainership_file), args.ref_b
     )
 
     rows = diff_snapshots(snapshot_a, snapshot_b)

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -131,6 +132,35 @@ class TestRunMaintainership:
         run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
 
         assert capsys.readouterr().out == "package,v1,v2\npkg-a,alice,\n"
+
+    def test_each_snapshot_is_parsed_under_the_ref_it_was_fetched_from(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Every no-maintainers warning names the ref its package actually came from.
+
+        `parse_tagged_snapshot` takes the payload and the ref as two separate
+        `str`-typed arguments, so nothing but this test stops the handler
+        pairing a payload with the wrong ref: transposing the two calls' refs
+        leaves the CSV correct and every other test passing.
+
+        Each ref carries its own unowned package, which is what makes the
+        pairing observable. One unowned package at one ref would still let a
+        handler that passed `ref_a` to both calls emit the expected warning.
+        """
+        repo = FakeArchiveRepository(
+            {
+                "v1": snapshot_bytes({"orphan-a": {"users": [], "groups": []}}),
+                "v2": snapshot_bytes({"orphan-b": {"users": [], "groups": []}}),
+            }
+        )
+
+        with caplog.at_level(logging.WARNING):
+            run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
+
+        assert [record.getMessage() for record in caplog.records] == [
+            "Package 'orphan-a' has no maintainers at ref 'v1'",
+            "Package 'orphan-b' has no maintainers at ref 'v2'",
+        ]
 
     def test_no_differences_writes_header_only_and_returns_zero(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
