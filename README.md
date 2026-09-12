@@ -505,18 +505,38 @@ the package exists in exactly one ref. The top-level `project` key is not compar
 **Output:**
 
 CSV with `\n` line endings. A file written with `-o` is always UTF-8; output on stdout uses the
-locale encoding. The header is `package` followed by the two refs exactly as typed.
-Cells hold the maintainer names sorted alphabetically and joined by a space; an **empty cell** means
-either that the package is absent from that ref, or that it is present with no maintainers at all.
+locale encoding. The header is `package`, the two refs exactly as typed, then `change`.
+Maintainer cells hold the names sorted alphabetically and joined by a space. An **empty cell** means
+either that the package is absent from that ref, or that it is present with no maintainers at all —
+the `change` column is what tells those apart:
+
+- `added` - absent at `ref_a`, present at `ref_b`
+- `removed` - present at `ref_a`, absent at `ref_b`
+- `changed` - present at both, with different maintainer sets
+
 Rows are sorted by package name.
 
 ```csv
-package,slfo-main,slfo-1.3
-pkg-a,group:team-one,group:team-two
-pkg-b,group:team-two,alice
-pkg-c,team-one,bob
-pkg-d,group:team-one,carol
+package,slfo-main,slfo-1.3,change
+pkg-a,group:team-one,group:team-two,changed
+pkg-b,group:team-two,alice,changed
+pkg-c,team-one,bob,changed
+pkg-d,group:team-one,carol,changed
+pkg-e,,bob,added
+pkg-f,group:team-two,,removed
 ```
+
+**Warnings:**
+
+Written to stderr, never into the CSV, and silenced by `-q/--quiet`. They never change the report.
+
+- A package that has no maintainers at a ref.
+- A maintainer name that a cell cannot render unambiguously: a name holding whitespace (cells join
+  names with a space, so it reads as several names), an empty name, or a user name already starting
+  with `group:` — which is byte-identical to the tag given to a real group of that name, and
+  collapses into it. Reported once per ref for each distinct name *as the cell renders it*, naming
+  the first package it was seen in. So an offending user and an offending group of the same name
+  are two reports, while two names that render alike are one.
 
 **Requirements:** every run needs network access and working credentials for `slfo_git_url` — an
 SSH key, for the default `gitea@src.suse.de` remote. There is no offline mode.

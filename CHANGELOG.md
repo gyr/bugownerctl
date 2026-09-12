@@ -19,6 +19,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   difference. Differences are the expected result and always exit `0`. Commit SHAs are not
   supported: `git archive --remote` serves only branch and tag names, and the ref-not-found error
   says so. See [ADR 0003](docs/adr/0003-remote-ref-maintainership-diff.md).
+- A fourth CSV column, `change`, holding `added`, `removed` or `changed`. The maintainer cells
+  cannot carry this: a package absent at a ref and one present there with no maintainers both
+  render as an empty cell, so the CSV alone could not tell "nobody owns it now" from "it is not
+  shipped there any more".
+- Warnings on stderr for maintainer names a cell cannot render unambiguously — a name holding
+  whitespace, an empty name, or a user name already starting with `group:`, which is
+  indistinguishable from the tag given to a real group of that name and collapses into it. One
+  warning per ref for each distinct name as the cell renders it, naming the first package it was
+  seen in. Diagnostic only: the report
+  is identical with and without them, and `-q/--quiet` silences them.
 
 ## [0.6.2] - 2026-07-08
 

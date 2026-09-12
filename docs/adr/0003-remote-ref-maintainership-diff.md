@@ -31,6 +31,7 @@ Supporting decisions, each settled by measurement rather than preference:
 - **The snapshot parser is a second, deliberately divergent normalization**, not a reuse of `MaintainershipRepositoryImpl.load`.
 - **SSH is the intended transport.** The Gitea HTTP API is not used. `GIT_ALLOW_PROTOCOL` permits `ssh:https:http:git:file`, so a differently-configured `slfo_git_url` still works; nothing here enforces SSH beyond the default remote being an SSH URL.
 - **No `-r/--release`.** The subcommand takes a config-only parent parser.
+- **The CSV carries a fourth `change` column** (`added` / `removed` / `changed`), because the maintainer cells alone cannot distinguish an absent package from an unmaintained one — both render empty.
 
 ## Rationale
 
@@ -67,6 +68,8 @@ The maintainer set of a package is `users` merged with `groups`. Comparison is s
 
 Cells join names with a single space, sorted alphabetically. All 214 maintainer names in the current data match `[A-Za-z0-9._-]+`, so the space separator is collision-safe. No CSV formula-injection escaping is applied, for the same reason: no current name begins with a character a spreadsheet would treat as a formula.
 
+That collision-safety is a property of today's data, not of the format, and the data comes from a remote nobody here controls. It is therefore checked at parse time rather than assumed: a name holding whitespace, an empty name, or a user name already starting with `group:` is warned about on stderr, once per ref for each distinct name as the cell renders it — keyed on the tagged string, so an offending user and an offending group of the same name are reported separately, while two names that tag alike are reported once. Only the last of the three classes loses information — such a user tags to the same string as a real group of that name, and the two collapse into one set member — so it is reported in preference to whitespace when a name is both. The warnings are diagnostics: no name is dropped, rewritten or escaped, and the report is identical with and without them. The formula-injection assumption in the paragraph above is **not** checked in the same way: nothing warns about a name beginning with `=`, `+`, `-` or `@`.
+
 ### Subprocess hardening
 
 `stdin=subprocess.DEVNULL` plus `GIT_TERMINAL_PROMPT=0` make an unauthenticated remote fail fast rather than block on a credential prompt. `ssh -o BatchMode=yes` is deliberately **not** set: BatchMode also refuses passphrase prompts, which would break passphrase-protected keys that are not already loaded into an ssh-agent.
@@ -87,6 +90,7 @@ Cells join names with a single space, sorted alphabetically. All 214 maintainer 
 - **Network and working credentials for the remote are required on every run** — an SSH key, for the default `gitea@src.suse.de` URL. There is no offline mode and no cache. Acceptable: the command is interactive and infrequent, and caching would reintroduce the staleness this design removes.
 - **Commit SHAs cannot be diffed.** Protocol-imposed, documented in `--help` on both ref arguments and in the ref-not-found error.
 - **The maintainership document is parsed twice in the codebase**, by two functions with different contracts. Mitigated by a cross-reference comment on the new parser and a divergence test, but the older `load` has no comment pointing back, so a reader arriving there will not learn of the second parser. A candidate for consolidation only if the shared library in [ADR 0002](0002-shared-slfo-ecosystem.md) is built.
+- **`group:` is a tag, not a reserved namespace.** A user literally named `group:x` and a group named `x` produce the same tagged string and collapse into a single set member; the diff cannot tell them apart afterwards. Reserving the prefix would mean rejecting or rewriting a name the upstream document considers valid, so the collapse is reported and left in place instead. No such name exists in the current data.
 - **Server error strings are matched to classify failures.** `remote: fatal: no such ref:` and `did not match any files` are gettext-translated on the remote, so a non-English server falls through to the generic `RuntimeError` branch. The operator still sees the raw stderr; forcing `LC_ALL=C` would not help, because the locale that matters is the remote's.
 
 ## Alternatives considered
