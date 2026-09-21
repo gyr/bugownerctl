@@ -43,27 +43,37 @@ def _render_cell(maintainers: tuple[str, ...] | None) -> str:
 
 
 def _render_change(row: MaintainershipDiffRow) -> str:
-    """Classify a diff row as one of the three transitions it can represent.
+    """Classify a diff row as one of the five transitions it can represent.
 
     The maintainer cells cannot carry this themselves: a package absent at a ref
     and one present there with no maintainers both render as the empty string,
     so the reader of the CSV alone cannot tell "nobody owns it now" from "it is
     not shipped there any more". This column is what separates them.
 
+    The two absence tests run before the two emptiness tests, because `not None`
+    is True: reversing them would report an absent package as unowned.
+
     Args:
         row: One row from `diff_snapshots`.
 
     Returns:
         "added" when the package is absent at the first ref, "removed" when it
-        is absent at the second, "changed" when it is present at both. The three
-        are exhaustive: `diff_snapshots` emits a row only where the two sides
-        differ, and the package name came from the union of both snapshots' keys,
-        so both sides being absent cannot occur.
+        is absent at the second. For a package present at both: "adopted" when
+        it had no maintainers at the first ref and has some at the second,
+        "unmaintained" when it had some and now has none, "changed" when both
+        sides name maintainers and the two sets differ. The five are exhaustive:
+        `diff_snapshots` emits a row only where the two sides differ, and the
+        package name came from the union of both snapshots' keys, so both sides
+        being absent cannot occur.
     """
     if row.maintainers_a is None:
         return "added"
     if row.maintainers_b is None:
         return "removed"
+    if not row.maintainers_a:
+        return "adopted"
+    if not row.maintainers_b:
+        return "unmaintained"
     return "changed"
 
 

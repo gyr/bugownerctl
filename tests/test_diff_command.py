@@ -132,7 +132,8 @@ class TestRunMaintainership:
 
         Since the change column landed it is also the only test stopping that
         column from being derived from an empty second cell: the row must read
-        `changed`, not `removed`, because pkg-a is still present at v2.
+        `unmaintained`, not `removed`, because pkg-a is still present at v2 --
+        it lost its last maintainer there, it was not dropped from the ref.
         """
         repo = FakeArchiveRepository(
             {
@@ -143,7 +144,7 @@ class TestRunMaintainership:
 
         run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
 
-        assert capsys.readouterr().out == "package,v1,v2,change\npkg-a,alice,,changed\n"
+        assert capsys.readouterr().out == "package,v1,v2,change\npkg-a,alice,,unmaintained\n"
 
     def test_each_snapshot_is_parsed_under_the_ref_it_was_fetched_from(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -174,13 +175,14 @@ class TestRunMaintainership:
             "Package 'orphan-b' has no maintainers at ref 'v2'",
         ]
 
-    def test_change_column_names_which_of_the_three_transitions_happened(
+    def test_change_column_still_names_the_transitions_the_widening_left_alone(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The fourth column classifies each row as added, removed or changed.
+        """added, removed and changed keep their meanings after the widening.
 
-        All three words appear in one run, which pins each to its own transition
-        rather than only pinning the vocabulary.
+        Splitting `adopted` and `unmaintained` out of `changed` narrowed what the
+        remaining three words cover, so all three appear in one run here to pin
+        each to its own transition rather than only pinning the vocabulary.
 
         The two orphan rows are what make this test irreplaceable, and they are
         the reason its packages are not simply added and removed ones -- those
@@ -220,6 +222,10 @@ class TestRunMaintainership:
         at all, `unowned` was in v1 with no maintainers. Only the fourth column
         tells them apart, so this fails for any implementation that derives the
         word from the rendered cell being empty instead of from `None`.
+
+        It is the mirror of the removed/unmaintained test below, and pins the
+        same ordering from the other side: a classifier that tested emptiness
+        before `None` would call `absent` adopted, because `not None` is True.
         """
         repo = FakeArchiveRepository(
             {
@@ -231,7 +237,35 @@ class TestRunMaintainership:
         run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
 
         assert capsys.readouterr().out == (
-            "package,v1,v2,change\nabsent,,bob,added\nunowned,,bob,changed\n"
+            "package,v1,v2,change\nabsent,,bob,added\nunowned,,bob,adopted\n"
+        )
+
+    def test_change_column_separates_a_removed_package_from_an_unmaintained_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The column resolves the empty cell's two meanings on the v2 side too.
+
+        Both rows here render an identical `alice,,` tail: `gone` is not in v2 at
+        all, `lost-owner` is in v2 with no maintainers. Only the fourth column
+        tells them apart.
+
+        This fails for any implementation that tests emptiness before `None`,
+        because `not None` is True and `gone` would then classify as
+        unmaintained rather than removed.
+        """
+        repo = FakeArchiveRepository(
+            {
+                "v1": snapshot_bytes(
+                    {"gone": {"users": ["alice"]}, "lost-owner": {"users": ["alice"]}}
+                ),
+                "v2": snapshot_bytes({"lost-owner": {"users": []}}),
+            }
+        )
+
+        run_maintainership(make_args(write_config(tmp_path)), archive_repo=repo)
+
+        assert capsys.readouterr().out == (
+            "package,v1,v2,change\ngone,alice,,removed\nlost-owner,alice,,unmaintained\n"
         )
 
     def test_no_differences_writes_header_only_and_returns_zero(
