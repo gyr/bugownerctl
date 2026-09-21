@@ -40,6 +40,7 @@ def _patch_maint_prep(
     monkeypatch: pytest.MonkeyPatch,
     slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
+    base_url: str | None = None,
 ) -> tuple[Mock, SlfoRepoContext]:
     """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
     cfg = config if config is not None else _MAINT_BASE_CONFIG
@@ -48,6 +49,7 @@ def _patch_maint_prep(
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
+        base_url=base_url,
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
@@ -108,6 +110,7 @@ def _patch_whitelist_prep(
     monkeypatch: pytest.MonkeyPatch,
     slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
+    base_url: str | None = None,
 ) -> tuple[Mock, SlfoRepoContext]:
     """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
     cfg = config if config is not None else _WHITELIST_BASE_CONFIG
@@ -116,6 +119,7 @@ def _patch_whitelist_prep(
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
+        base_url=base_url,
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
@@ -590,7 +594,7 @@ class TestCheckMaintainershipCommand:
         )
         run_maintainership(args)
 
-        repos["metadata"].assert_called_once_with(verify="/etc/ssl/ca-bundle.pem")
+        repos["metadata"].assert_called_once_with(base_url=None, verify="/etc/ssl/ca-bundle.pem")
 
     def test_run_passes_verify_default_true_when_not_in_config(
         self, monkeypatch: pytest.MonkeyPatch
@@ -606,7 +610,23 @@ class TestCheckMaintainershipCommand:
         )
         run_maintainership(args)
 
-        repos["metadata"].assert_called_once_with(verify=True)
+        repos["metadata"].assert_called_once_with(base_url=None, verify=True)
+
+    def test_run_passes_base_url_from_context_to_metadata_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should forward slfo_context.base_url to RepoMetadataRepositoryImpl."""
+        url = "https://example.test/SLES:/16.1:/TEST/product/"
+        _patch_maint_prep(monkeypatch, base_url=url)
+        repos = _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        run_maintainership(args)
+
+        repos["metadata"].assert_called_once_with(base_url=url, verify=True)
 
     def test_run_rejects_verify_as_int_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should raise ConfigError when config verify is int 0."""
@@ -1071,7 +1091,7 @@ class TestCheckWhitelistCommand:
         args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
-        repos["metadata"].assert_called_once_with(verify="/etc/ssl/ca-bundle.pem")
+        repos["metadata"].assert_called_once_with(base_url=None, verify="/etc/ssl/ca-bundle.pem")
 
     def test_run_passes_verify_default_true_when_not_in_config(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1085,7 +1105,21 @@ class TestCheckWhitelistCommand:
         args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
-        repos["metadata"].assert_called_once_with(verify=True)
+        repos["metadata"].assert_called_once_with(base_url=None, verify=True)
+
+    def test_run_passes_base_url_from_context_to_metadata_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should forward slfo_context.base_url to RepoMetadataRepositoryImpl."""
+        url = "https://example.test/SLES:/16.1:/TEST/product/"
+        _patch_whitelist_prep(monkeypatch, base_url=url)
+        repos = _patch_whitelist_other_repos(monkeypatch)
+        _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        run_whitelist(args)
+
+        repos["metadata"].assert_called_once_with(base_url=url, verify=True)
 
     def test_run_rejects_verify_as_int_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should raise ConfigError when config verify is int 0."""

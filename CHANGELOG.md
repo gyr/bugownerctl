@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.1] - 2026-09-21
+
+### Added
+
+- Optional per-product `base_url` config key on individual `products[]` entries, overriding the
+  hardcoded PUBLISH package-metadata URL
+  (`https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{version}:/PUBLISH/product/`) for that
+  one product; with the key absent, behaviour is unchanged. It holds a full URL rather than a
+  channel token, because the GA form omits both the colon after the version and the channel segment
+  entirely, so no single interchangeable path segment can express both shapes. `{version}` may
+  appear in the value but is optional — the version is normally written literally. The trailing `/`
+  is mandatory, since the metadata path is concatenated onto the value rather than joined to it.
+- Validation of `base_url` before any directory is created or any repository cloned, rejecting
+  rather than repairing: a non-string, an empty or whitespace-only string, a value not ending in
+  `/`, a non-absolute URL, and one that cannot be expanded with `.format(version=...)` each raise a
+  `ConfigError` naming the product version. Plain `http` is accepted but warned about, because
+  `requests` applies `~/.netrc` credentials regardless of scheme. Since all four commands route
+  through `prepare_slfo_repo`, an invalid `base_url` aborts `query` and `check users` too, not only
+  `check maintainership` and `check whitelist` — the two that actually download package metadata.
+
 ## [0.7.0] - 2026-09-21
 
 ### Added

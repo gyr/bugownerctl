@@ -69,7 +69,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
 
     verify = _resolve_verify(slfo_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
-    metadata_repo = RepoMetadataRepositoryImpl(verify=verify)
+    metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
     bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
 
@@ -165,7 +165,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
 
     verify = _resolve_verify(slfo_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
-    metadata_repo = RepoMetadataRepositoryImpl(verify=verify)
+    metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
     bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
 

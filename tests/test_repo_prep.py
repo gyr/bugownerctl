@@ -1,5 +1,6 @@
 """Tests for prepare_slfo_repo helper (repo_prep module)."""
 
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -147,6 +148,209 @@ class TestPrepareSlfoRepoContextFields:
         ctx = prepare_slfo_repo(version="16.1", config_file=None)
 
         assert ctx.config is loaded_config
+
+
+class TestPrepareSlfoRepoBaseUrl:
+    """Tests for the optional per-product base_url key."""
+
+    @staticmethod
+    def _config_with_base_url(base_url: Any, include_key: bool = True) -> dict[str, Any]:
+        """Build a config whose 16.1 product entry optionally carries base_url."""
+        product: dict[str, Any] = {"version": "16.1", "branch": "slfo-main"}
+        if include_key:
+            product["base_url"] = base_url
+        return {
+            "cache_dir": "~/.cache/bugownerctl",
+            "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
+            "products": [product],
+        }
+
+    @staticmethod
+    def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> Mock:
+        """Patch load_config and GitRepositoryImpl; return the GitRepositoryImpl mock class."""
+        monkeypatch.setattr(
+            "bugownerctl.commands.repo_prep.load_config",
+            Mock(return_value=loaded_config),
+        )
+        mock_git_cls, _ = _make_mock_git_cls()
+        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
+        return mock_git_cls
+
+    def test_base_url_absent_yields_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Product entry without base_url key → ctx.base_url is None."""
+        self._patch(monkeypatch, self._config_with_base_url(None, include_key=False))
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.base_url is None
+
+    def test_base_url_valid_is_carried_verbatim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A valid per-product base_url reaches the context unmodified."""
+        url = "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/16.1:/TEST/product/"
+        self._patch(monkeypatch, self._config_with_base_url(url))
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.base_url == url
+
+    def test_base_url_with_version_placeholder_is_not_expanded(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A {version} placeholder is validated but left unexpanded on the context."""
+        url = "https://example.test/SLES:/{version}:/TEST/product/"
+        self._patch(monkeypatch, self._config_with_base_url(url))
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.base_url == url
+
+    @pytest.mark.parametrize(
+        ("bad_value", "type_name"),
+        [
+            (42, "int"),
+            (["https://example.test/"], "list"),
+            (None, "NoneType"),
+            (True, "bool"),
+        ],
+    )
+    def test_base_url_rejects_non_string(
+        self, bad_value: Any, type_name: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-string base_url raises ConfigError naming the received type."""
+        self._patch(monkeypatch, self._config_with_base_url(bad_value))
+
+        with pytest.raises(ConfigError, match=f"'base_url'.*{type_name}"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+    def test_base_url_rejects_blank_string(
+        self, blank: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty or whitespace-only base_url raises ConfigError."""
+        self._patch(monkeypatch, self._config_with_base_url(blank))
+
+        with pytest.raises(ConfigError, match="'base_url'.*empty or whitespace-only"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    def test_base_url_rejects_missing_trailing_slash(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A base_url not ending in '/' raises ConfigError explaining concatenation."""
+        url = "https://example.test/SLES:/16.1:/TEST/product"
+        self._patch(monkeypatch, self._config_with_base_url(url))
+
+        with pytest.raises(ConfigError) as exc_info:
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+        message = str(exc_info.value)
+        assert "base_url" in message
+        assert url in message
+        assert "concatenat" in message
+
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/16.1:/TEST/product/",
+            "not a url/",
+            "/",
+            "   /",
+        ],
+    )
+    def test_base_url_rejects_url_without_scheme_or_host(
+        self, bad_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A base_url missing a scheme or host is a config error, not a download failure."""
+        self._patch(monkeypatch, self._config_with_base_url(bad_url))
+
+        with pytest.raises(ConfigError, match="absolute URL"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    def test_base_url_rejection_happens_before_any_clone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An invalid base_url aborts before GitRepositoryImpl is ever constructed."""
+        mock_git_cls = self._patch(monkeypatch, self._config_with_base_url(42))
+
+        with pytest.raises(ConfigError):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+        mock_git_cls.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "https://example.test/SLES:/{version/product/",
+            "https://example.test/SLES:/{unknown}/product/",
+            "https://example.test/SLES:/{0}/product/",
+            "https://example.test/SLES:/{version.foo}/product/",
+            "https://example.test/SLES:/{version[a]}/product/",
+        ],
+    )
+    def test_base_url_rejects_unformattable_value(
+        self, bad_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A base_url that cannot be .format()ted raises ConfigError, not a raw KeyError."""
+        self._patch(monkeypatch, self._config_with_base_url(bad_url))
+
+        with pytest.raises(ConfigError) as exc_info:
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+        message = str(exc_info.value)
+        assert "base_url" in message
+        assert bad_url in message
+
+    @staticmethod
+    def _repo_prep_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+        """Warning messages emitted by the repo_prep logger only."""
+        return [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno == logging.WARNING and record.name == "bugownerctl.commands.repo_prep"
+        ]
+
+    @pytest.mark.parametrize("url", ["http://mirror.test/product/", "HTTP://mirror.test/product/"])
+    def test_base_url_over_plain_http_warns_about_netrc_credentials(
+        self, url: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A plain-http base_url warns that ~/.netrc credentials travel unencrypted.
+
+        The scheme comparison is case-insensitive: RFC 3986 schemes are, and
+        `requests` treats HTTP:// as cleartext just the same.
+        """
+        self._patch(monkeypatch, self._config_with_base_url(url))
+
+        with caplog.at_level(logging.WARNING, logger="bugownerctl.commands.repo_prep"):
+            ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.base_url == url
+        assert any("netrc" in msg for msg in self._repo_prep_warnings(caplog))
+
+    def test_base_url_over_https_does_not_warn(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An https base_url is silent — the warning is specific to cleartext transport."""
+        self._patch(monkeypatch, self._config_with_base_url("https://mirror.test/product/"))
+
+        with caplog.at_level(logging.WARNING, logger="bugownerctl.commands.repo_prep"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert not self._repo_prep_warnings(caplog)
+
+    def test_base_url_on_other_product_is_not_applied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """base_url set on a different product entry does not leak into the requested one."""
+        loaded_config: dict[str, Any] = {
+            "cache_dir": "~/.cache/bugownerctl",
+            "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
+            "products": [
+                {"version": "16.0", "commit": "9d679ed", "base_url": "https://example.test/a/"},
+                {"version": "16.1", "branch": "slfo-main"},
+            ],
+        }
+        self._patch(monkeypatch, loaded_config)
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.base_url is None
 
 
 class TestPrepareSlfoRepoErrors:

@@ -647,6 +647,13 @@ products:
     commit: 9d679ed
   - version: "16.1"
     branch: slfo-main
+    # Package-metadata base URL, for this product only (optional)
+    #   default -> https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{version}:/PUBLISH/product/
+    # The trailing "/" is mandatory: the metadata path is concatenated onto this value,
+    # not urljoin'd. "{version}" is optional -- the version is normally written literally.
+    # Credentials belong in ~/.netrc, not in the URL.
+    # An invalid value is rejected with a config error, before any clone.
+    # base_url: https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/16.1:/TEST/product/
 ```
 
 ## Data Files
