@@ -508,11 +508,17 @@ CSV with `\n` line endings. A file written with `-o` is always UTF-8; output on 
 locale encoding. The header is `package`, the two refs exactly as typed, then `change`.
 Maintainer cells hold the names sorted alphabetically and joined by a space. An **empty cell** means
 either that the package is absent from that ref, or that it is present with no maintainers at all —
-the `change` column is what tells those apart:
+the `change` column names which, so reading a row never depends on inferring it from the cell:
 
 - `added` - absent at `ref_a`, present at `ref_b`
 - `removed` - present at `ref_a`, absent at `ref_b`
-- `changed` - present at both, with different maintainer sets
+- `adopted` - present at both; no maintainers at `ref_a`, some at `ref_b`
+- `unmaintained` - present at both; maintainers at `ref_a`, none at `ref_b`
+- `changed` - present at both and maintained at both, with different maintainer sets
+
+A package that arrives already unowned, or leaves having been unowned, renders empty on *both*
+sides and is reported as `added` or `removed` — `added` already fixes it as absent at `ref_a`, so
+the empty `ref_b` cell can only mean present with no maintainers.
 
 Rows are sorted by package name.
 
@@ -524,6 +530,8 @@ pkg-c,team-one,bob,changed
 pkg-d,group:team-one,carol,changed
 pkg-e,,bob,added
 pkg-f,group:team-two,,removed
+pkg-g,,carol,adopted
+pkg-h,group:team-one,,unmaintained
 ```
 
 **Warnings:**

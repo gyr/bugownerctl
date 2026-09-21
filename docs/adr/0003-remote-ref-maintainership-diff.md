@@ -1,6 +1,8 @@
 # ADR 0003 — Maintainership diff across git refs: in-memory `git archive --remote`
 
 **Status:** Accepted (2026-09-11)
+**Amended:** 2026-09-21 — the `change` column vocabulary widened from three values to five. The
+decision itself is unchanged; only the set of words it uses.
 **Scope:** the `bugownerctl diff maintainership` subcommand only. No existing command changes behaviour.
 
 ## Context
@@ -31,7 +33,7 @@ Supporting decisions, each settled by measurement rather than preference:
 - **The snapshot parser is a second, deliberately divergent normalization**, not a reuse of `MaintainershipRepositoryImpl.load`.
 - **SSH is the intended transport.** The Gitea HTTP API is not used. `GIT_ALLOW_PROTOCOL` permits `ssh:https:http:git:file`, so a differently-configured `slfo_git_url` still works; nothing here enforces SSH beyond the default remote being an SSH URL.
 - **No `-r/--release`.** The subcommand takes a config-only parent parser.
-- **The CSV carries a fourth `change` column** (`added` / `removed` / `changed`), because the maintainer cells alone cannot distinguish an absent package from an unmaintained one — both render empty.
+- **The CSV carries a fourth `change` column** (`added` / `removed` / `adopted` / `unmaintained` / `changed`), because the maintainer cells alone cannot distinguish an absent package from an unmaintained one — both render empty. `adopted` and `unmaintained` cover the two ownership transitions of a package present at both refs, so no row's meaning depends on the reader knowing that `changed` implies present-at-both. Rows whose cells are empty on *both* sides keep `added` / `removed`: with `added` fixed as "absent at `ref_a`", an empty `ref_b` cell there can only mean present-with-none, so a further value would carry no information.
 
 ## Rationale
 
