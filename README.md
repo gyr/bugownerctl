@@ -36,6 +36,9 @@ bugownerctl query package apache2 -r 16.1
 
 # List packages maintained by user
 bugownerctl query maintainer user1 -r 16.1
+
+# Compare maintainership between two SLFO git refs
+bugownerctl diff maintainership slfo-main slfo-1.3
 ```
 
 ## Commands
@@ -436,6 +439,118 @@ Packages (5):
   - package2
   - package3
 ```
+
+---
+
+### `bugownerctl diff maintainership`
+
+Report how package maintainership differs between two SLFO git refs, as CSV.
+
+The two refs are read **straight from the remote**, in memory — nothing is cloned, checked out or
+cached, so the answer always reflects the current server state. Roughly 1 second per ref.
+
+**Usage:**
+```bash
+bugownerctl diff maintainership <ref_a> <ref_b> [-o <file>] [-c <config>]
+```
+
+**Arguments:**
+- `ref_a` - Branch or tag name to read first
+- `ref_b` - Branch or tag name to compare against
+
+> **Commit SHAs are not supported.** `git archive --remote` serves only branch and tag names. A
+> SHA is rejected by the remote as an unknown ref — you get an error and exit `64`, with a hint
+> saying so, not an empty report. Use `slfo-1.3`, not `abcdef1`.
+
+**Options:**
+- `-o, --output` - Write the CSV to this file (default: stdout)
+- `-c, --config` - Path to config file (searches standard locations when unset)
+
+There is **no `-r/--release`** here: the command addresses two git refs directly and has no product
+version to resolve.
+
+**Examples:**
+```bash
+# Compare the development branch against a released one
+bugownerctl diff maintainership slfo-main slfo-1.3
+
+# Write the report to a file for a spreadsheet
+bugownerctl diff maintainership slfo-main slfo-1.3 -o divergence.csv
+```
+
+**Exit codes:**
+- `0` - Comparison completed (differences are the expected result, not an error)
+- `1` - Malformed maintainership document at a ref, or any other `git archive` failure —
+  SSH authentication, unreachable host, unrecognised server error
+- `64` - Unknown or malformed ref, file absent at a ref, or a config that is missing or lacks
+  `slfo_git_url`
+- `124` - The `git archive` call exceeded its 60 s timeout
+- `127` - `git` not found in PATH
+
+**Config keys used:**
+- `slfo_git_url` - the remote to read from (required)
+- `maintainership_file` - the file to compare (default: `_maintainership.json`)
+
+**Comparison semantics:**
+
+A package's maintainer set is its `users` entries merged with its `groups` entries, with
+group-sourced names prefixed `group:`. Comparison is set-based, so reordering inside the JSON
+never shows up as a difference. A row is emitted only when the two maintainer sets differ, or when
+the package exists in exactly one ref. The top-level `project` key is not compared.
+
+> The `group:` prefix records **which JSON list a name came from**, not whether it is really a
+> group. Some group names are listed under `users` in SLFO and so render untagged — a data issue
+> upstream, faithfully reported here.
+
+**Output:**
+
+CSV with `\n` line endings. A file written with `-o` is always UTF-8; output on stdout uses the
+locale encoding. The header is `package`, the two refs exactly as typed, then `change`.
+Maintainer cells hold the names sorted alphabetically and joined by a space. An **empty cell** means
+either that the package is absent from that ref, or that it is present with no maintainers at all —
+the `change` column names which, so reading a row never depends on inferring it from the cell:
+
+- `added` - absent at `ref_a`, present at `ref_b`
+- `removed` - present at `ref_a`, absent at `ref_b`
+- `adopted` - present at both; no maintainers at `ref_a`, some at `ref_b`
+- `unmaintained` - present at both; maintainers at `ref_a`, none at `ref_b`
+- `changed` - present at both and maintained at both, with different maintainer sets
+
+A package that arrives already unowned, or leaves having been unowned, renders empty on *both*
+sides and is reported as `added` or `removed` — `added` already fixes it as absent at `ref_a`, so
+the empty `ref_b` cell can only mean present with no maintainers.
+
+Rows are sorted by package name.
+
+```csv
+package,slfo-main,slfo-1.3,change
+pkg-a,group:team-one,group:team-two,changed
+pkg-b,group:team-two,alice,changed
+pkg-c,team-one,bob,changed
+pkg-d,group:team-one,carol,changed
+pkg-e,,bob,added
+pkg-f,group:team-two,,removed
+pkg-g,,carol,adopted
+pkg-h,group:team-one,,unmaintained
+```
+
+**Warnings:**
+
+Written to stderr, never into the CSV, and silenced by `-q/--quiet`. They never change the report.
+
+- A package that has no maintainers at a ref.
+- A maintainer name that a cell cannot render unambiguously: a name holding whitespace (cells join
+  names with a space, so it reads as several names), an empty name, or a user name already starting
+  with `group:` — which is byte-identical to the tag given to a real group of that name, and
+  collapses into it. Reported once per ref for each distinct name *as the cell renders it*, naming
+  the first package it was seen in. So an offending user and an offending group of the same name
+  are two reports, while two names that render alike are one.
+
+**Requirements:** every run needs network access and working credentials for `slfo_git_url` — an
+SSH key, for the default `gitea@src.suse.de` remote. There is no offline mode.
+
+See [ADR 0003](docs/adr/0003-remote-ref-maintainership-diff.md) for why the file is fetched this
+way.
 
 ---
 
