@@ -243,6 +243,76 @@ class TestParsing:
         root = repo._parse_sourceinfolist(xml)
         assert repo._extract_package_names(root) == frozenset({"real"})
 
+    def test_extract_package_names_strips_surrounding_whitespace(self) -> None:
+        """A padded `package` attribute yields the bare name: " bash " is "bash"."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = b'<sourceinfolist><sourceinfo package=" bash "/></sourceinfolist>'
+        root = repo._parse_sourceinfolist(xml)
+        assert repo._extract_package_names(root) == frozenset({"bash"})
+
+    def test_build_bulk_map_strips_package_attribute_whitespace(self) -> None:
+        """A padded `package` attribute keys and attributes to the bare name."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package=" bash "><subpacks>bash-doc</subpacks></sourceinfo>'
+            b"</sourceinfolist>"
+        )
+        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        assert m == {"bash": "bash", "bash-doc": "bash"}
+
+    def test_whitespace_only_package_attribute_is_skipped(self) -> None:
+        """A `package` attribute that is empty after stripping yields no name."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="   "><subpacks>x</subpacks></sourceinfo>'
+            b'<sourceinfo package="real"/>'
+            b"</sourceinfolist>"
+        )
+        root = repo._parse_sourceinfolist(xml)
+        assert repo._extract_package_names(root) == frozenset({"real"})
+        assert repo._build_bulk_map(root) == {"real": "real"}
+
+    def test_build_bulk_map_strips_originpackage_whitespace(self) -> None:
+        """A padded <originpackage> attributes the flavor's subpacks to the bare parent."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="kernel:azure">'
+            b"<originpackage> kernel </originpackage>"
+            b"<subpacks>kernel-azure</subpacks>"
+            b"</sourceinfo>"
+            b"</sourceinfolist>"
+        )
+        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        assert m == {"kernel:azure": "kernel", "kernel-azure": "kernel"}
+
+    def test_build_bulk_map_strips_subpacks_whitespace(self) -> None:
+        """A padded <subpacks> name maps under its bare name."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="bash"><subpacks> bash-doc </subpacks></sourceinfo>'
+            b"</sourceinfolist>"
+        )
+        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        assert m == {"bash": "bash", "bash-doc": "bash"}
+
+    def test_build_bulk_map_treats_whitespace_only_originpackage_as_absent(self) -> None:
+        """A whitespace-only <originpackage> behaves exactly like no originpackage."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="kernel:azure">'
+            b"<originpackage>   </originpackage>"
+            b"<subpacks>kernel-azure</subpacks>"
+            b"</sourceinfo>"
+            b"</sourceinfolist>"
+        )
+        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        assert m == {"kernel:azure": "kernel:azure", "kernel-azure": "kernel:azure"}
+
     def test_build_bulk_map_resolves_originpackage_chain(self) -> None:
         repo = ObsBulkSourceInfoRepositoryImpl()
         xml = b"""<sourceinfolist>

@@ -317,7 +317,8 @@ class ObsBulkSourceInfoRepositoryImpl:
         """Return the project's source package names from a parsed <sourceinfolist>.
 
         Names containing `:` are multibuild flavors (`pkg:flav`) and are
-        excluded; empty `package` attributes are skipped.
+        excluded. Surrounding whitespace is stripped; attributes that are
+        empty after stripping are skipped.
 
         Args:
             root: Root element returned by `_parse_sourceinfolist`.
@@ -328,7 +329,7 @@ class ObsBulkSourceInfoRepositoryImpl:
         return frozenset(
             pkg
             for si in root.findall("sourceinfo")
-            if (pkg := si.get("package", "")) and ":" not in pkg
+            if (pkg := si.get("package", "").strip()) and ":" not in pkg
         )
 
     @staticmethod
@@ -336,6 +337,8 @@ class ObsBulkSourceInfoRepositoryImpl:
         """Build a binary→canonical-source map from a parsed <sourceinfolist>.
 
         Rules:
+          - Package, originpackage and subpacks names are whitespace-stripped;
+            a name that is empty after stripping is treated as absent.
           - <sourceinfo package="P"> with <originpackage>X</originpackage>
             → P is a multibuild flavor of X.
           - Each <subpacks>S</subpacks> child → S is a binary built by P.
@@ -348,10 +351,10 @@ class ObsBulkSourceInfoRepositoryImpl:
         subpacks_by_source: dict[str, list[str]] = {}
 
         for si in root.findall("sourceinfo"):
-            pkg = si.get("package", "")
+            pkg = si.get("package", "").strip()
             if not pkg:
                 continue
-            origin = si.findtext("originpackage")
+            origin = (si.findtext("originpackage") or "").strip()
             if origin:
                 canonical[pkg] = origin
             else:
