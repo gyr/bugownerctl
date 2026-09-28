@@ -11,64 +11,6 @@ from bugownerctl.exceptions import MissingBinaryError
 from bugownerctl.repositories.git_repository import GitRepositoryImpl
 
 
-class TestListSubmodules:
-    """Tests for GitRepository.list_submodules()."""
-
-    def test_list_submodules_returns_sorted_list(self) -> None:
-        """Should return sorted list of submodule names."""
-        mock_output = """
- abc123 submodule-c (heads/main)
- def456 submodule-a (v1.0.0)
- ghi789 submodule-b (tags/v2.0)
-"""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = Mock(returncode=0, stdout=mock_output, stderr="")
-
-            repo = GitRepositoryImpl()
-            result = repo.list_submodules(Path("/test/repo"))
-
-            assert result == ["submodule-a", "submodule-b", "submodule-c"]
-            mock_run.assert_called_once_with(
-                ["git", "submodule", "status"],
-                capture_output=True,
-                text=True,
-                check=False,
-                cwd="/test/repo",
-            )
-
-    def test_list_submodules_handles_empty_output(self) -> None:
-        """Should return empty list when no submodules exist."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
-
-            repo = GitRepositoryImpl()
-            result = repo.list_submodules(Path("/test/repo"))
-
-            assert result == []
-
-    def test_list_submodules_raises_on_git_error(self) -> None:
-        """Should raise RuntimeError when git command fails."""
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = Mock(
-                returncode=1,
-                stdout="",
-                stderr="fatal: not a git repository",
-            )
-
-            repo = GitRepositoryImpl()
-
-            with pytest.raises(RuntimeError, match="Git command failed"):
-                repo.list_submodules(Path("/test/repo"))
-
-    def test_list_submodules_raises_on_git_not_found(self) -> None:
-        """Should raise MissingBinaryError when git command not found."""
-        with patch("subprocess.run", side_effect=FileNotFoundError()):
-            repo = GitRepositoryImpl()
-
-            with pytest.raises(MissingBinaryError, match="git"):
-                repo.list_submodules(Path("/test/repo"))
-
-
 class TestCloneOrUpdate:
     """Tests for GitRepository.clone_or_update()."""
 

@@ -1,7 +1,7 @@
 """Git repository operations.
 
 This module provides GitRepository for managing git operations including
-listing submodules and cloning/updating repositories.
+cloning/updating repositories.
 """
 
 import ipaddress
@@ -20,10 +20,6 @@ logger = logging.getLogger(__name__)
 
 class GitRepository(Protocol):
     """Interface for git operations."""
-
-    def list_submodules(self, repo_path: Path) -> list[str]:
-        """Get list of git submodule names."""
-        ...
 
     def clone_or_update(
         self,
@@ -145,47 +141,6 @@ class GitRepositoryImpl:
                 f"Exit code: {e.returncode}\n"
                 f"Stderr: {e.stderr.strip()}"
             ) from e
-        except FileNotFoundError as exc:
-            raise MissingBinaryError("git") from exc
-
-    def list_submodules(self, repo_path: Path) -> list[str]:
-        """Get list of git submodule names.
-
-        Args:
-            repo_path: Path to git repository
-
-        Returns:
-            Sorted list of submodule names
-
-        Raises:
-            MissingBinaryError: If git is not in PATH.
-            RuntimeError: If the git command exits non-zero.
-        """
-        try:
-            result = subprocess.run(
-                ["git", "submodule", "status"],
-                capture_output=True,
-                text=True,
-                check=False,
-                cwd=str(repo_path),
-            )
-
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"Git command failed in {repo_path}: git submodule status\n"
-                    f"Exit code: {result.returncode}\n"
-                    f"Stderr: {result.stderr.strip()}"
-                )
-
-            # Parse output: each line has format " <hash> <name> (<ref>)"
-            names: list[str] = []
-            for line in result.stdout.splitlines():
-                parts = line.strip().split()
-                if len(parts) >= 2:
-                    names.append(parts[1])
-
-            return sorted(names)
-
         except FileNotFoundError as exc:
             raise MissingBinaryError("git") from exc
 

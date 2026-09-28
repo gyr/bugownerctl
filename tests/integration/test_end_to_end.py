@@ -51,9 +51,6 @@ class TestValidateWorkflow:
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.list_submodules"
-            ) as mock_git,
-            patch(
                 "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
@@ -79,7 +76,6 @@ class TestValidateWorkflow:
 
             # Verify
             assert exit_code == 0, "Validate should succeed with valid data"
-            mock_git.assert_not_called()
             # The product's configured OBS project is the one queried.
             assert mock_bulk_map.call_args.args[0] == "TEST:Project:1.0"
 
@@ -106,9 +102,6 @@ class TestValidateWorkflow:
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.list_submodules"
-            ) as mock_git,
-            patch(
                 "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
@@ -134,7 +127,6 @@ class TestValidateWorkflow:
 
             # Verify - should report issues found
             assert exit_code == 2, "Should return 2 when orphan packages found"
-            mock_git.assert_not_called()
 
 
 class TestQueryPackageWorkflow:

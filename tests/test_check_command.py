@@ -1096,17 +1096,6 @@ class TestCheckWhitelistCommand:
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
         assert call_kwargs.get("force_refresh") is True
 
-    def test_run_does_not_list_git_submodules(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The OBS package set replaces git submodules; list_submodules is never called."""
-        _, fake_slfo_context = _patch_whitelist_prep(monkeypatch)
-        _patch_whitelist_other_repos(monkeypatch)
-        _patch_services(monkeypatch)
-
-        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
-        run_whitelist(args)
-
-        fake_slfo_context.git_repo.list_submodules.assert_not_called()
-
     def test_run_passes_verify_from_config_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
