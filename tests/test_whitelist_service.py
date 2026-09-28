@@ -37,7 +37,6 @@ class TestCheckWhitelist:
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "pkg2", "pkg5"},
-            submodules=["pkg1", "pkg2"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
@@ -71,7 +70,6 @@ class TestCheckWhitelist:
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "pkg2", "pkg3", "pkg5"},
-            submodules=["pkg1", "pkg2", "pkg3"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
@@ -102,7 +100,6 @@ class TestCheckWhitelist:
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "pkg2"},
-            submodules=["pkg1", "pkg2"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
@@ -125,7 +122,6 @@ class TestCheckWhitelist:
             service.check_whitelist(
                 whitelist_file=whitelist_file,
                 shipped_packages={"pkg1"},
-                submodules=["pkg1"],
                 overrides_file=overrides_file,
                 cache_dir=cache_dir,
                 obs_project=_OBS_PROJECT,
@@ -158,14 +154,12 @@ class TestCheckWhitelist:
         overrides_file = tmp_path / "overrides.json"
         cache_dir = tmp_path / "cache"
         shipped_packages = {"pkg1", "pkg2"}
-        submodules = ["pkg1"]
         obs_project = "TEST:PROJECT"
 
         # Execute
         service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages=shipped_packages,
-            submodules=submodules,
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=obs_project,
@@ -178,7 +172,6 @@ class TestCheckWhitelist:
         # find_shipped_without_submodule receives bulk_map=, never force_refresh=
         mock_validation_service.find_shipped_without_submodule.assert_called_once_with(
             shipped_packages,
-            submodules,
             overrides_file,
             cache_dir,
             obs_project,
@@ -189,7 +182,7 @@ class TestCheckWhitelist:
         """Should propagate validation pipeline's unresolved_names into the result.
 
         Mirrors ValidationResult.unresolved_names semantics: names that
-        fell through the bulk_map/overrides pipeline and aren't submodules.
+        fell through the bulk_map/overrides pipeline and aren't in the OBS package set.
         """
         mock_validation_service = Mock()
         mock_validation_service.find_shipped_without_submodule.return_value = (
@@ -209,7 +202,6 @@ class TestCheckWhitelist:
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "mystery-pkg"},
-            submodules=["pkg1"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
@@ -241,7 +233,6 @@ class TestCheckWhitelist:
         service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1"},
-            submodules=["pkg1"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
@@ -275,7 +266,6 @@ class TestCheckWhitelist:
         service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1"},
-            submodules=["pkg1"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
@@ -296,7 +286,6 @@ class TestCheckWhitelist:
             service.check_whitelist(  # type: ignore[call-arg]  # omission under test
                 whitelist_file=whitelist_file,
                 shipped_packages={"pkg1"},
-                submodules=["pkg1"],
                 overrides_file=tmp_path / "overrides.json",
                 cache_dir=tmp_path / "cache",
             )
@@ -323,7 +312,6 @@ class TestCheckWhitelist:
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"zebra", "apple", "banana"},
-            submodules=["zebra", "apple", "banana"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,

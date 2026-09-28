@@ -88,7 +88,6 @@ def run_maintainership(args: argparse.Namespace) -> int:
 
     service = ValidationService(
         maintainership_repo,
-        slfo_context.git_repo,
         metadata_repo,
         bulk_map_repo=bulk_map_repo,
         overrides_repo=overrides_repo,
@@ -101,12 +100,11 @@ def run_maintainership(args: argparse.Namespace) -> int:
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
             cache_dir=slfo_context.cache_dir,
-            git_dir=slfo_context.slfo_repo_path,
             obs_project=slfo_context.obs_project,
             force_refresh=args.refresh_bulk_map,
         )
 
-    # SET 1: Maintained packages without git submodule (count → stdout; list → stderr)
+    # SET 1: Maintained packages not in the OBS package set (count → stdout; list → stderr)
     if result.maintained_packages_without_submodule:
         print(
             f"Found {len(result.maintained_packages_without_submodule)} "
@@ -116,7 +114,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
         for pkg in result.maintained_packages_without_submodule:
             logger.info("- %s", pkg)
 
-    # SET 3: Shipped packages not found in git submodule (count → stdout; list → stderr)
+    # SET 3: Shipped packages not in the OBS package set (count → stdout; list → stderr)
     if result.shipped_not_in_submodule:
         print(
             f"Found {len(result.shipped_not_in_submodule)} "
@@ -182,7 +180,6 @@ def run_whitelist(args: argparse.Namespace) -> int:
 
     validation_service = ValidationService(
         maintainership_repo,
-        slfo_context.git_repo,
         metadata_repo,
         bulk_map_repo=bulk_map_repo,
         overrides_repo=overrides_repo,
@@ -194,7 +191,6 @@ def run_whitelist(args: argparse.Namespace) -> int:
     )
 
     shipped_packages = metadata_repo.parse_source_packages(repo_metadata_file)
-    submodules = slfo_context.git_repo.list_submodules(slfo_context.slfo_repo_path)
 
     # Use paths from cloned SLFO repository (whitelist) and cache_dir (XDG)
     # Validate to prevent path traversal via config
@@ -209,7 +205,6 @@ def run_whitelist(args: argparse.Namespace) -> int:
         result = whitelist_service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages=shipped_packages,
-            submodules=submodules,
             overrides_file=overrides_file,
             cache_dir=slfo_context.cache_dir,
             obs_project=slfo_context.obs_project,

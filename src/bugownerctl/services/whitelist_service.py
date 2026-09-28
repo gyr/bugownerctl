@@ -2,7 +2,7 @@
 
 Design Notes:
     - Service layer coordinates between repositories
-    - Business logic for updating whitelist based on submodules vs maintained packages
+    - Business logic for updating whitelist based on the OBS package set vs maintained packages
     - Extracted from create_whitelist_maintainership.py
 """
 
@@ -21,7 +21,7 @@ class WhitelistCheckResult:
 
     inconsistent_packages: list[str]  # Packages BOTH shipped AND whitelisted (sorted)
     # Names that fell through the bulk_map/overrides pipeline to identity
-    # AND are not submodules. Mirrors ValidationResult.unresolved_names.
+    # AND are not in the OBS package set. Mirrors ValidationResult.unresolved_names.
     unresolved_names: list[str] = field(default_factory=list)
 
 
@@ -85,7 +85,6 @@ class WhitelistService:
         self,
         whitelist_file: Path,
         shipped_packages: set[str],
-        submodules: list[str],
         overrides_file: Path,
         cache_dir: Path,
         obs_project: str,
@@ -100,7 +99,6 @@ class WhitelistService:
         Args:
             whitelist_file: Path to whitelist JSON file
             shipped_packages: Set of shipped package names from metadata
-            submodules: List of git submodule names
             overrides_file: Path to hand-curated binary→source overrides JSON
             cache_dir: Cache directory for the OBS bulk-map XML
             obs_project: OBS project to query for package resolution
@@ -135,7 +133,6 @@ class WhitelistService:
         valid_packages, _, unresolved_names = (
             self.validation_service.find_shipped_without_submodule(
                 shipped_packages,
-                submodules,
                 overrides_file,
                 cache_dir,
                 obs_project,

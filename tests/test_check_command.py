@@ -245,7 +245,6 @@ class TestCheckMaintainershipCommand:
 
         cls_mock.assert_called_once_with(
             mock_maint_inst,
-            fake_slfo_context.git_repo,
             mock_meta_inst,
             bulk_map_repo=mock_bulk_inst,
             overrides_repo=mock_over_inst,
@@ -278,7 +277,7 @@ class TestCheckMaintainershipCommand:
         call_args = instance.validate_all.call_args[1]
         assert isinstance(call_args["maintainership_file"], Path)
         assert isinstance(call_args["repo_metadata_file"], Path)
-        assert isinstance(call_args["git_dir"], Path)
+        assert "git_dir" not in call_args
         # cache_dir must come from config (expanded), NOT from CWD
         expected_cache_dir = Path("~/.cache/bugownerctl").expanduser()
         assert call_args["cache_dir"] == expected_cache_dir
@@ -584,7 +583,6 @@ class TestCheckMaintainershipCommand:
         call_kwargs = instance.validate_all.call_args[1]
         expected_maintainership = slfo_repo_path / "_maintainership.json"
         assert call_kwargs["maintainership_file"] == expected_maintainership
-        assert call_kwargs["git_dir"] == slfo_repo_path
 
     def test_run_passes_verify_from_config_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch
@@ -765,8 +763,8 @@ class TestCheckWhitelistCommand:
     def test_run_creates_validation_service_with_new_repos(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should create ValidationService receiving fake_slfo_context.git_repo."""
-        mock_prep, fake_slfo_context = _patch_whitelist_prep(monkeypatch)
+        """Should create ValidationService with the new repos and no git repository."""
+        _patch_whitelist_prep(monkeypatch)
 
         mock_maint_inst = Mock()
         mock_meta_inst = Mock()
@@ -797,10 +795,8 @@ class TestCheckWhitelistCommand:
         args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
-        # ValidationService called with slfo_context.git_repo (not a fresh GitRepositoryImpl).
         services["validation_cls"].assert_called_once_with(
             mock_maint_inst,
-            fake_slfo_context.git_repo,
             mock_meta_inst,
             bulk_map_repo=mock_bulk_inst,
             overrides_repo=mock_over_inst,
@@ -834,7 +830,6 @@ class TestCheckWhitelistCommand:
             "pkg2",
             "pkg3",
         }
-        fake_slfo_context.git_repo.list_submodules.return_value = ["pkg1", "pkg2"]
 
         services = _patch_services(monkeypatch)
 
@@ -846,7 +841,7 @@ class TestCheckWhitelistCommand:
         # whitelist_file must come from slfo_repo_path
         assert call_args["whitelist_file"] == slfo_repo_path / "whitelist_maintainership.json"
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
-        assert call_args["submodules"] == ["pkg1", "pkg2"]
+        assert "submodules" not in call_args
         # cache_dir must come from fake_slfo_context
         assert call_args["cache_dir"] == fake_slfo_context.cache_dir
         # overrides_file must resolve via importlib.resources to the shipped JSON
@@ -1101,21 +1096,16 @@ class TestCheckWhitelistCommand:
         call_kwargs = services["whitelist_service"].check_whitelist.call_args[1]
         assert call_kwargs.get("force_refresh") is True
 
-    def test_run_calls_list_submodules_on_ctx_git_repo(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Should call list_submodules on slfo_context.git_repo, not a fresh GitRepositoryImpl."""
-        mock_prep, fake_slfo_context = _patch_whitelist_prep(monkeypatch)
+    def test_run_does_not_list_git_submodules(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The OBS package set replaces git submodules; list_submodules is never called."""
+        _, fake_slfo_context = _patch_whitelist_prep(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
-        fake_slfo_context.git_repo.list_submodules.return_value = ["submodule1"]
 
         args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
         run_whitelist(args)
 
-        fake_slfo_context.git_repo.list_submodules.assert_called_once_with(
-            fake_slfo_context.slfo_repo_path
-        )
+        fake_slfo_context.git_repo.list_submodules.assert_not_called()
 
     def test_run_passes_verify_from_config_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch

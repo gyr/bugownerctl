@@ -230,6 +230,73 @@ class TestParsing:
         bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
         assert bm.packages == frozenset({"pkg", "linked-src"})
 
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_load_bulk_map_sourceinfo_with_error_stays_in_packages_and_warns(
+        self, mock_run: Mock, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A <sourceinfo> carrying <error> is still a project package; a warning names it."""
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="pkg-ok"><subpacks>pkg-ok</subpacks></sourceinfo>'
+            b'<sourceinfo package=" pkg-broken ">'
+            b"<error>  bad build configuration, no build type defined or detected  </error>"
+            b"</sourceinfo>"
+            b"</sourceinfolist>"
+        )
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsBulkSourceInfoRepositoryImpl()
+
+        with caplog.at_level("WARNING"):
+            bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+
+        assert bm.packages == frozenset({"pkg-ok", "pkg-broken"})
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert any(
+            "pkg-broken" in msg
+            and "bad build configuration, no build type defined or detected" in msg
+            and " pkg-broken " not in msg
+            for msg in warnings
+        ), warnings
+
+    def test_extract_package_names_does_not_warn_for_flavor_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A flavor is not in packages, so its <error> is not warned about."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="pkg"/>'
+            b'<sourceinfo package="pkg:flav"><error>flavor broke</error></sourceinfo>'
+            b"</sourceinfolist>"
+        )
+        root = repo._parse_sourceinfolist(xml)
+
+        with caplog.at_level("WARNING"):
+            packages = repo._extract_package_names(root)
+
+        assert packages == frozenset({"pkg"})
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    @pytest.mark.parametrize("error_element", [b"<error/>", b"<error>   </error>"])
+    def test_extract_package_names_warns_for_error_without_text(
+        self, error_element: bytes, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An <error> with no text is still an error: warned with an empty message."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b'<sourceinfolist><sourceinfo package="pkg">'
+            + error_element
+            + b"</sourceinfo></sourceinfolist>"
+        )
+        root = repo._parse_sourceinfolist(xml)
+
+        with caplog.at_level("WARNING"):
+            packages = repo._extract_package_names(root)
+
+        assert packages == frozenset({"pkg"})
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert warnings == ["OBS reports an error for package pkg: "]
+
     def test_extract_package_names_skips_empty_and_missing_package_attribute(self) -> None:
         """Empty or absent `package` attributes never yield an empty-string name."""
         repo = ObsBulkSourceInfoRepositoryImpl()

@@ -20,10 +20,10 @@ class TestValidateWorkflow:
 
         Workflow:
         1. Load maintainership data
-        2. List git submodules
-        3. Download and parse repo metadata
+        2. Download and parse repo metadata
+        3. Load the OBS bulk map (binary→source mapping + OBS package set)
         4. Resolve binary→source via bulk-map + overrides pipeline
-        5. Report validation results
+        5. Report validation results against the OBS package set
         """
         # Change to test directory
         monkeypatch.chdir(tmp_path)
@@ -65,14 +65,13 @@ class TestValidateWorkflow:
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
-            mock_git.return_value = ["test-package", "another-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"test-package", "another-package"}
             mock_bulk_map.return_value = BulkMap(
                 mapping={},
                 project="test-project",
                 fetched_at=datetime.now(UTC),
-                packages=frozenset(),
+                packages=frozenset({"test-package", "another-package"}),
             )
 
             # Execute
@@ -80,7 +79,7 @@ class TestValidateWorkflow:
 
             # Verify
             assert exit_code == 0, "Validate should succeed with valid data"
-            mock_git.assert_called_once()
+            mock_git.assert_not_called()
             # The product's configured OBS project is the one queried.
             assert mock_bulk_map.call_args.args[0] == "TEST:Project:1.0"
 
@@ -121,14 +120,13 @@ class TestValidateWorkflow:
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
-            mock_git.return_value = ["maintained-package", "orphan-package"]
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"maintained-package", "orphan-package"}
             mock_bulk_map.return_value = BulkMap(
                 mapping={},
                 project="test-project",
                 fetched_at=datetime.now(UTC),
-                packages=frozenset(),
+                packages=frozenset({"maintained-package", "orphan-package"}),
             )
 
             # Execute
@@ -136,6 +134,7 @@ class TestValidateWorkflow:
 
             # Verify - should report issues found
             assert exit_code == 2, "Should return 2 when orphan packages found"
+            mock_git.assert_not_called()
 
 
 class TestQueryPackageWorkflow:

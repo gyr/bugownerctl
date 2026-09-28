@@ -14,20 +14,24 @@ from bugownerctl.services.validation_service import ValidationResult, Validation
 _OBS_PROJECT = "TEST:Project:1.0"
 
 
-def _make_bulk_map(mapping: dict[str, str], project: str = "SUSE:SLFO:Main") -> BulkMap:
+def _make_bulk_map(
+    mapping: dict[str, str],
+    project: str = "SUSE:SLFO:Main",
+    *,
+    packages: frozenset[str] = frozenset(),
+) -> BulkMap:
     """Build a BulkMap value object for tests."""
     return BulkMap(
         mapping=mapping,
         project=project,
         fetched_at=datetime(2026, 6, 8, tzinfo=UTC),
-        packages=frozenset(),
+        packages=packages,
     )
 
 
 def _make_service(
     *,
     maintainership_repo: object = None,
-    git_repo: object = None,
     metadata_repo: object = None,
     bulk_map_repo: object | None = None,
     overrides_repo: object | None = None,
@@ -45,7 +49,6 @@ def _make_service(
         overrides_repo.load.return_value = {}
     return ValidationService(
         maintainership_repo,  # type: ignore[arg-type]
-        git_repo,  # type: ignore[arg-type]
         metadata_repo,  # type: ignore[arg-type]
         bulk_map_repo=bulk_map_repo,  # type: ignore[arg-type]
         overrides_repo=overrides_repo,  # type: ignore[arg-type]
@@ -158,7 +161,7 @@ class TestFindMaintainedPackagesWithoutSubmodule:
     """Test ValidationService.find_maintained_packages_without_submodule method."""
 
     def test_finds_packages_in_maintainership_not_in_submodules(self):
-        """Should identify packages in maintainership but not in git submodules."""
+        """Should identify packages in maintainership but not in the OBS package set."""
         service = _make_service()
         maintainership = MaintainershipData(
             packages={
@@ -167,14 +170,14 @@ class TestFindMaintainedPackagesWithoutSubmodule:
                 "pkg3": ["user3"],
             }
         )
-        submodules = ["pkg2", "pkg4"]  # pkg1 and pkg3 missing
+        obs_packages = frozenset({"pkg2", "pkg4"})  # pkg1 and pkg3 missing
 
-        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
+        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
 
         assert result == ["pkg1", "pkg3"]
 
     def test_all_packages_have_submodules(self):
-        """Should return empty list when all maintained packages have submodules."""
+        """Should return empty list when all maintained packages are in the OBS package set."""
         service = _make_service()
         maintainership = MaintainershipData(
             packages={
@@ -182,14 +185,14 @@ class TestFindMaintainedPackagesWithoutSubmodule:
                 "pkg2": ["user2"],
             }
         )
-        submodules = ["pkg1", "pkg2", "pkg3"]
+        obs_packages = frozenset({"pkg1", "pkg2", "pkg3"})
 
-        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
+        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
 
         assert result == []
 
     def test_all_packages_lack_submodules_returns_sorted(self):
-        """Should return sorted list when all packages lack submodules."""
+        """Should return sorted list when no package is in the OBS package set."""
         service = _make_service()
         maintainership = MaintainershipData(
             packages={
@@ -198,9 +201,9 @@ class TestFindMaintainedPackagesWithoutSubmodule:
                 "middle": ["user3"],
             }
         )
-        submodules: list[str] = []
+        obs_packages: frozenset[str] = frozenset()
 
-        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
+        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
 
         assert result == ["apple", "middle", "zebra"]
 
@@ -208,14 +211,14 @@ class TestFindMaintainedPackagesWithoutSubmodule:
         """Should return empty list when maintainership is empty."""
         service = _make_service()
         maintainership = MaintainershipData(packages={})
-        submodules = ["mod1", "mod2"]
+        obs_packages = frozenset({"mod1", "mod2"})
 
-        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
+        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
 
         assert result == []
 
     def test_empty_submodules_returns_all_maintained(self):
-        """Should return all maintained packages when no submodules exist."""
+        """Should return all maintained packages when the OBS package set is empty."""
         service = _make_service()
         maintainership = MaintainershipData(
             packages={
@@ -224,9 +227,9 @@ class TestFindMaintainedPackagesWithoutSubmodule:
                 "pkg3": ["user3"],
             }
         )
-        submodules: list[str] = []
+        obs_packages: frozenset[str] = frozenset()
 
-        result = service.find_maintained_packages_without_submodule(maintainership, submodules)
+        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
 
         assert result == ["pkg1", "pkg2", "pkg3"]
 
@@ -243,14 +246,14 @@ class TestFindShippedWithoutSubmodule:
         service = _make_service()
 
         shipped = {"apache2-devel"}
-        submodules = ["apache2"]
         overrides_file = Path("/tmp/overrides.json")
         cache_dir = Path("/tmp/cache")
-        bulk_map = _make_bulk_map({"apache2-devel": "apache2", "apache2": "apache2"})
+        bulk_map = _make_bulk_map(
+            {"apache2-devel": "apache2", "apache2": "apache2"}, packages=frozenset({"apache2"})
+        )
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             overrides_file,
             cache_dir,
             obs_project=_OBS_PROJECT,
@@ -270,20 +273,20 @@ class TestFindShippedWithoutSubmodule:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"kernel-azure"}
-        submodules = ["kernel-source-azure"]
         # Bulk_map says kernel-azure → kernel-azure-base (different from override).
-        bulk_map = _make_bulk_map({"kernel-azure": "kernel-azure-base"})
+        bulk_map = _make_bulk_map(
+            {"kernel-azure": "kernel-azure-base"}, packages=frozenset({"kernel-source-azure"})
+        )
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
-        # Override wins: resolved to kernel-source-azure, which IS a submodule.
+        # Override wins: resolved to kernel-source-azure, which IS in the OBS package set.
         assert valid == {"kernel-source-azure"}
         assert residue == []
         assert unresolved == []
@@ -296,12 +299,10 @@ class TestFindShippedWithoutSubmodule:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"SLES-release"}
-        submodules: list[str] = []
         bulk_map = _make_bulk_map({})
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -318,20 +319,18 @@ class TestFindShippedWithoutSubmodule:
         service = _make_service()
 
         shipped = {"orphan-pkg"}
-        submodules: list[str] = []
         bulk_map = _make_bulk_map({})  # no entry for orphan-pkg
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
-        # Passthrough: orphan-pkg → orphan-pkg, not in submodules → residue.
-        # Identity fallthrough + not a submodule → unresolved.
+        # Passthrough: orphan-pkg → orphan-pkg, not in the OBS package set → residue.
+        # Identity fallthrough + not in the OBS package set → unresolved.
         assert valid == set()
         assert residue == ["orphan-pkg"]
         assert unresolved == ["orphan-pkg"]
@@ -348,12 +347,11 @@ class TestFindShippedWithoutSubmodule:
 
         service = _make_service(bulk_map_repo=bulk_map_repo)
 
-        bulk_map = _make_bulk_map({"pkg1": "pkg1"})
+        bulk_map = _make_bulk_map({"pkg1": "pkg1"}, packages=frozenset({"pkg1"}))
 
         # Must not raise.
         valid, residue, unresolved = service.find_shipped_without_submodule(
             {"pkg1"},
-            ["pkg1"],
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -368,12 +366,10 @@ class TestFindShippedWithoutSubmodule:
         service = _make_service()
 
         shipped: set[str] = set()
-        submodules = ["pkg1", "pkg2"]
-        bulk_map = _make_bulk_map({})
+        bulk_map = _make_bulk_map({}, packages=frozenset({"pkg1", "pkg2"}))
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -385,9 +381,9 @@ class TestFindShippedWithoutSubmodule:
         assert unresolved == []
 
     def test_override_target_not_in_submodules_lands_in_residue(self):
-        """Override target must land in residue when not a submodule.
+        """Override target must land in residue when not in the OBS package set.
 
-        When overrides[shipped] maps to a value that is NOT a submodule,
+        When overrides[shipped] maps to a value NOT in the OBS package set,
         the override's resolved value lands in residue. The bulk_map's
         competing answer for the same shipped name MUST be ignored
         entirely (no silent leak into valid via the bulk_map branch).
@@ -399,22 +395,20 @@ class TestFindShippedWithoutSubmodule:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"X"}
-        # Submodules contain Z (bulk_map's answer), NOT Y (override's answer).
-        submodules = ["Z"]
+        # OBS package set contains Z (bulk_map's answer), NOT Y (override's answer).
         # Bulk_map says X → Z, but override must win and bulk_map answer
         # must NOT leak through.
-        bulk_map = _make_bulk_map({"X": "Z"})
+        bulk_map = _make_bulk_map({"X": "Z"}, packages=frozenset({"Z"}))
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
-        # Override wins: resolved to Y. Y is not a submodule → residue.
+        # Override wins: resolved to Y. Y is not in the OBS package set → residue.
         # Z (bulk_map's answer) must NOT be in valid.
         # Y came from overrides branch (not identity) → NOT unresolved.
         assert valid == set()
@@ -435,14 +429,12 @@ class TestFindShippedWithoutSubmodule:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"N"}
-        submodules: list[str] = []
         # Bulk_map resolves N → X. The override on X is irrelevant because
         # lookup is overrides["N"], not overrides["X"].
         bulk_map = _make_bulk_map({"N": "X"})
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -461,7 +453,9 @@ class TestFindShippedWithoutSubmodule:
         overrides_repo.load.return_value = {}
 
         bulk_map_repo = Mock()
-        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map({"pkg1": "pkg1"})
+        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map(
+            {"pkg1": "pkg1"}, packages=frozenset({"pkg1"})
+        )
 
         service = _make_service(bulk_map_repo=bulk_map_repo, overrides_repo=overrides_repo)
 
@@ -470,7 +464,6 @@ class TestFindShippedWithoutSubmodule:
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             {"pkg1"},
-            ["pkg1"],
             overrides_file,
             cache_dir,
             obs_project=_OBS_PROJECT,
@@ -495,7 +488,6 @@ class TestFindShippedWithoutSubmodule:
         with pytest.raises(TypeError):
             service.find_shipped_without_submodule(
                 {"pkg1"},
-                ["pkg1"],
                 Path("/tmp/overrides.json"),
                 Path("/tmp/cache"),
                 obs_project=_OBS_PROJECT,
@@ -504,25 +496,23 @@ class TestFindShippedWithoutSubmodule:
             )
 
     def test_unresolved_names_subset_of_residue_only_identity_fallthrough(self):
-        """unresolved should contain only names that fell through to identity AND aren't submodules.
+        """unresolved should contain only identity-fallthrough names not in the OBS package set.
 
         Scenario:
-          - M is in overrides → resolved to "M-src" (a submodule). NOT residue.
-          - B is in bulk_map → resolved to "B-src" (a submodule). NOT residue.
+          - M is in overrides → resolved to "M-src" (in the set). NOT residue.
+          - B is in bulk_map → resolved to "B-src" (in the set). NOT residue.
           - I has no override, no bulk_map entry → identity fallthrough.
-            I is NOT in submodules → goes to residue AND unresolved.
+            I is NOT in the set → goes to residue AND unresolved.
         """
         overrides_repo = Mock()
         overrides_repo.load.return_value = {"M": "M-src"}
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"M", "B", "I"}
-        submodules = ["M-src", "B-src"]
-        bulk_map = _make_bulk_map({"B": "B-src"})
+        bulk_map = _make_bulk_map({"B": "B-src"}, packages=frozenset({"M-src", "B-src"}))
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -537,19 +527,17 @@ class TestFindShippedWithoutSubmodule:
         """Override target landing in residue must NOT be classified as unresolved.
 
         Resolution went through the overrides branch, so the name had a
-        mapping decision; the target just happens not to be a submodule.
+        mapping decision; the target just happens not to be in the OBS package set.
         """
         overrides_repo = Mock()
         overrides_repo.load.return_value = {"O": "O-bogus"}
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"O"}
-        submodules: list[str] = []
         bulk_map = _make_bulk_map({})
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -564,17 +552,15 @@ class TestFindShippedWithoutSubmodule:
         """Bulk_map target landing in residue must NOT be classified as unresolved.
 
         Resolution went through the bulk_map branch, so the name had a
-        mapping decision; the target just happens not to be a submodule.
+        mapping decision; the target just happens not to be in the OBS package set.
         """
         service = _make_service()
 
         shipped = {"K"}
-        submodules: list[str] = []
         bulk_map = _make_bulk_map({"K": "K-bogus"})
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -586,16 +572,14 @@ class TestFindShippedWithoutSubmodule:
         assert unresolved == []
 
     def test_unresolved_excludes_identity_in_submodules(self):
-        """Identity fallthrough that IS a submodule lands in valid, not residue or unresolved."""
+        """Identity fallthrough in the OBS package set lands in valid, not residue/unresolved."""
         service = _make_service()
 
         shipped = {"S"}
-        submodules = ["S"]
-        bulk_map = _make_bulk_map({})
+        bulk_map = _make_bulk_map({}, packages=frozenset({"S"}))
 
         valid, residue, unresolved = service.find_shipped_without_submodule(
             shipped,
-            submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
@@ -613,7 +597,6 @@ class TestFindShippedWithoutSubmodule:
         with pytest.raises(TypeError, match="obs_project"):
             service.find_shipped_without_submodule(  # type: ignore[call-arg]  # omission under test
                 {"pkg1"},
-                ["pkg1"],
                 Path("/tmp/overrides.json"),
                 Path("/tmp/cache"),
                 bulk_map=_make_bulk_map({}),
@@ -627,38 +610,37 @@ class TestValidateAll:
         self,
         *,
         maintainership_packages: dict[str, list[str]],
-        submodules: list[str],
+        obs_packages: frozenset[str],
         shipped: set[str],
         bulk_map_mapping: dict[str, str],
         overrides: dict[str, str | None] | None = None,
-    ) -> tuple[ValidationService, Mock, Mock, Mock, Mock, Mock]:
-        """Wire a service with all five mocked dependencies for validate_all."""
+    ) -> tuple[ValidationService, Mock, Mock, Mock, Mock]:
+        """Wire a service with all four mocked dependencies for validate_all."""
         maintainership_repo = Mock()
         maintainership_repo.load.return_value = MaintainershipData(packages=maintainership_packages)
-        git_repo = Mock()
-        git_repo.list_submodules.return_value = submodules
         metadata_repo = Mock()
         metadata_repo.parse_source_packages.return_value = shipped
 
         bulk_map_repo = Mock()
-        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map(bulk_map_mapping)
+        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map(
+            bulk_map_mapping, packages=obs_packages
+        )
         overrides_repo = Mock()
         overrides_repo.load.return_value = overrides if overrides is not None else {}
 
         service = ValidationService(
             maintainership_repo=maintainership_repo,
-            git_repo=git_repo,
             metadata_repo=metadata_repo,
             bulk_map_repo=bulk_map_repo,
             overrides_repo=overrides_repo,
         )
-        return service, maintainership_repo, git_repo, metadata_repo, bulk_map_repo, overrides_repo
+        return service, maintainership_repo, metadata_repo, bulk_map_repo, overrides_repo
 
     def test_validate_all_happy_path_no_issues(self):
         """Should orchestrate all validations when no issues found."""
-        service, m_repo, g_repo, md_repo, _, _ = self._make_validate_all_service(
+        service, m_repo, md_repo, _, _ = self._make_validate_all_service(
             maintainership_packages={"pkg1": ["user1"], "pkg2": ["user2"]},
-            submodules=["pkg1", "pkg2"],
+            obs_packages=frozenset({"pkg1", "pkg2"}),
             shipped={"pkg1", "pkg2"},
             bulk_map_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
         )
@@ -667,20 +649,17 @@ class TestValidateAll:
         repo_metadata_file = Path("/tmp/primary.xml.gz")
         overrides_file = Path("/tmp/overrides.json")
         cache_dir = Path("/tmp/cache")
-        git_dir = Path("/tmp/repo")
 
         result = service.validate_all(
             maintainership_file=maintainership_file,
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
             cache_dir=cache_dir,
-            git_dir=git_dir,
             obs_project=_OBS_PROJECT,
         )
 
         m_repo.load.assert_called_once_with(maintainership_file)
         md_repo.parse_source_packages.assert_called_once_with(repo_metadata_file)
-        g_repo.list_submodules.assert_called_once_with(git_dir)
 
         assert result.orphan_packages == []
         assert result.shipped_not_in_submodule == []
@@ -691,10 +670,10 @@ class TestValidateAll:
         service, *_ = self._make_validate_all_service(
             maintainership_packages={
                 "pkg1": ["user1"],
-                # pkg2 in submodules but missing maintainer → orphan
+                # pkg2 in the OBS package set but missing maintainer → orphan
                 "pkg2": [],  # Empty list also counts as orphan
             },
-            submodules=["pkg1", "pkg2"],
+            obs_packages=frozenset({"pkg1", "pkg2"}),
             shipped={"pkg1", "pkg2"},
             bulk_map_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
         )
@@ -704,7 +683,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -712,10 +690,10 @@ class TestValidateAll:
         assert result.shipped_not_in_submodule == []
 
     def test_validate_all_finds_shipped_not_in_submodule(self):
-        """Should identify shipped packages not in submodules."""
+        """Should identify shipped packages not in the OBS package set."""
         service, *_ = self._make_validate_all_service(
             maintainership_packages={"pkg1": ["user1"], "pkg2": ["user2"]},
-            submodules=["pkg1"],
+            obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1", "pkg2"},
             bulk_map_mapping={"pkg1": "pkg1"},  # pkg2 unmapped → passthrough → residue
         )
@@ -725,7 +703,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -736,18 +713,18 @@ class TestValidateAll:
     def test_validate_all_uses_valid_packages_for_orphan_check(self):
         """Orphan check must use valid_packages, not raw shipped_packages.
 
-        pkg3 is shipped but neither in submodules nor mapped by overrides/
-        bulk_map, so it must NOT appear in orphan_packages even though it
-        lacks a maintainer. Only pkg2 (valid via submodule, no maintainer)
-        is an orphan.
+        pkg3 is shipped but neither in the OBS package set nor mapped by
+        overrides/bulk_map, so it must NOT appear in orphan_packages even
+        though it lacks a maintainer. Only pkg2 (valid via the OBS package
+        set, no maintainer) is an orphan.
         """
         service, *_ = self._make_validate_all_service(
             maintainership_packages={
                 "pkg1": ["user1"],
-                # pkg2 missing (orphan, but in submodules)
+                # pkg2 missing (orphan, but in the OBS package set)
                 # pkg3 missing AND not valid → must NOT be flagged orphan
             },
-            submodules=["pkg1", "pkg2"],
+            obs_packages=frozenset({"pkg1", "pkg2"}),
             shipped={"pkg1", "pkg2", "pkg3"},
             # bulk_map only knows pkg1/pkg2 → passthrough; pkg3 unmapped → residue
             bulk_map_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
@@ -758,7 +735,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -772,11 +748,11 @@ class TestValidateAll:
             maintainership_packages={
                 "pkg1": ["user1"],
                 "pkg2": [],  # orphan if valid
-                "pkg3": ["user3"],  # has maintainer but not in submodules
-                "submod1": ["user2"],
-                # submod2 missing - unmaintained submodule
+                "pkg3": ["user3"],  # has maintainer but not in the OBS package set
+                "obspkg1": ["user2"],
+                # obspkg2 missing - unmaintained OBS package
             },
-            submodules=["submod1", "submod2"],
+            obs_packages=frozenset({"obspkg1", "obspkg2"}),
             shipped={"pkg1", "pkg2", "pkg3"},
             bulk_map_mapping={},  # nothing mapped → all passthrough → all residue
         )
@@ -786,19 +762,18 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
-        # No shipped packages are valid (none in submodules) → no orphans checked
+        # No shipped packages are valid (none in the OBS package set) → no orphans checked
         assert result.orphan_packages == []
         assert result.shipped_not_in_submodule == ["pkg1", "pkg2", "pkg3"]
 
     def test_validate_all_with_empty_inputs(self):
         """Should handle completely empty inputs gracefully."""
-        service, m_repo, _, md_repo, _, _ = self._make_validate_all_service(
+        service, m_repo, md_repo, _, _ = self._make_validate_all_service(
             maintainership_packages={},
-            submodules=[],
+            obs_packages=frozenset(),
             shipped=set(),
             bulk_map_mapping={},
         )
@@ -808,7 +783,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -820,13 +794,13 @@ class TestValidateAll:
 
     def test_validate_all_includes_maintained_packages_without_submodule(self):
         """Should include maintained_packages_without_submodule in ValidationResult."""
-        service, _, g_repo, *_ = self._make_validate_all_service(
+        service, *_ = self._make_validate_all_service(
             maintainership_packages={
                 "pkg1": ["alice@example.com"],
                 "pkg2": ["bob@example.com"],
                 "pkg3": ["charlie@example.com"],
             },
-            submodules=["pkg1"],
+            obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1", "pkg2", "pkg3"},
             bulk_map_mapping={"pkg1": "pkg1"},
         )
@@ -836,18 +810,16 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
         assert result.maintained_packages_without_submodule == ["pkg2", "pkg3"]
-        g_repo.list_submodules.assert_called_once()
 
     def test_validate_all_loads_bulk_map_exactly_once(self):
         """validate_all should fetch bulk_map a single time per invocation."""
-        service, _, _, _, bulk_map_repo, _ = self._make_validate_all_service(
+        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
             maintainership_packages={"pkg1": ["user1"]},
-            submodules=["pkg1"],
+            obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1"},
             bulk_map_mapping={"pkg1": "pkg1"},
         )
@@ -857,7 +829,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -865,9 +836,9 @@ class TestValidateAll:
 
     def test_validate_all_passes_force_refresh_false_by_default(self):
         """validate_all should call load_bulk_map with force_refresh=False by default."""
-        service, _, _, _, bulk_map_repo, _ = self._make_validate_all_service(
+        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
             maintainership_packages={"pkg1": ["user1"]},
-            submodules=["pkg1"],
+            obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1"},
             bulk_map_mapping={"pkg1": "pkg1"},
         )
@@ -877,7 +848,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -887,9 +857,9 @@ class TestValidateAll:
 
     def test_validate_all_passes_force_refresh_true_when_requested(self):
         """validate_all should pass force_refresh=True to load_bulk_map when set."""
-        service, _, _, _, bulk_map_repo, _ = self._make_validate_all_service(
+        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
             maintainership_packages={"pkg1": ["user1"]},
-            submodules=["pkg1"],
+            obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1"},
             bulk_map_mapping={"pkg1": "pkg1"},
         )
@@ -899,7 +869,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
             force_refresh=True,
         )
@@ -913,7 +882,7 @@ class TestValidateAll:
         sorted residue from the pipeline."""
         service, *_ = self._make_validate_all_service(
             maintainership_packages={},
-            submodules=["pkg1"],
+            obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1", "orphan-z", "orphan-a"},
             bulk_map_mapping={"pkg1": "pkg1"},
         )
@@ -923,7 +892,6 @@ class TestValidateAll:
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
-            git_dir=Path("/tmp/repo"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -933,9 +901,9 @@ class TestValidateAll:
 
     def test_validate_all_requires_obs_project(self):
         """Omitting obs_project is a TypeError — there is no silent default project."""
-        service, _, _, _, bulk_map_repo, _ = self._make_validate_all_service(
+        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
             maintainership_packages={},
-            submodules=[],
+            obs_packages=frozenset(),
             shipped=set(),
             bulk_map_mapping={},
         )
@@ -946,7 +914,28 @@ class TestValidateAll:
                 repo_metadata_file=Path("/tmp/primary.xml.gz"),
                 overrides_file=Path("/tmp/overrides.json"),
                 cache_dir=Path("/tmp/cache"),
-                git_dir=Path("/tmp/repo"),
             )
 
         bulk_map_repo.load_bulk_map.assert_not_called()
+
+    def test_validate_all_orphan_check_uses_source_resolved_via_bulk_map(self):
+        """A binary resolved to a source in the OBS package set makes that source valid."""
+        service, *_ = self._make_validate_all_service(
+            maintainership_packages={"pkg-a": []},
+            obs_packages=frozenset({"pkg-a"}),
+            shipped={"pkg-a-devel", "stray-bin"},
+            bulk_map_mapping={"pkg-a-devel": "pkg-a", "pkg-a": "pkg-a"},
+        )
+
+        result = service.validate_all(
+            maintainership_file=Path("/tmp/maintainership.json"),
+            repo_metadata_file=Path("/tmp/primary.xml.gz"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
+        )
+
+        assert result.shipped_not_in_submodule == ["stray-bin"]
+        assert result.unresolved_names == ["stray-bin"]
+        # pkg-a is in the OBS package set → valid → orphan (empty maintainer list).
+        assert result.orphan_packages == ["pkg-a"]

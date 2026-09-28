@@ -347,7 +347,9 @@ class ObsBulkSourceInfoRepositoryImpl:
 
         Names containing `:` are multibuild flavors (`pkg:flav`) and are
         excluded. Surrounding whitespace is stripped; attributes that are
-        empty after stripping are skipped.
+        empty after stripping are skipped. A non-flavor <sourceinfo>
+        carrying an <error> child still names a package of the project, so
+        it is kept; a warning with the package name and error text is logged.
 
         Args:
             root: Root element returned by `_parse_sourceinfolist`.
@@ -355,11 +357,18 @@ class ObsBulkSourceInfoRepositoryImpl:
         Returns:
             The set of non-flavor source package names.
         """
-        return frozenset(
-            pkg
-            for si in root.findall("sourceinfo")
-            if (pkg := si.get("package", "").strip()) and ":" not in pkg
-        )
+        packages: set[str] = set()
+        for si in root.findall("sourceinfo"):
+            pkg = si.get("package", "").strip()
+            if not pkg or ":" in pkg:
+                continue
+            error = si.find("error")
+            if error is not None:
+                logger.warning(
+                    "OBS reports an error for package %s: %s", pkg, (error.text or "").strip()
+                )
+            packages.add(pkg)
+        return frozenset(packages)
 
     @staticmethod
     def _build_bulk_map(root: Element) -> dict[str, str]:
