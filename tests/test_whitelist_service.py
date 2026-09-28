@@ -7,6 +7,9 @@ import pytest
 
 from bugownerctl.services.whitelist_service import WhitelistCheckResult, WhitelistService
 
+# Synthetic OBS project name passed to every check_whitelist call.
+_OBS_PROJECT = "TEST:Project:1.0"
+
 
 class TestCheckWhitelist:
     """Tests for WhitelistService.check_whitelist() method."""
@@ -37,6 +40,7 @@ class TestCheckWhitelist:
             submodules=["pkg1", "pkg2"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify
@@ -70,6 +74,7 @@ class TestCheckWhitelist:
             submodules=["pkg1", "pkg2", "pkg3"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify - pkg1 and pkg2 are in BOTH validated shipped and whitelist
@@ -100,6 +105,7 @@ class TestCheckWhitelist:
             submodules=["pkg1", "pkg2"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify
@@ -122,6 +128,7 @@ class TestCheckWhitelist:
                 submodules=["pkg1"],
                 overrides_file=overrides_file,
                 cache_dir=cache_dir,
+                obs_project=_OBS_PROJECT,
             )
 
     def test_check_whitelist_calls_validation_service_with_correct_parameters(
@@ -205,6 +212,7 @@ class TestCheckWhitelist:
             submodules=["pkg1"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         assert result.unresolved_names == ["mystery-pkg"]
@@ -236,10 +244,11 @@ class TestCheckWhitelist:
             submodules=["pkg1"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            "SUSE:SLFO:Main", cache_dir, force_refresh=False
+            _OBS_PROJECT, cache_dir, force_refresh=False
         )
 
     def test_check_whitelist_passes_force_refresh_true_when_requested(self, tmp_path: Path) -> None:
@@ -269,12 +278,28 @@ class TestCheckWhitelist:
             submodules=["pkg1"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
             force_refresh=True,
         )
 
         mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            "SUSE:SLFO:Main", cache_dir, force_refresh=True
+            _OBS_PROJECT, cache_dir, force_refresh=True
         )
+
+    def test_check_whitelist_requires_obs_project(self, tmp_path: Path) -> None:
+        """Omitting obs_project is a TypeError — there is no silent default project."""
+        service = WhitelistService(Mock())
+        whitelist_file = tmp_path / "whitelist.json"
+        whitelist_file.write_text("[]")
+
+        with pytest.raises(TypeError, match="obs_project"):
+            service.check_whitelist(  # type: ignore[call-arg]  # omission under test
+                whitelist_file=whitelist_file,
+                shipped_packages={"pkg1"},
+                submodules=["pkg1"],
+                overrides_file=tmp_path / "overrides.json",
+                cache_dir=tmp_path / "cache",
+            )
 
     def test_check_whitelist_returns_sorted_inconsistent_packages(self, tmp_path: Path) -> None:
         """Should return inconsistent packages in sorted order."""
@@ -301,6 +326,7 @@ class TestCheckWhitelist:
             submodules=["zebra", "apple", "banana"],
             overrides_file=overrides_file,
             cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify sorted output

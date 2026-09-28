@@ -92,7 +92,7 @@ class ValidationService:
         submodules: list[str],
         overrides_file: Path,
         cache_dir: Path,
-        obs_project: str = "SUSE:SLFO:Main",
+        obs_project: str,
         *,
         bulk_map: BulkMap | None = None,
         overrides: Mapping[str, str | None] | None = None,
@@ -163,7 +163,7 @@ class ValidationService:
         overrides_file: Path,
         cache_dir: Path,
         git_dir: Path,
-        obs_project: str = "SUSE:SLFO:Main",
+        obs_project: str,
         *,
         force_refresh: bool = False,
     ) -> ValidationResult:

@@ -29,6 +29,8 @@ class SlfoRepoContext:
         git_repo: The GitRepository instance used for clone/update operations.
         base_url: Optional per-product package-metadata base URL from config;
             None means the repository default URL is used.
+        obs_project: Optional per-product OBS project name from config (e.g.
+            "SUSE:SLFO:Main"); None means the key is absent.
     """
 
     config: dict[str, Any]
@@ -36,6 +38,43 @@ class SlfoRepoContext:
     slfo_repo_path: Path
     git_repo: GitRepository
     base_url: str | None = None
+    obs_project: str | None = None
+
+
+def _resolve_obs_project(product_config: dict[str, Any], version: str) -> str | None:
+    """Read and validate the optional per-product `obs_project` setting.
+
+    A non-string or blank value is rejected here, before any directory is
+    created or any repository cloned; the project-name format is checked
+    later by the OBS repository. Whether a missing value is an error is
+    decided by the commands that need it.
+
+    Args:
+        product_config: The product entry from the `products` config list.
+        version: Product version string, used in error messages.
+
+    Returns:
+        The OBS project name, or None when the key is absent.
+
+    Raises:
+        ConfigError: If `obs_project` is present but not a string, or is
+            empty or whitespace-only.
+    """
+    if "obs_project" not in product_config:
+        return None
+
+    obs_project = product_config["obs_project"]
+    if not isinstance(obs_project, str):
+        raise ConfigError(
+            f"Invalid 'obs_project' config for version {version}: "
+            f"expected OBS project name string, got {type(obs_project).__name__}"
+        )
+    if not obs_project.strip():
+        raise ConfigError(
+            f"Invalid 'obs_project' config for version {version}: "
+            "empty or whitespace-only string not allowed"
+        )
+    return obs_project
 
 
 def _resolve_base_url(product_config: dict[str, Any], version: str) -> str | None:
@@ -115,7 +154,7 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
         ValueError: If version not found, ref is missing/empty, or
                     slfo_git_url is absent from config.
         ConfigError: If config file cannot be found, or the product's
-                     optional base_url is invalid.
+                     optional base_url or obs_project is invalid.
         RuntimeError: If git operations fail.
     """
     logger.info("preparing SLFO repo for version %s", version)
@@ -135,6 +174,7 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
         raise ValueError(f"Version {version} not found in config")
 
     base_url = _resolve_base_url(product_config, version)
+    obs_project = _resolve_obs_project(product_config, version)
 
     if "branch" in product_config:
         git_ref = product_config["branch"]
@@ -160,4 +200,4 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
         cache_dir=cache_dir,
         ref_type=ref_type,
     )
-    return SlfoRepoContext(config, cache_dir, slfo_repo_path, git_repo, base_url)
+    return SlfoRepoContext(config, cache_dir, slfo_repo_path, git_repo, base_url, obs_project)

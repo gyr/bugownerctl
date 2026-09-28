@@ -1,11 +1,13 @@
 """Tests for prepare_slfo_repo helper (repo_prep module)."""
 
 import logging
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
 from bugownerctl.commands.repo_prep import prepare_slfo_repo
 from bugownerctl.domain.ref_type import RefType
@@ -351,6 +353,129 @@ class TestPrepareSlfoRepoBaseUrl:
         ctx = prepare_slfo_repo(version="16.1", config_file=None)
 
         assert ctx.base_url is None
+
+
+class TestPrepareSlfoRepoObsProject:
+    """Tests for the per-product obs_project key."""
+
+    @staticmethod
+    def _config_with_obs_project(obs_project: Any, include_key: bool = True) -> dict[str, Any]:
+        """Build a config whose 16.1 product entry optionally carries obs_project."""
+        product: dict[str, Any] = {"version": "16.1", "branch": "slfo-main"}
+        if include_key:
+            product["obs_project"] = obs_project
+        return {
+            "cache_dir": "~/.cache/bugownerctl",
+            "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
+            "products": [product],
+        }
+
+    @staticmethod
+    def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> Mock:
+        """Patch load_config and GitRepositoryImpl; return the GitRepositoryImpl mock class."""
+        monkeypatch.setattr(
+            "bugownerctl.commands.repo_prep.load_config",
+            Mock(return_value=loaded_config),
+        )
+        mock_git_cls, _ = _make_mock_git_cls()
+        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
+        return mock_git_cls
+
+    def test_obs_project_absent_yields_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Product entry without obs_project key → ctx.obs_project is None."""
+        self._patch(monkeypatch, self._config_with_obs_project(None, include_key=False))
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.obs_project is None
+
+    def test_obs_project_valid_is_carried_verbatim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A configured obs_project reaches the context unmodified."""
+        self._patch(monkeypatch, self._config_with_obs_project("EXAMPLE:Project:1.0"))
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.obs_project == "EXAMPLE:Project:1.0"
+
+    @pytest.mark.parametrize(
+        ("bad_value", "type_name"),
+        [
+            (42, "int"),
+            (1.3, "float"),
+            (["EXAMPLE:Project"], "list"),
+            (None, "NoneType"),
+            (True, "bool"),
+        ],
+    )
+    def test_obs_project_rejects_non_string(
+        self, bad_value: Any, type_name: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-string obs_project raises ConfigError naming the received type."""
+        self._patch(monkeypatch, self._config_with_obs_project(bad_value))
+
+        with pytest.raises(ConfigError, match=f"'obs_project'.*{type_name}"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+    def test_obs_project_rejects_blank_string(
+        self, blank: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty or whitespace-only obs_project raises ConfigError."""
+        self._patch(monkeypatch, self._config_with_obs_project(blank))
+
+        with pytest.raises(ConfigError, match="'obs_project'.*empty or whitespace-only"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    @pytest.mark.parametrize("bad_value", [42, "   "])
+    def test_obs_project_rejection_happens_before_any_clone(
+        self, bad_value: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An invalid obs_project aborts before GitRepositoryImpl is ever constructed."""
+        mock_git_cls = self._patch(monkeypatch, self._config_with_obs_project(bad_value))
+
+        with pytest.raises(ConfigError):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+        mock_git_cls.assert_not_called()
+
+    def test_obs_project_on_other_product_is_not_applied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """obs_project set on a different product entry does not leak into the requested one."""
+        loaded_config: dict[str, Any] = {
+            "cache_dir": "~/.cache/bugownerctl",
+            "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
+            "products": [
+                {"version": "16.0", "commit": "9d679ed", "obs_project": "EXAMPLE:Other"},
+                {"version": "16.1", "branch": "slfo-main"},
+            ],
+        }
+        self._patch(monkeypatch, loaded_config)
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.obs_project is None
+
+    def test_bundled_example_config_sets_obs_project_for_every_product(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The template `init` installs maps each product to its own OBS project.
+
+        Otherwise a freshly initialised config would make `check maintainership`
+        and `check whitelist` fail with a ConfigError straight away, or resolve
+        a release against another release's project.
+        """
+        template = files("bugownerctl").joinpath("data/config.example.yaml").read_text()
+        example_config = yaml.safe_load(template)
+        self._patch(monkeypatch, example_config)
+
+        resolved = {
+            product["version"]: prepare_slfo_repo(
+                version=product["version"], config_file=None
+            ).obs_project
+            for product in example_config["products"]
+        }
+        assert resolved == {"16.0": "SUSE:SLFO:1.2", "16.1": "SUSE:SLFO:Main"}
 
 
 class TestPrepareSlfoRepoErrors:

@@ -10,6 +10,9 @@ from bugownerctl.domain.bulk_map import BulkMap
 from bugownerctl.domain.maintainer import MaintainershipData
 from bugownerctl.services.validation_service import ValidationResult, ValidationService
 
+# Synthetic OBS project name passed to every service call that requires one.
+_OBS_PROJECT = "TEST:Project:1.0"
+
 
 def _make_bulk_map(mapping: dict[str, str], project: str = "SUSE:SLFO:Main") -> BulkMap:
     """Build a BulkMap value object for tests."""
@@ -249,6 +252,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             overrides_file,
             cache_dir,
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -274,6 +278,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -298,6 +303,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -319,6 +325,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -348,6 +355,7 @@ class TestFindShippedWithoutSubmodule:
             ["pkg1"],
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -367,6 +375,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -400,6 +409,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -434,6 +444,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -461,13 +472,14 @@ class TestFindShippedWithoutSubmodule:
             ["pkg1"],
             overrides_file,
             cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         assert valid == {"pkg1"}
         assert residue == []
         assert unresolved == []
         overrides_repo.load.assert_called_once_with(overrides_file)
-        bulk_map_repo.load_bulk_map.assert_called_once_with("SUSE:SLFO:Main", cache_dir)
+        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT, cache_dir)
 
     def test_find_shipped_without_submodule_rejects_force_refresh_kwarg(self):
         """force_refresh must not be a parameter of find_shipped_without_submodule.
@@ -485,6 +497,7 @@ class TestFindShippedWithoutSubmodule:
                 ["pkg1"],
                 Path("/tmp/overrides.json"),
                 Path("/tmp/cache"),
+                obs_project=_OBS_PROJECT,
                 bulk_map=bulk_map,
                 force_refresh=True,  # must no longer be accepted
             )
@@ -511,6 +524,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -537,6 +551,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -561,6 +576,7 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
@@ -581,12 +597,26 @@ class TestFindShippedWithoutSubmodule:
             submodules,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
 
         assert valid == {"S"}
         assert residue == []
         assert unresolved == []
+
+    def test_find_shipped_without_submodule_requires_obs_project(self):
+        """Omitting obs_project is a TypeError — there is no silent default project."""
+        service = _make_service()
+
+        with pytest.raises(TypeError, match="obs_project"):
+            service.find_shipped_without_submodule(  # type: ignore[call-arg]  # omission under test
+                {"pkg1"},
+                ["pkg1"],
+                Path("/tmp/overrides.json"),
+                Path("/tmp/cache"),
+                bulk_map=_make_bulk_map({}),
+            )
 
 
 class TestValidateAll:
@@ -644,6 +674,7 @@ class TestValidateAll:
             overrides_file=overrides_file,
             cache_dir=cache_dir,
             git_dir=git_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         m_repo.load.assert_called_once_with(maintainership_file)
@@ -673,6 +704,7 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         assert result.orphan_packages == ["pkg2"]
@@ -693,6 +725,7 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         assert result.orphan_packages == []
@@ -725,6 +758,7 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         assert result.orphan_packages == ["pkg2"]
@@ -752,6 +786,7 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         # No shipped packages are valid (none in submodules) → no orphans checked
@@ -773,6 +808,7 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         assert result.orphan_packages == []
@@ -800,6 +836,7 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         assert result.maintained_packages_without_submodule == ["pkg2", "pkg3"]
@@ -820,6 +857,7 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         assert bulk_map_repo.load_bulk_map.call_count == 1
@@ -839,10 +877,11 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         bulk_map_repo.load_bulk_map.assert_called_once_with(
-            "SUSE:SLFO:Main", Path("/tmp/cache"), force_refresh=False
+            _OBS_PROJECT, Path("/tmp/cache"), force_refresh=False
         )
 
     def test_validate_all_passes_force_refresh_true_when_requested(self):
@@ -860,11 +899,12 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
             force_refresh=True,
         )
 
         bulk_map_repo.load_bulk_map.assert_called_once_with(
-            "SUSE:SLFO:Main", Path("/tmp/cache"), force_refresh=True
+            _OBS_PROJECT, Path("/tmp/cache"), force_refresh=True
         )
 
     def test_validate_all_populates_unresolved_names_from_residue(self):
@@ -883,8 +923,29 @@ class TestValidateAll:
             overrides_file=Path("/tmp/overrides.json"),
             cache_dir=Path("/tmp/cache"),
             git_dir=Path("/tmp/repo"),
+            obs_project=_OBS_PROJECT,
         )
 
         # Residue is sorted: orphan-a, orphan-z
         assert result.unresolved_names == ["orphan-a", "orphan-z"]
         assert result.shipped_not_in_submodule == ["orphan-a", "orphan-z"]
+
+    def test_validate_all_requires_obs_project(self):
+        """Omitting obs_project is a TypeError — there is no silent default project."""
+        service, _, _, _, bulk_map_repo, _ = self._make_validate_all_service(
+            maintainership_packages={},
+            submodules=[],
+            shipped=set(),
+            bulk_map_mapping={},
+        )
+
+        with pytest.raises(TypeError, match="obs_project"):
+            service.validate_all(  # type: ignore[call-arg]  # omission under test
+                maintainership_file=Path("/tmp/maintainership.json"),
+                repo_metadata_file=Path("/tmp/primary.xml.gz"),
+                overrides_file=Path("/tmp/overrides.json"),
+                cache_dir=Path("/tmp/cache"),
+                git_dir=Path("/tmp/repo"),
+            )
+
+        bulk_map_repo.load_bulk_map.assert_not_called()

@@ -60,8 +60,13 @@ def run_maintainership(args: argparse.Namespace) -> int:
 
     Returns:
         Exit code (0 = no issues, 2 = gating findings found)
+
+    Raises:
+        ConfigError: If the product has no `obs_project` configured.
     """
     slfo_context = prepare_slfo_repo(args.release, args.config)
+    if slfo_context.obs_project is None:
+        raise ConfigError(f"No 'obs_project' configured for version {args.release}")
 
     maintainership_file_name = slfo_context.config.get(
         "maintainership_file", "_maintainership.json"
@@ -97,6 +102,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
             overrides_file=overrides_file,
             cache_dir=slfo_context.cache_dir,
             git_dir=slfo_context.slfo_repo_path,
+            obs_project=slfo_context.obs_project,
             force_refresh=args.refresh_bulk_map,
         )
 
@@ -158,8 +164,13 @@ def run_whitelist(args: argparse.Namespace) -> int:
 
     Returns:
         Exit code (0 = no issues, 2 = gating findings found)
+
+    Raises:
+        ConfigError: If the product has no `obs_project` configured.
     """
     slfo_context = prepare_slfo_repo(args.release, args.config)
+    if slfo_context.obs_project is None:
+        raise ConfigError(f"No 'obs_project' configured for version {args.release}")
 
     whitelist_file_name = slfo_context.config.get("whitelist_file", "whitelist_maintainership.json")
 
@@ -201,6 +212,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
             submodules=submodules,
             overrides_file=overrides_file,
             cache_dir=slfo_context.cache_dir,
+            obs_project=slfo_context.obs_project,
             force_refresh=args.refresh_bulk_map,
         )
 

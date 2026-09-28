@@ -41,7 +41,7 @@ class TestValidateWorkflow:
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
             "slfo_git_url": "git@example.com:test/repo.git",
-            "products": [{"version": "16.1", "branch": "main"}],
+            "products": [{"version": "16.1", "branch": "main", "obs_project": "TEST:Project:1.0"}],
         }
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 
@@ -80,6 +80,8 @@ class TestValidateWorkflow:
             # Verify
             assert exit_code == 0, "Validate should succeed with valid data"
             mock_git.assert_called_once()
+            # The product's configured OBS project is the one queried.
+            assert mock_bulk_map.call_args.args[0] == "TEST:Project:1.0"
 
     def test_validate_workflow_finds_orphan_packages(self, tmp_path, monkeypatch):
         """Should detect packages in repo without maintainers."""
@@ -95,7 +97,7 @@ class TestValidateWorkflow:
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
             "slfo_git_url": "git@example.com:test/repo.git",
-            "products": [{"version": "16.1", "branch": "main"}],
+            "products": [{"version": "16.1", "branch": "main", "obs_project": "TEST:Project:1.0"}],
         }
         (tmp_path / "validate_maintainership.yaml").write_text(json.dumps(config_data))
 

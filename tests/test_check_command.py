@@ -19,6 +19,9 @@ from bugownerctl.services.whitelist_service import WhitelistCheckResult
 # Shared fixtures for maintainership tests
 # ---------------------------------------------------------------------------
 
+# Synthetic OBS project name; real project names are never needed in tests.
+_TEST_OBS_PROJECT = "TEST:Project:1.0"
+
 _MAINT_BASE_CONFIG: dict[str, Any] = {
     "cache_dir": "~/.cache/bugownerctl",
     "slfo_git_url": "https://github.com/test/repo",
@@ -41,6 +44,7 @@ def _patch_maint_prep(
     slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
     base_url: str | None = None,
+    obs_project: str | None = _TEST_OBS_PROJECT,
 ) -> tuple[Mock, SlfoRepoContext]:
     """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
     cfg = config if config is not None else _MAINT_BASE_CONFIG
@@ -50,6 +54,7 @@ def _patch_maint_prep(
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
         base_url=base_url,
+        obs_project=obs_project,
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
@@ -111,6 +116,7 @@ def _patch_whitelist_prep(
     slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
     base_url: str | None = None,
+    obs_project: str | None = _TEST_OBS_PROJECT,
 ) -> tuple[Mock, SlfoRepoContext]:
     """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
     cfg = config if config is not None else _WHITELIST_BASE_CONFIG
@@ -120,6 +126,7 @@ def _patch_whitelist_prep(
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
         base_url=base_url,
+        obs_project=obs_project,
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
@@ -700,6 +707,38 @@ class TestCheckMaintainershipCommand:
         with pytest.raises(ConfigError, match="Invalid 'verify' config"):
             run_maintainership(args)
 
+    def test_run_passes_obs_project_from_context_to_validate_all(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The product's configured obs_project reaches validate_all verbatim."""
+        _patch_maint_prep(monkeypatch, obs_project="TEST:Other:2.0")
+        _patch_maint_other_repos(monkeypatch)
+        _, instance = _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        run_maintainership(args)
+
+        assert instance.validate_all.call_args.kwargs["obs_project"] == "TEST:Other:2.0"
+
+    def test_run_rejects_missing_obs_project_before_any_download(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No obs_project for the product → ConfigError; nothing is downloaded or validated."""
+        _patch_maint_prep(monkeypatch, obs_project=None)
+        repos = _patch_maint_other_repos(monkeypatch)
+        _, instance = _patch_validation_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        with pytest.raises(ConfigError, match="'obs_project'.*16.1"):
+            run_maintainership(args)
+
+        repos["metadata"].return_value.download_primary_metadata.assert_not_called()
+        instance.validate_all.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Tests for run_whitelist (formerly whitelist-check command)
@@ -1183,6 +1222,35 @@ class TestCheckWhitelistCommand:
         with pytest.raises(ConfigError, match="Invalid 'verify' config"):
             run_whitelist(args)
 
+    def test_run_passes_obs_project_from_context_to_check_whitelist(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The product's configured obs_project reaches check_whitelist verbatim."""
+        _patch_whitelist_prep(monkeypatch, obs_project="TEST:Other:2.0")
+        _patch_whitelist_other_repos(monkeypatch)
+        services = _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        run_whitelist(args)
+
+        call_kwargs = services["whitelist_service"].check_whitelist.call_args.kwargs
+        assert call_kwargs["obs_project"] == "TEST:Other:2.0"
+
+    def test_run_rejects_missing_obs_project_before_any_download(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No obs_project for the product → ConfigError; nothing is downloaded or checked."""
+        _patch_whitelist_prep(monkeypatch, obs_project=None)
+        repos = _patch_whitelist_other_repos(monkeypatch)
+        services = _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, refresh_bulk_map=False, strict=False)
+        with pytest.raises(ConfigError, match="'obs_project'.*16.1"):
+            run_whitelist(args)
+
+        repos["metadata"].return_value.download_primary_metadata.assert_not_called()
+        services["whitelist_service"].check_whitelist.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Helpers for check users tests
@@ -1444,3 +1512,16 @@ class TestCheckUsersCommand:
         run_users(args)
 
         service_cls.assert_called_once_with(mock_maint_inst, mock_person_inst)
+
+    def test_run_does_not_require_obs_project(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """check users never queries OBS source info, so a missing obs_project is fine."""
+        _patch_maint_prep(monkeypatch, obs_project=None)
+        _, service_instance = _patch_users_service(monkeypatch)
+
+        args = argparse.Namespace(
+            release="16.1", config=None, api="https://api.example.com", batch_size=50
+        )
+        result = run_users(args)
+
+        assert result == 0
+        service_instance.validate.assert_called_once()
