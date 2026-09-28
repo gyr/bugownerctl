@@ -96,7 +96,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
     overrides_resource = files("bugownerctl.data").joinpath("false_positives_overrides.json")
     with as_file(overrides_resource) as overrides_file:
         result = service.validate_all(
-            maintainership_file=maintainership_file,
+            maintainership_content=maintainership_file.read_bytes(),
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
             obs_project=slfo_context.obs_project,
@@ -263,7 +263,7 @@ def run_users(args: argparse.Namespace) -> int:
     person_repo = ObsPersonRepositoryImpl()
     service = UserValidationService(maintainership_repo, person_repo)
 
-    result = service.validate(maintainership_file, args.api, args.batch_size)
+    result = service.validate(maintainership_file.read_bytes(), args.api, args.batch_size)
 
     if result.confirmed:
         print(f"Found {len(result.confirmed)} confirmed OBS accounts.")

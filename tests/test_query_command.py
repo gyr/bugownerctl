@@ -23,6 +23,26 @@ _BASE_CONFIG: dict[str, Any] = {
 }
 
 
+# Stand-in payload for the maintainership file inside the fake SLFO clone.
+_MAINT_CONTENT = b'{"packages": {}}'
+
+
+def _stub_slfo_file_reads(monkeypatch: pytest.MonkeyPatch, slfo_repo_path: Path) -> None:
+    """Serve _MAINT_CONTENT for reads of <slfo_repo_path>/_maintainership.json.
+
+    The fake clone does not exist on disk; any other path reads normally.
+    """
+    maintainership_path = slfo_repo_path.resolve() / "_maintainership.json"
+    real_read_bytes = Path.read_bytes
+
+    def fake_read_bytes(self: Path) -> bytes:
+        if self == maintainership_path:
+            return _MAINT_CONTENT
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+
+
 def _patch_prep(
     monkeypatch: pytest.MonkeyPatch,
     slfo_repo_path: Path = Path("/cache/SLFO"),
@@ -38,6 +58,7 @@ def _patch_prep(
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.query.prepare_slfo_repo", mock_prep)
+    _stub_slfo_file_reads(monkeypatch, slfo_repo_path)
     return mock_prep, fake_slfo_context
 
 
@@ -125,7 +146,7 @@ class TestRunPackage:
         mock_service.check_package_maintainership.assert_called_once()
         call_args = mock_service.check_package_maintainership.call_args[0]
         assert call_args[0] == "test-pkg"
-        assert isinstance(call_args[1], Path)
+        assert call_args[1] == _MAINT_CONTENT
         assert isinstance(call_args[2], Path)
 
     def test_prints_maintained_status(
@@ -251,7 +272,7 @@ class TestRunPackage:
         run_package(args)
 
         call_args = mock_service.check_package_maintainership.call_args[0]
-        assert call_args[1] == Path("/cache/SLFO/_maintainership.json")
+        assert call_args[1] == _MAINT_CONTENT
         assert call_args[2] == Path("/cache/SLFO/whitelist_maintainership.json")
 
     def test_run_package_forwards_version_and_config_to_prepare_slfo_repo(
@@ -349,7 +370,7 @@ class TestRunMaintainer:
         mock_service.get_packages_by_maintainer.assert_called_once()
         call_args = mock_service.get_packages_by_maintainer.call_args[0]
         assert call_args[0] == "user@example.com"
-        assert isinstance(call_args[1], Path)
+        assert call_args[1] == _MAINT_CONTENT
 
     def test_prints_packages_list(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -431,7 +452,18 @@ class TestRunMaintainer:
         run_maintainer(args)
 
         call_args = mock_service.get_packages_by_maintainer.call_args[0]
-        assert call_args[1] == Path("/cache/SLFO/_maintainership.json")
+        assert call_args[1] == _MAINT_CONTENT
+
+    def test_run_maintainer_missing_maintainership_file_raises_file_not_found(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Should propagate FileNotFoundError when the maintainership file is absent."""
+        config = {**_BASE_CONFIG, "maintainership_file": "absent.json"}
+        _patch_prep(monkeypatch, slfo_repo_path=tmp_path, config=config)
+
+        args = argparse.Namespace(maintainer_name="user@example.com", release="16.1", config=None)
+        with pytest.raises(FileNotFoundError):
+            run_maintainer(args)
 
     def test_run_maintainer_forwards_version_and_config_to_prepare_slfo_repo(
         self, monkeypatch: pytest.MonkeyPatch

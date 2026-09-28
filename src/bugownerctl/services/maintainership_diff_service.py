@@ -74,14 +74,12 @@ def parse_tagged_snapshot(payload: bytes, ref: str) -> dict[str, frozenset[str]]
 
     Note: this normalization deliberately differs from
     `MaintainershipRepositoryImpl.load` in
-    `src/bugownerctl/repositories/maintainership_repository.py`, which takes a
-    `Path`, opens the file itself, and returns untagged `list[str]` maintainers
-    (`users + groups` concatenated). The duplication is correct: no single
-    signature serves both callers. This function must take `bytes` because the
-    document never touches the filesystem, and it must tag by source list
-    because a diff has to tell a user from a like-named group. Changing
-    `load()` to match would break the `check` and `query` commands, which
-    depend on its current contract.
+    `src/bugownerctl/repositories/maintainership_repository.py`. Both parse
+    `bytes`, but `load()` returns untagged `list[str]` maintainers
+    (`users + groups` concatenated), while this function tags each name by the
+    source list it came from, because a diff has to tell a user from a
+    like-named group. The `check` and `query` commands depend on `load()`'s
+    untagged contract, so the two parsers stay separate.
 
     Args:
         payload: Raw bytes of a `_maintainership.json` document.

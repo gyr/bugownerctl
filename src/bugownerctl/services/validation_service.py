@@ -154,7 +154,7 @@ class ValidationService:
 
     def validate_all(
         self,
-        maintainership_file: Path,
+        maintainership_content: bytes,
         repo_metadata_file: Path,
         overrides_file: Path,
         obs_project: str,
@@ -162,7 +162,7 @@ class ValidationService:
         """Orchestrate all validation checks.
 
         Args:
-            maintainership_file: Path to _maintainership.json
+            maintainership_content: Raw bytes of _maintainership.json
             repo_metadata_file: Path to primary.xml.gz (downloaded metadata)
             overrides_file: Path to hand-curated overrides JSON
             obs_project: OBS project to query
@@ -171,7 +171,7 @@ class ValidationService:
             ValidationResult with all validation findings.
         """
         # Load all data
-        maintainership_data = self.maintainership_repo.load(maintainership_file)
+        maintainership_data = self.maintainership_repo.load(maintainership_content)
         shipped_packages = self.metadata_repo.parse_source_packages(repo_metadata_file)
 
         # Pre-load source_info and overrides exactly once here so

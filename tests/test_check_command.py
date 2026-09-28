@@ -30,6 +30,26 @@ _MAINT_BASE_CONFIG: dict[str, Any] = {
 }
 
 
+# Stand-in payload for the maintainership file inside the fake SLFO clone.
+_MAINT_CONTENT = b'{"packages": {}}'
+
+
+def _stub_slfo_file_reads(monkeypatch: pytest.MonkeyPatch, slfo_repo_path: Path) -> None:
+    """Serve _MAINT_CONTENT for reads of <slfo_repo_path>/_maintainership.json.
+
+    The fake clone does not exist on disk; any other path reads normally.
+    """
+    maintainership_path = slfo_repo_path.resolve() / "_maintainership.json"
+    real_read_bytes = Path.read_bytes
+
+    def fake_read_bytes(self: Path) -> bytes:
+        if self == maintainership_path:
+            return _MAINT_CONTENT
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+
+
 def _empty_validation_result() -> ValidationResult:
     """Build a ValidationResult with no findings."""
     return ValidationResult(
@@ -61,6 +81,7 @@ def _patch_maint_prep(
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
+    _stub_slfo_file_reads(monkeypatch, slfo_repo_path)
     return mock_prep, fake_slfo_context
 
 
@@ -276,7 +297,7 @@ class TestCheckMaintainershipCommand:
         # Verify validate_all called with correct parameters
         instance.validate_all.assert_called_once()
         call_args = instance.validate_all.call_args[1]
-        assert isinstance(call_args["maintainership_file"], Path)
+        assert call_args["maintainership_content"] == _MAINT_CONTENT
         assert isinstance(call_args["repo_metadata_file"], Path)
         assert "git_dir" not in call_args
         # OBS source info is fetched on every run; no cache_dir is passed.
@@ -578,8 +599,7 @@ class TestCheckMaintainershipCommand:
 
         instance.validate_all.assert_called_once()
         call_kwargs = instance.validate_all.call_args[1]
-        expected_maintainership = slfo_repo_path / "_maintainership.json"
-        assert call_kwargs["maintainership_file"] == expected_maintainership
+        assert call_kwargs["maintainership_content"] == _MAINT_CONTENT
 
     def test_run_passes_verify_from_config_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1378,6 +1398,19 @@ class TestCheckUsersCommand:
         assert "2 of 3 users are not confirmed OBS accounts." in captured.out
         assert "INFO:" not in captured.out
 
+    def test_run_missing_maintainership_file_raises_file_not_found(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Propagates FileNotFoundError when the maintainership file is absent."""
+        config = {**_MAINT_BASE_CONFIG, "maintainership_file": "absent.json"}
+        _patch_maint_prep(monkeypatch, slfo_repo_path=tmp_path, config=config)
+
+        args = argparse.Namespace(
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        with pytest.raises(FileNotFoundError):
+            run_users(args)
+
     def test_run_resolves_maintainership_file_from_slfo_repo_path(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1393,8 +1426,7 @@ class TestCheckUsersCommand:
 
         service_instance.validate.assert_called_once()
         positional_args = service_instance.validate.call_args[0]
-        expected_file = slfo_repo_path / "_maintainership.json"
-        assert positional_args[0] == expected_file
+        assert positional_args[0] == _MAINT_CONTENT
 
     def test_run_forwards_api_and_batch_size_to_service_validate(
         self, monkeypatch: pytest.MonkeyPatch

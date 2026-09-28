@@ -615,18 +615,18 @@ class TestValidateAll:
             source_info_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
         )
 
-        maintainership_file = Path("/tmp/maintainership.json")
+        maintainership_content = b"{}"
         repo_metadata_file = Path("/tmp/primary.xml.gz")
         overrides_file = Path("/tmp/overrides.json")
 
         result = service.validate_all(
-            maintainership_file=maintainership_file,
+            maintainership_content=maintainership_content,
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
             obs_project=_OBS_PROJECT,
         )
 
-        m_repo.load.assert_called_once_with(maintainership_file)
+        m_repo.load.assert_called_once_with(maintainership_content)
         md_repo.parse_source_packages.assert_called_once_with(repo_metadata_file)
 
         assert result.orphan_packages == []
@@ -647,7 +647,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -666,7 +666,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -697,7 +697,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -723,7 +723,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -743,7 +743,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -769,7 +769,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -787,7 +787,7 @@ class TestValidateAll:
         )
 
         service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -806,7 +806,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -827,7 +827,7 @@ class TestValidateAll:
 
         with pytest.raises(TypeError, match="obs_project"):
             service.validate_all(  # type: ignore[call-arg]  # omission under test
-                maintainership_file=Path("/tmp/maintainership.json"),
+                maintainership_content=b"{}",
                 repo_metadata_file=Path("/tmp/primary.xml.gz"),
                 overrides_file=Path("/tmp/overrides.json"),
             )
@@ -844,7 +844,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
@@ -869,7 +869,7 @@ class TestValidateAll:
         )
 
         result = service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
+            maintainership_content=b"{}",
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,

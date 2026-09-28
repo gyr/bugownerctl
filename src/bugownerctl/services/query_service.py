@@ -40,7 +40,7 @@ class QueryService:
     def check_package_maintainership(
         self,
         package_name: str,
-        maintainership_file: Path,
+        maintainership_content: bytes,
         whitelist_file: Path,
     ) -> PackageMaintainershipResult:
         """Check if package is maintained or whitelisted.
@@ -49,14 +49,14 @@ class QueryService:
 
         Args:
             package_name: Package to check
-            maintainership_file: Path to _maintainership.json
+            maintainership_content: Raw bytes of _maintainership.json
             whitelist_file: Path to whitelist_maintainership.json
 
         Returns:
             Result indicating if maintained, whitelisted, or neither
         """
         # Load maintainership data
-        maintainership_data = self.maintainership_repo.load(maintainership_file)
+        maintainership_data = self.maintainership_repo.load(maintainership_content)
 
         # Check if package in maintainership
         if package_name in maintainership_data.packages:
@@ -87,18 +87,18 @@ class QueryService:
     def get_packages_by_maintainer(
         self,
         maintainer_name: str,
-        maintainership_file: Path,
+        maintainership_content: bytes,
     ) -> list[str]:
         """Get all packages maintained by a user/group.
 
         Args:
             maintainer_name: User or group name
-            maintainership_file: Path to _maintainership.json
+            maintainership_content: Raw bytes of _maintainership.json
 
         Returns:
             Sorted list of package names
         """
-        maintainership_data = self.maintainership_repo.load(maintainership_file)
+        maintainership_data = self.maintainership_repo.load(maintainership_content)
 
         packages = [
             pkg_name

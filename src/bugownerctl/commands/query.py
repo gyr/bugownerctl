@@ -42,7 +42,7 @@ def run_package(args: argparse.Namespace) -> int:
     maintainership_repo = MaintainershipRepositoryImpl()
     service = QueryService(maintainership_repo)
     result = service.check_package_maintainership(
-        args.package_name, maintainership_file, whitelist_file
+        args.package_name, maintainership_file.read_bytes(), whitelist_file
     )
 
     print(f"\nPackage: {result.package_name}")
@@ -82,7 +82,9 @@ def run_maintainer(args: argparse.Namespace) -> int:
 
     maintainership_repo = MaintainershipRepositoryImpl()
     service = QueryService(maintainership_repo)
-    packages = service.get_packages_by_maintainer(args.maintainer_name, maintainership_file)
+    packages = service.get_packages_by_maintainer(
+        args.maintainer_name, maintainership_file.read_bytes()
+    )
 
     print(f"\nMaintainer: {args.maintainer_name}")
 

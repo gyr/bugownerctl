@@ -29,7 +29,6 @@ sorting by package name, set semantics over member order, and input immutability
 import dataclasses
 import json
 import logging
-from pathlib import Path
 
 import pytest
 
@@ -787,7 +786,7 @@ class TestNormalizationDivergence:
         b'{"project": "SLFO:1.3", "packages": {"vim": {"users": ["alice"], "groups": ["editors"]}}}'
     )
 
-    def test_load_returns_untagged_names_while_the_parser_tags_groups(self, tmp_path: Path) -> None:
+    def test_load_returns_untagged_names_while_the_parser_tags_groups(self) -> None:
         """Should tag group-sourced names, unlike load(), which concatenates users and groups.
 
         This duplication is intentional and must stay: a diff has to tell the
@@ -795,10 +794,7 @@ class TestNormalizationDivergence:
         load()'s untagged list. See the cross-reference comment in
         maintainership_diff_service.parse_tagged_snapshot.
         """
-        file_path = tmp_path / "_maintainership.json"
-        file_path.write_bytes(self.DOCUMENT)
-
-        loaded = MaintainershipRepositoryImpl().load(file_path)
+        loaded = MaintainershipRepositoryImpl().load(self.DOCUMENT)
 
         assert loaded.packages["vim"] == ["alice", "editors"]
         tagged = parse_tagged_snapshot(self.DOCUMENT, "slfo-test")

@@ -6,7 +6,6 @@ person API and classifies each login as confirmed, invalid, or not found.
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepository
 from bugownerctl.repositories.obs_person_repository import ObsPersonRepository
@@ -49,7 +48,7 @@ class UserValidationService:
 
     def validate(
         self,
-        maintainership_file: Path,
+        maintainership_content: bytes,
         api: str,
         batch_size: int,
     ) -> UserValidationResult:
@@ -61,7 +60,7 @@ class UserValidationService:
         well as ``None`` (no ``<state>`` element) is treated as invalid.
 
         Args:
-            maintainership_file: Path to the _maintainership.json file.
+            maintainership_content: Raw bytes of the _maintainership.json file.
             api: OBS API root URL.
             batch_size: Maximum number of logins per OBS API call.
 
@@ -72,7 +71,7 @@ class UserValidationService:
             ValueError: If any login contains characters outside
                 ``[A-Za-z0-9_.@-]`` (propagated from ObsPersonRepository).
         """
-        users_by_package = self.maintainership_repo.load_users_by_package(maintainership_file)
+        users_by_package = self.maintainership_repo.load_users_by_package(maintainership_content)
 
         # Flatten, deduplicate, and sort all user logins
         all_logins: list[str] = sorted(

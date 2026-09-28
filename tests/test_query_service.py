@@ -31,10 +31,12 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
         whitelist_file = tmp_path / "whitelist.json"
 
-        result = service.check_package_maintainership("pkg1", maintainership_file, whitelist_file)
+        result = service.check_package_maintainership(
+            "pkg1", maintainership_content, whitelist_file
+        )
 
         assert result.package_name == "pkg1"
         assert result.status == PackageStatus.MAINTAINED
@@ -48,11 +50,13 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
         whitelist_file = tmp_path / "whitelist.json"
         whitelist_file.write_text('["pkg2"]')
 
-        result = service.check_package_maintainership("pkg2", maintainership_file, whitelist_file)
+        result = service.check_package_maintainership(
+            "pkg2", maintainership_content, whitelist_file
+        )
 
         assert result.package_name == "pkg2"
         assert result.status == PackageStatus.WHITELISTED
@@ -66,11 +70,13 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
         whitelist_file = tmp_path / "whitelist.json"
         whitelist_file.write_text('["pkg2"]')
 
-        result = service.check_package_maintainership("pkg3", maintainership_file, whitelist_file)
+        result = service.check_package_maintainership(
+            "pkg3", maintainership_content, whitelist_file
+        )
 
         assert result.package_name == "pkg3"
         assert result.status == PackageStatus.NOT_FOUND
@@ -84,14 +90,16 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
         whitelist_file = tmp_path / "nonexistent.json"
 
-        result = service.check_package_maintainership("pkg1", maintainership_file, whitelist_file)
+        result = service.check_package_maintainership(
+            "pkg1", maintainership_content, whitelist_file
+        )
 
         assert result.status == PackageStatus.MAINTAINED
 
-    def test_get_packages_by_maintainer_returns_all_packages(self, tmp_path: Path) -> None:
+    def test_get_packages_by_maintainer_returns_all_packages(self) -> None:
         """Should return all packages maintained by specific maintainer."""
         maintainership_repo = Mock()
         maintainership_data = MaintainershipData(
@@ -105,13 +113,13 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
-        result = service.get_packages_by_maintainer("user1@example.com", maintainership_file)
+        result = service.get_packages_by_maintainer("user1@example.com", maintainership_content)
 
         assert result == ["pkg1", "pkg2"]
 
-    def test_get_packages_by_maintainer_returns_empty_when_not_found(self, tmp_path: Path) -> None:
+    def test_get_packages_by_maintainer_returns_empty_when_not_found(self) -> None:
         """Should return empty list when maintainer not found."""
         maintainership_repo = Mock()
         maintainership_data = MaintainershipData(
@@ -123,13 +131,13 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
-        result = service.get_packages_by_maintainer("unknown@example.com", maintainership_file)
+        result = service.get_packages_by_maintainer("unknown@example.com", maintainership_content)
 
         assert result == []
 
-    def test_get_packages_by_maintainer_returns_sorted_list(self, tmp_path: Path) -> None:
+    def test_get_packages_by_maintainer_returns_sorted_list(self) -> None:
         """Should return packages in sorted order."""
         maintainership_repo = Mock()
         maintainership_data = MaintainershipData(
@@ -143,9 +151,9 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
-        result = service.get_packages_by_maintainer("user@example.com", maintainership_file)
+        result = service.get_packages_by_maintainer("user@example.com", maintainership_content)
 
         assert result == ["alpha", "mike", "zulu"]
 
@@ -159,12 +167,12 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
         whitelist_file = tmp_path / "whitelist.json"
         whitelist_file.write_text('{"malformed": "data"}')
 
         with pytest.raises(ValueError, match="must contain a JSON array"):
-            service.check_package_maintainership("pkg2", maintainership_file, whitelist_file)
+            service.check_package_maintainership("pkg2", maintainership_content, whitelist_file)
 
     def test_check_package_raises_error_for_non_string_elements(self, tmp_path: Path) -> None:
         """Should raise ValueError when whitelist array contains non-strings."""
@@ -176,12 +184,12 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
         whitelist_file = tmp_path / "whitelist.json"
         whitelist_file.write_text('["pkg2", 123, "pkg3"]')
 
         with pytest.raises(ValueError, match="must contain only strings"):
-            service.check_package_maintainership("pkg2", maintainership_file, whitelist_file)
+            service.check_package_maintainership("pkg2", maintainership_content, whitelist_file)
 
     def test_check_package_raises_error_for_large_whitelist(self, tmp_path: Path) -> None:
         """Should raise ValueError when whitelist file exceeds size limit."""
@@ -194,7 +202,7 @@ class TestQueryService:
 
         service = QueryService(maintainership_repo)
 
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
         whitelist_file = tmp_path / "whitelist.json"
 
         # Create file larger than 10MB
@@ -202,4 +210,4 @@ class TestQueryService:
         whitelist_file.write_text(json.dumps(large_data))
 
         with pytest.raises(ValueError, match="is too large"):
-            service.check_package_maintainership("pkg2", maintainership_file, whitelist_file)
+            service.check_package_maintainership("pkg2", maintainership_content, whitelist_file)
