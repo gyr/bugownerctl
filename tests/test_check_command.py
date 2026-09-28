@@ -68,18 +68,20 @@ def _patch_maint_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]
     """Patch the 4 repos check.py constructs for maintainership. Returns a dict of mock classes."""
     mock_maint_cls = Mock()
     mock_meta_cls = Mock()
-    mock_bulk_cls = Mock()
+    mock_source_info_cls = Mock()
     mock_over_cls = Mock()
 
     monkeypatch.setattr("bugownerctl.commands.check.MaintainershipRepositoryImpl", mock_maint_cls)
     monkeypatch.setattr("bugownerctl.commands.check.RepoMetadataRepositoryImpl", mock_meta_cls)
-    monkeypatch.setattr("bugownerctl.commands.check.ObsBulkSourceInfoRepositoryImpl", mock_bulk_cls)
+    monkeypatch.setattr(
+        "bugownerctl.commands.check.ObsSourceInfoRepositoryImpl", mock_source_info_cls
+    )
     monkeypatch.setattr("bugownerctl.commands.check.NameOverridesRepositoryImpl", mock_over_cls)
 
     return {
         "maintainership": mock_maint_cls,
         "metadata": mock_meta_cls,
-        "bulk_map": mock_bulk_cls,
+        "source_info": mock_source_info_cls,
         "overrides": mock_over_cls,
     }
 
@@ -148,18 +150,20 @@ def _patch_whitelist_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, M
         "/cache/primary.xml.gz"
     )
     mock_meta_cls.return_value.parse_source_packages.return_value = {"pkg1"}
-    mock_bulk_cls = Mock()
+    mock_source_info_cls = Mock()
     mock_over_cls = Mock()
 
     monkeypatch.setattr("bugownerctl.commands.check.MaintainershipRepositoryImpl", mock_maint_cls)
     monkeypatch.setattr("bugownerctl.commands.check.RepoMetadataRepositoryImpl", mock_meta_cls)
-    monkeypatch.setattr("bugownerctl.commands.check.ObsBulkSourceInfoRepositoryImpl", mock_bulk_cls)
+    monkeypatch.setattr(
+        "bugownerctl.commands.check.ObsSourceInfoRepositoryImpl", mock_source_info_cls
+    )
     monkeypatch.setattr("bugownerctl.commands.check.NameOverridesRepositoryImpl", mock_over_cls)
 
     return {
         "maintainership": mock_maint_cls,
         "metadata": mock_meta_cls,
-        "bulk_map": mock_bulk_cls,
+        "source_info": mock_source_info_cls,
         "overrides": mock_over_cls,
     }
 
@@ -206,18 +210,18 @@ class TestCheckMaintainershipCommand:
 
         repos["maintainership"].assert_called_once()
         repos["metadata"].assert_called_once()
-        repos["bulk_map"].assert_called_once()
+        repos["source_info"].assert_called_once()
         repos["overrides"].assert_called_once()
 
     def test_run_creates_validation_service_with_new_repos(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should create ValidationService with new bulk_map+overrides repos."""
+        """Should create ValidationService with new source_info+overrides repos."""
         mock_prep, fake_slfo_context = _patch_maint_prep(monkeypatch)
 
         mock_maint_inst = Mock()
         mock_meta_inst = Mock()
-        mock_bulk_inst = Mock()
+        mock_source_info_inst = Mock()
         mock_over_inst = Mock()
 
         monkeypatch.setattr(
@@ -229,8 +233,8 @@ class TestCheckMaintainershipCommand:
             Mock(return_value=mock_meta_inst),
         )
         monkeypatch.setattr(
-            "bugownerctl.commands.check.ObsBulkSourceInfoRepositoryImpl",
-            Mock(return_value=mock_bulk_inst),
+            "bugownerctl.commands.check.ObsSourceInfoRepositoryImpl",
+            Mock(return_value=mock_source_info_inst),
         )
         monkeypatch.setattr(
             "bugownerctl.commands.check.NameOverridesRepositoryImpl",
@@ -245,7 +249,7 @@ class TestCheckMaintainershipCommand:
         cls_mock.assert_called_once_with(
             mock_maint_inst,
             mock_meta_inst,
-            bulk_map_repo=mock_bulk_inst,
+            source_info_repo=mock_source_info_inst,
             overrides_repo=mock_over_inst,
         )
 
@@ -275,7 +279,7 @@ class TestCheckMaintainershipCommand:
         assert isinstance(call_args["maintainership_file"], Path)
         assert isinstance(call_args["repo_metadata_file"], Path)
         assert "git_dir" not in call_args
-        # The OBS bulk map is fetched on every run; no cache_dir is passed.
+        # OBS source info is fetched on every run; no cache_dir is passed.
         assert "cache_dir" not in call_args
         # overrides_file must resolve via importlib.resources (lives under
         # the installed package's data dir); just confirm it's a Path and
@@ -730,7 +734,7 @@ class TestCheckWhitelistCommand:
 
         repos["maintainership"].assert_called_once()
         repos["metadata"].assert_called_once()
-        repos["bulk_map"].assert_called_once()
+        repos["source_info"].assert_called_once()
         repos["overrides"].assert_called_once()
 
     def test_run_creates_validation_service_with_new_repos(
@@ -743,7 +747,7 @@ class TestCheckWhitelistCommand:
         mock_meta_inst = Mock()
         mock_meta_inst.download_primary_metadata.return_value = Path("/cache/primary.xml.gz")
         mock_meta_inst.parse_source_packages.return_value = {"pkg1"}
-        mock_bulk_inst = Mock()
+        mock_source_info_inst = Mock()
         mock_over_inst = Mock()
 
         monkeypatch.setattr(
@@ -755,8 +759,8 @@ class TestCheckWhitelistCommand:
             Mock(return_value=mock_meta_inst),
         )
         monkeypatch.setattr(
-            "bugownerctl.commands.check.ObsBulkSourceInfoRepositoryImpl",
-            Mock(return_value=mock_bulk_inst),
+            "bugownerctl.commands.check.ObsSourceInfoRepositoryImpl",
+            Mock(return_value=mock_source_info_inst),
         )
         monkeypatch.setattr(
             "bugownerctl.commands.check.NameOverridesRepositoryImpl",
@@ -771,7 +775,7 @@ class TestCheckWhitelistCommand:
         services["validation_cls"].assert_called_once_with(
             mock_maint_inst,
             mock_meta_inst,
-            bulk_map_repo=mock_bulk_inst,
+            source_info_repo=mock_source_info_inst,
             overrides_repo=mock_over_inst,
         )
 
@@ -820,7 +824,7 @@ class TestCheckWhitelistCommand:
         assert call_args["whitelist_file"] == slfo_repo_path / "whitelist_maintainership.json"
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert "submodules" not in call_args
-        # The OBS bulk map is fetched on every run; no cache_dir is passed.
+        # OBS source info is fetched on every run; no cache_dir is passed.
         assert "cache_dir" not in call_args
         # overrides_file must resolve via importlib.resources to the shipped JSON
         assert isinstance(call_args["overrides_file"], Path)

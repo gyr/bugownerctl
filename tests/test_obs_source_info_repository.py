@@ -1,11 +1,11 @@
-"""Tests for ObsBulkSourceInfoRepository.
+"""Tests for ObsSourceInfoRepository.
 
 Phase 2 of the OBS source-name resolution refactor. Tests cover:
   - Protocol shape.
   - Input validation (project name).
   - Subprocess invocation (mocked; argv-style; timeout).
   - XML parsing (alias/subpack/originpackage chain; collision rules).
-  - No caching (osc runs on every call; nothing written to disk).
+  - No caching (osc runs on every call).
   - Failure modes (non-zero exit, timeout, malformed XML, osc not installed).
 """
 
@@ -15,15 +15,15 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.domain.obs_source_info import ObsSourceInfo
 from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
-from bugownerctl.repositories.obs_bulk_source_info_repository import (
+from bugownerctl.repositories.obs_source_info_repository import (
     MAX_XML_BYTES,
-    ObsBulkSourceInfoRepository,
-    ObsBulkSourceInfoRepositoryImpl,
+    ObsSourceInfoRepository,
+    ObsSourceInfoRepositoryImpl,
 )
 
-FIXTURE_PATH = Path(__file__).parent / "fixtures" / "obs_bulk_sample.xml"
+FIXTURE_PATH = Path(__file__).parent / "fixtures" / "obs_source_info_sample.xml"
 
 
 # ---------------------------------------------------------------------------
@@ -48,46 +48,46 @@ def _make_proc(returncode: int = 0, stdout: bytes = b"", stderr: bytes = b"") ->
 
 class TestProtocol:
     def test_protocol_methods_present(self) -> None:
-        """ObsBulkSourceInfoRepository must expose load_bulk_map."""
-        assert hasattr(ObsBulkSourceInfoRepository, "load_bulk_map")
+        """ObsSourceInfoRepository must expose load_source_info."""
+        assert hasattr(ObsSourceInfoRepository, "load_source_info")
 
     def test_impl_satisfies_protocol(self) -> None:
-        """ObsBulkSourceInfoRepositoryImpl satisfies the protocol."""
-        impl: ObsBulkSourceInfoRepository = ObsBulkSourceInfoRepositoryImpl()
-        assert callable(impl.load_bulk_map)
+        """ObsSourceInfoRepositoryImpl satisfies the protocol."""
+        impl: ObsSourceInfoRepository = ObsSourceInfoRepositoryImpl()
+        assert callable(impl.load_source_info)
 
 
 class TestInputValidation:
-    def test_load_bulk_map_rejects_invalid_project_chars(self) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
+    def test_load_source_info_rejects_invalid_project_chars(self) -> None:
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("../etc")
+            repo.load_source_info("../etc")
 
     def test_project_with_shell_metachars_rejected(self) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("SUSE; rm -rf /")
+            repo.load_source_info("SUSE; rm -rf /")
 
     def test_project_with_newline_rejected(self) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("SUSE\nfoo")
+            repo.load_source_info("SUSE\nfoo")
 
     def test_project_with_path_traversal_rejected(self) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("../etc/passwd")
+            repo.load_source_info("../etc/passwd")
 
     def test_empty_project_rejected(self) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("")
+            repo.load_source_info("")
 
     def test_project_exceeding_200_chars_rejected(self) -> None:
         """Real OBS project names are <100 chars; bound at 200 to cap argv/URL growth."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("A" * 201)
+            repo.load_source_info("A" * 201)
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +95,11 @@ class TestInputValidation:
 
 
 class TestSubprocessInvocation:
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_runs_osc_api_with_correct_args(self, mock_run: Mock) -> None:
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_runs_osc_api_with_correct_args(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main")
+        repo = ObsSourceInfoRepositoryImpl()
+        repo.load_source_info("SUSE:SLFO:Main")
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
         assert args[0] == [
@@ -115,28 +115,28 @@ class TestSubprocessInvocation:
         assert kwargs.get("timeout") is not None
         assert kwargs.get("timeout") > 0
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_subprocess_nonzero_raises_runtime_error(self, mock_run: Mock) -> None:
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_subprocess_nonzero_raises_runtime_error(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=1, stderr=b"auth failed")
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError, match="osc"):
-            repo.load_bulk_map("SUSE:SLFO:Main")
+            repo.load_source_info("SUSE:SLFO:Main")
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_subprocess_timeout_raises_network_timeout_error(
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_subprocess_timeout_raises_network_timeout_error(
         self, mock_run: Mock
     ) -> None:
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="osc", timeout=120)
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(NetworkTimeoutError, match="timed out"):
-            repo.load_bulk_map("SUSE:SLFO:Main")
+            repo.load_source_info("SUSE:SLFO:Main")
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
     def test_osc_not_installed_raises_missing_binary_error(self, mock_run: Mock) -> None:
         mock_run.side_effect = FileNotFoundError("osc")
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(MissingBinaryError, match="osc"):
-            repo.load_bulk_map("SUSE:SLFO:Main")
+            repo.load_source_info("SUSE:SLFO:Main")
 
 
 # ---------------------------------------------------------------------------
@@ -144,12 +144,12 @@ class TestSubprocessInvocation:
 
 
 class TestParsing:
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_parses_fixture_into_expected_mapping(self, mock_run: Mock) -> None:
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_parses_fixture_into_expected_mapping(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        bm = repo.load_bulk_map("SUSE:SLFO:Main")
-        assert isinstance(bm, BulkMap)
+        repo = ObsSourceInfoRepositoryImpl()
+        bm = repo.load_source_info("SUSE:SLFO:Main")
+        assert isinstance(bm, ObsSourceInfo)
         assert bm.project == "SUSE:SLFO:Main"
         m = bm.mapping
         # identity
@@ -177,8 +177,8 @@ class TestParsing:
         assert m["chain-b"] == "chain-c"
         assert m["chain-c"] == "chain-c"
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_packages_exclude_multibuild_flavors(self, mock_run: Mock) -> None:
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_packages_exclude_multibuild_flavors(self, mock_run: Mock) -> None:
         """packages holds plain <sourceinfo package> names; `pkg:flav` flavors are excluded."""
         xml = (
             b"<sourceinfolist>"
@@ -190,12 +190,12 @@ class TestParsing:
             b"</sourceinfolist>"
         )
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        bm = repo.load_bulk_map("SUSE:SLFO:Main")
+        repo = ObsSourceInfoRepositoryImpl()
+        bm = repo.load_source_info("SUSE:SLFO:Main")
         assert bm.packages == frozenset({"pkg", "other"})
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_packages_keep_linked_packages_without_colon(
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_packages_keep_linked_packages_without_colon(
         self, mock_run: Mock
     ) -> None:
         """An <originpackage> without `:` in the name is a real package, not a flavor."""
@@ -208,12 +208,12 @@ class TestParsing:
             b"</sourceinfolist>"
         )
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        bm = repo.load_bulk_map("SUSE:SLFO:Main")
+        repo = ObsSourceInfoRepositoryImpl()
+        bm = repo.load_source_info("SUSE:SLFO:Main")
         assert bm.packages == frozenset({"pkg", "linked-src"})
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_sourceinfo_with_error_stays_in_packages_and_warns(
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_sourceinfo_with_error_stays_in_packages_and_warns(
         self, mock_run: Mock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """A <sourceinfo> carrying <error> is still a project package; a warning names it."""
@@ -226,10 +226,10 @@ class TestParsing:
             b"</sourceinfolist>"
         )
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
 
         with caplog.at_level("WARNING"):
-            bm = repo.load_bulk_map("SUSE:SLFO:Main")
+            bm = repo.load_source_info("SUSE:SLFO:Main")
 
         assert bm.packages == frozenset({"pkg-ok", "pkg-broken"})
         warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
@@ -244,7 +244,7 @@ class TestParsing:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """A flavor is not in packages, so its <error> is not warned about."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package="pkg"/>'
@@ -264,7 +264,7 @@ class TestParsing:
         self, error_element: bytes, caplog: pytest.LogCaptureFixture
     ) -> None:
         """An <error> with no text is still an error: warned with an empty message."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b'<sourceinfolist><sourceinfo package="pkg">'
             + error_element
@@ -281,7 +281,7 @@ class TestParsing:
 
     def test_extract_package_names_skips_empty_and_missing_package_attribute(self) -> None:
         """Empty or absent `package` attributes never yield an empty-string name."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package=""><subpacks>x</subpacks></sourceinfo>'
@@ -294,25 +294,25 @@ class TestParsing:
 
     def test_extract_package_names_strips_surrounding_whitespace(self) -> None:
         """A padded `package` attribute yields the bare name: " bash " is "bash"."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = b'<sourceinfolist><sourceinfo package=" bash "/></sourceinfolist>'
         root = repo._parse_sourceinfolist(xml)
         assert repo._extract_package_names(root) == frozenset({"bash"})
 
-    def test_build_bulk_map_strips_package_attribute_whitespace(self) -> None:
+    def test_build_mapping_strips_package_attribute_whitespace(self) -> None:
         """A padded `package` attribute keys and attributes to the bare name."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package=" bash "><subpacks>bash-doc</subpacks></sourceinfo>'
             b"</sourceinfolist>"
         )
-        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        m = repo._build_mapping(repo._parse_sourceinfolist(xml))
         assert m == {"bash": "bash", "bash-doc": "bash"}
 
     def test_whitespace_only_package_attribute_is_skipped(self) -> None:
         """A `package` attribute that is empty after stripping yields no name."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package="   "><subpacks>x</subpacks></sourceinfo>'
@@ -321,11 +321,11 @@ class TestParsing:
         )
         root = repo._parse_sourceinfolist(xml)
         assert repo._extract_package_names(root) == frozenset({"real"})
-        assert repo._build_bulk_map(root) == {"real": "real"}
+        assert repo._build_mapping(root) == {"real": "real"}
 
-    def test_build_bulk_map_strips_originpackage_whitespace(self) -> None:
+    def test_build_mapping_strips_originpackage_whitespace(self) -> None:
         """A padded <originpackage> attributes the flavor's subpacks to the bare parent."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package="kernel:azure">'
@@ -334,23 +334,23 @@ class TestParsing:
             b"</sourceinfo>"
             b"</sourceinfolist>"
         )
-        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        m = repo._build_mapping(repo._parse_sourceinfolist(xml))
         assert m == {"kernel:azure": "kernel", "kernel-azure": "kernel"}
 
-    def test_build_bulk_map_strips_subpacks_whitespace(self) -> None:
+    def test_build_mapping_strips_subpacks_whitespace(self) -> None:
         """A padded <subpacks> name maps under its bare name."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package="bash"><subpacks> bash-doc </subpacks></sourceinfo>'
             b"</sourceinfolist>"
         )
-        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        m = repo._build_mapping(repo._parse_sourceinfolist(xml))
         assert m == {"bash": "bash", "bash-doc": "bash"}
 
-    def test_build_bulk_map_treats_whitespace_only_originpackage_as_absent(self) -> None:
+    def test_build_mapping_treats_whitespace_only_originpackage_as_absent(self) -> None:
         """A whitespace-only <originpackage> behaves exactly like no originpackage."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package="kernel:azure">'
@@ -359,11 +359,11 @@ class TestParsing:
             b"</sourceinfo>"
             b"</sourceinfolist>"
         )
-        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        m = repo._build_mapping(repo._parse_sourceinfolist(xml))
         assert m == {"kernel:azure": "kernel:azure", "kernel-azure": "kernel:azure"}
 
-    def test_build_bulk_map_resolves_originpackage_chain(self) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
+    def test_build_mapping_resolves_originpackage_chain(self) -> None:
+        repo = ObsSourceInfoRepositoryImpl()
         xml = b"""<sourceinfolist>
           <sourceinfo package="C"><subpacks>C</subpacks></sourceinfo>
           <sourceinfo package="B">
@@ -373,39 +373,39 @@ class TestParsing:
             <originpackage>B</originpackage><subpacks>A</subpacks>
           </sourceinfo>
         </sourceinfolist>"""
-        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        m = repo._build_mapping(repo._parse_sourceinfolist(xml))
         assert m["A"] == "C"
         assert m["B"] == "C"
         assert m["C"] == "C"
 
-    def test_build_bulk_map_collision_prefers_identity_over_alias(self) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
+    def test_build_mapping_collision_prefers_identity_over_alias(self) -> None:
+        repo = ObsSourceInfoRepositoryImpl()
         xml = b"""<sourceinfolist>
           <sourceinfo package="X"><subpacks>X</subpacks></sourceinfo>
           <sourceinfo package="Y">
             <subpacks>Y</subpacks><subpacks>X</subpacks>
           </sourceinfo>
         </sourceinfolist>"""
-        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        m = repo._build_mapping(repo._parse_sourceinfolist(xml))
         # Identity wins: X → X, NOT X → Y.
         assert m["X"] == "X"
         assert m["Y"] == "Y"
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
     def test_invalid_xml_raises_runtime_error(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=0, stdout=b"not xml at all")
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError, match="not valid XML"):
-            repo.load_bulk_map("SUSE:SLFO:Main")
+            repo.load_source_info("SUSE:SLFO:Main")
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
     def test_status_reply_raises_with_project_root_tag_and_summary(self, mock_run: Mock) -> None:
         """An OBS <status> error document stops the run."""
         xml = b'<status code="unknown_project"><summary> Project not found </summary></status>'
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError) as exc_info:
-            repo.load_bulk_map("SUSE:SLFO:Main")
+            repo.load_source_info("SUSE:SLFO:Main")
         assert str(exc_info.value) == (
             "OBS reply for project SUSE:SLFO:Main is not a package list "
             "(root element <status>): Project not found"
@@ -413,26 +413,26 @@ class TestParsing:
         # Distinct from the empty-<sourceinfolist> error.
         assert "lists no packages" not in str(exc_info.value)
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
     def test_non_sourceinfolist_reply_without_summary_ends_at_root_tag(
         self, mock_run: Mock
     ) -> None:
         """No <summary> child: the message ends after the root element, no dangling colon."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError) as exc_info:
-            repo.load_bulk_map("SUSE:SLFO:Main")
+            repo.load_source_info("SUSE:SLFO:Main")
         assert str(exc_info.value) == (
             "OBS reply for project SUSE:SLFO:Main is not a package list (root element <directory>)"
         )
 
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
     def test_empty_sourceinfolist_raises_no_packages(self, mock_run: Mock) -> None:
         """A valid but empty <sourceinfolist> stops the run."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<sourceinfolist/>")
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError) as exc_info:
-            repo.load_bulk_map("SUSE:SLFO:Main")
+            repo.load_source_info("SUSE:SLFO:Main")
         message = str(exc_info.value)
         assert message == (
             "OBS project SUSE:SLFO:Main lists no packages; check 'obs_project' in your config"
@@ -443,28 +443,28 @@ class TestParsing:
 
     def test_parse_sourceinfolist_rejects_doctype_declaration(self) -> None:
         """DOCTYPE declarations enable billion-laughs entity-expansion DoS; refuse them."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         evil = b'<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY a "evil">]><sourceinfolist/>'
         with pytest.raises(RuntimeError, match="DOCTYPE"):
             repo._parse_sourceinfolist(evil)
 
     def test_parse_sourceinfolist_rejects_doctype_beyond_4096_bytes(self) -> None:
         """DOCTYPE beyond the 4096-byte scan window must still be rejected."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         # 5001-byte comment pushes <!DOCTYPE past the former [:4096] scan window.
         padding = b"<!-- " + b"x" * 5001 + b" -->"
         evil = padding + b'<!DOCTYPE foo [<!ENTITY a "x">]><sourceinfolist/>'
         with pytest.raises(RuntimeError, match="DOCTYPE"):
             repo._parse_sourceinfolist(evil)
 
-    def test_build_bulk_map_ignores_whitespace_only_subpacks(self) -> None:
+    def test_build_mapping_ignores_whitespace_only_subpacks(self) -> None:
         """A <subpacks>   </subpacks> element must not produce a whitespace key.
 
         Python truthiness considers a whitespace string truthy, so the original
         filter `if s.text` admitted these and created mapping entries like
         `{"   ": "pkg"}`. Strip then re-check truthiness.
         """
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         xml = (
             b"<sourceinfolist>"
             b'<sourceinfo package="pkg">'
@@ -474,7 +474,7 @@ class TestParsing:
             b"</sourceinfo>"
             b"</sourceinfolist>"
         )
-        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
+        m = repo._build_mapping(repo._parse_sourceinfolist(xml))
         # No whitespace-only keys at all.
         assert all(k.strip() == k and k for k in m)
         # The real subpack survives.
@@ -484,7 +484,7 @@ class TestParsing:
 
     def test_parse_sourceinfolist_rejects_oversized_xml(self) -> None:
         """Bodies larger than MAX_XML_BYTES are rejected before parsing."""
-        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo = ObsSourceInfoRepositoryImpl()
         # Use multiplication, not a real 50 MB allocation.
         oversized = b"x" * (MAX_XML_BYTES + 1)
         with pytest.raises(RuntimeError, match="exceeds"):
@@ -496,23 +496,11 @@ class TestParsing:
 
 
 class TestNoCache:
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_runs_osc_on_every_call(self, mock_run: Mock) -> None:
+    @patch("bugownerctl.repositories.obs_source_info_repository.subprocess.run")
+    def test_load_source_info_runs_osc_on_every_call(self, mock_run: Mock) -> None:
         """Two consecutive calls each fetch from OBS; nothing is reused between them."""
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main")
-        repo.load_bulk_map("SUSE:SLFO:Main")
+        repo = ObsSourceInfoRepositoryImpl()
+        repo.load_source_info("SUSE:SLFO:Main")
+        repo.load_source_info("SUSE:SLFO:Main")
         assert mock_run.call_count == 2
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_writes_no_files(
-        self, mock_run: Mock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The reply is parsed in memory; no file is created, not even in cwd."""
-        monkeypatch.chdir(tmp_path)
-        mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main")
-        assert list(tmp_path.rglob("obs_bulk_map.*")) == []
-        assert list(tmp_path.iterdir()) == []

@@ -4,8 +4,8 @@ Design Notes:
     - Service layer coordinates between repositories
     - Business logic for finding orphans, mismatches, etc.
     - Resolves shipped binary names to canonical source names via the
-      OBS bulk source-info map, with hand-curated overrides taking
-      priority over the bulk map.
+      OBS source info, with hand-curated overrides taking
+      priority over the OBS source info.
 """
 
 import logging
@@ -13,12 +13,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from bugownerctl.domain.bulk_map import BulkMap
 from bugownerctl.domain.maintainer import MaintainershipData
+from bugownerctl.domain.obs_source_info import ObsSourceInfo
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepository
 from bugownerctl.repositories.name_overrides_repository import NameOverridesRepository
-from bugownerctl.repositories.obs_bulk_source_info_repository import (
-    ObsBulkSourceInfoRepository,
+from bugownerctl.repositories.obs_source_info_repository import (
+    ObsSourceInfoRepository,
 )
 from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepository
 
@@ -46,12 +46,12 @@ class ValidationService:
         maintainership_repo: MaintainershipRepository,
         metadata_repo: RepoMetadataRepository,
         *,
-        bulk_map_repo: ObsBulkSourceInfoRepository,
+        source_info_repo: ObsSourceInfoRepository,
         overrides_repo: NameOverridesRepository,
     ) -> None:
         self.maintainership_repo = maintainership_repo
         self.metadata_repo = metadata_repo
-        self.bulk_map_repo = bulk_map_repo
+        self.source_info_repo = source_info_repo
         self.overrides_repo = overrides_repo
 
     def find_orphan_packages(
@@ -90,25 +90,25 @@ class ValidationService:
         overrides_file: Path,
         obs_project: str,
         *,
-        bulk_map: BulkMap | None = None,
+        source_info: ObsSourceInfo | None = None,
         overrides: Mapping[str, str | None] | None = None,
     ) -> tuple[set[str], list[str], list[str]]:
         """Resolve shipped names and split them against the OBS package set.
 
         Resolution order per shipped name N:
             1. N in overrides: value None drops N entirely; str value wins.
-            2. N in bulk_map: use bulk_map[N].
+            2. N in source_info: use source_info[N].
             3. Else: passthrough (N is its own source name = identity).
 
-        Callers that already loaded the bulk_map (via
-        bulk_map_repo.load_bulk_map) pass it here as bulk_map= to avoid
+        Callers that already loaded the source_info (via
+        source_info_repo.load_source_info) pass it here as source_info= to avoid
         re-fetching.  validate_all and check_whitelist both do this.
 
         Args:
             shipped_packages: Set of package names from repo metadata
             overrides_file: Path to hand-curated overrides JSON
             obs_project: OBS project to query
-            bulk_map: Preloaded BulkMap value object (avoids re-fetching when
+            source_info: Preloaded ObsSourceInfo value object (avoids re-fetching when
                 validate_all already loaded it). Its `packages` set is the
                 OBS package set compared against.
             overrides: Preloaded overrides mapping
@@ -120,17 +120,17 @@ class ValidationService:
               are NOT in the OBS package set (regardless of which branch
               resolved them).
             - unresolved_names: STRICT SUBSET of residue. Names that hit
-              the identity fallthrough branch (no override, no bulk_map
+              the identity fallthrough branch (no override, no source_info
               entry) AND are not in the OBS package set. Semantically:
               "shipped names we have no clue what they are."
         """
         # Caller may pre-load (validate_all does); otherwise hit the repos.
         if overrides is None:
             overrides = self.overrides_repo.load(overrides_file)
-        if bulk_map is None:
-            bulk_map = self.bulk_map_repo.load_bulk_map(obs_project)
+        if source_info is None:
+            source_info = self.source_info_repo.load_source_info(obs_project)
 
-        obs_packages = bulk_map.packages
+        obs_packages = source_info.packages
         resolved_names: set[str] = set()
         unresolved_set: set[str] = set()
         for name in shipped_packages:
@@ -139,8 +139,8 @@ class ValidationService:
                 if value is None:
                     continue  # explicitly suppressed
                 resolved_names.add(value)
-            elif name in bulk_map.mapping:
-                resolved_names.add(bulk_map.mapping[name])
+            elif name in source_info.mapping:
+                resolved_names.add(source_info.mapping[name])
             else:
                 # Identity fallthrough: no mapping at all.
                 resolved_names.add(name)
@@ -174,14 +174,14 @@ class ValidationService:
         maintainership_data = self.maintainership_repo.load(maintainership_file)
         shipped_packages = self.metadata_repo.parse_source_packages(repo_metadata_file)
 
-        # Pre-load bulk_map and overrides exactly once here so
+        # Pre-load source_info and overrides exactly once here so
         # resolve_shipped_packages reuses them.
         overrides = self.overrides_repo.load(overrides_file)
-        bulk_map = self.bulk_map_repo.load_bulk_map(obs_project)
+        source_info = self.source_info_repo.load_source_info(obs_project)
 
         logger.info("starting validate_all for %d shipped packages", len(shipped_packages))
         maintained_packages_not_in_obs = self.find_maintained_packages_not_in_obs(
-            maintainership_data, bulk_map.packages
+            maintainership_data, source_info.packages
         )
         logger.debug(
             "found %d maintained packages not in the OBS package set",
@@ -195,7 +195,7 @@ class ValidationService:
             shipped_packages,
             overrides_file,
             obs_project=obs_project,
-            bulk_map=bulk_map,
+            source_info=source_info,
             overrides=overrides,
         )
 
@@ -207,7 +207,7 @@ class ValidationService:
             maintained_packages_not_in_obs=maintained_packages_not_in_obs,
             shipped_not_in_obs=shipped_not_in_obs,
             shipped_package_count=len(shipped_packages),
-            obs_package_count=len(bulk_map.packages),
+            obs_package_count=len(source_info.packages),
             # Same truthiness as find_orphan_packages: empty maintainer list = unmaintained
             maintained_package_count=sum(
                 1 for maintainers in maintainership_data.packages.values() if maintainers

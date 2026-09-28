@@ -20,7 +20,7 @@ class WhitelistCheckResult:
     """Results from whitelist check operation."""
 
     inconsistent_packages: list[str]  # Packages BOTH shipped AND whitelisted (sorted)
-    # Names that fell through the bulk_map/overrides pipeline to identity
+    # Names that fell through the source_info/overrides pipeline to identity
     # AND are not in the OBS package set. Mirrors ValidationResult.unresolved_names.
     unresolved_names: list[str] = field(default_factory=list)
 
@@ -113,9 +113,9 @@ class WhitelistService:
         # Load whitelist
         whitelist = self.load_whitelist(whitelist_file)
 
-        # Pre-load bulk_map here (mirrors the pattern validate_all uses) and
+        # Pre-load source_info here (mirrors the pattern validate_all uses) and
         # pass it to resolve_shipped_packages.
-        bulk_map = self.validation_service.bulk_map_repo.load_bulk_map(obs_project)
+        source_info = self.validation_service.source_info_repo.load_source_info(obs_project)
 
         # Get validated shipped packages using validation pipeline.
         # Residue is dropped — the whitelist consistency check only cares
@@ -126,7 +126,7 @@ class WhitelistService:
             shipped_packages,
             overrides_file,
             obs_project,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         # Find intersection: packages BOTH shipped AND whitelisted (inconsistency)

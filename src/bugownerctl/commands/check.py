@@ -13,10 +13,10 @@ from bugownerctl.exceptions import ConfigError
 from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.repositories.name_overrides_repository import NameOverridesRepositoryImpl
-from bugownerctl.repositories.obs_bulk_source_info_repository import (
-    ObsBulkSourceInfoRepositoryImpl,
-)
 from bugownerctl.repositories.obs_person_repository import ObsPersonRepositoryImpl
+from bugownerctl.repositories.obs_source_info_repository import (
+    ObsSourceInfoRepositoryImpl,
+)
 from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
 from bugownerctl.services.user_validation_service import UserValidationService
 from bugownerctl.services.validation_service import ValidationService
@@ -75,7 +75,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
     verify = _resolve_verify(slfo_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
     metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
-    bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
+    source_info_repo = ObsSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
 
     repo_metadata_file = metadata_repo.download_primary_metadata(
@@ -89,7 +89,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
     service = ValidationService(
         maintainership_repo,
         metadata_repo,
-        bulk_map_repo=bulk_map_repo,
+        source_info_repo=source_info_repo,
         overrides_repo=overrides_repo,
     )
 
@@ -131,7 +131,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
     if result.unresolved_names:
         print(
             f"Found {len(result.unresolved_names)} "
-            "names with no source mapping (neither in overrides nor bulk_map)."
+            "names with no source mapping (neither in overrides nor OBS source info)."
         )
         logger.info("Names with no source mapping:")
         for pkg in result.unresolved_names:
@@ -178,13 +178,13 @@ def run_whitelist(args: argparse.Namespace) -> int:
     verify = _resolve_verify(slfo_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
     metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
-    bulk_map_repo = ObsBulkSourceInfoRepositoryImpl()
+    source_info_repo = ObsSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
 
     validation_service = ValidationService(
         maintainership_repo,
         metadata_repo,
-        bulk_map_repo=bulk_map_repo,
+        source_info_repo=source_info_repo,
         overrides_repo=overrides_repo,
     )
     whitelist_service = WhitelistService(validation_service)
@@ -217,7 +217,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
     if result.unresolved_names:
         print(
             f"Found {len(result.unresolved_names)} "
-            "names with no source mapping (neither in overrides nor bulk_map)."
+            "names with no source mapping (neither in overrides nor OBS source info)."
         )
         logger.info("Names with no source mapping:")
         for pkg in result.unresolved_names:

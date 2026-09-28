@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 from bugownerctl.cli import main
-from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.domain.obs_source_info import ObsSourceInfo
 
 
 class TestValidateWorkflow:
@@ -21,8 +21,8 @@ class TestValidateWorkflow:
         Workflow:
         1. Load maintainership data
         2. Download and parse repo metadata
-        3. Load the OBS bulk map (binary→source mapping + OBS package set)
-        4. Resolve binary→source via bulk-map + overrides pipeline
+        3. Load the OBS source info (binary→source mapping + OBS package set)
+        4. Resolve binary→source via source-info + overrides pipeline
         5. Report validation results against the OBS package set
         """
         # Change to test directory
@@ -57,14 +57,14 @@ class TestValidateWorkflow:
                 "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
             patch(
-                "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
-            ) as mock_bulk_map,
+                "bugownerctl.repositories.obs_source_info_repository.ObsSourceInfoRepositoryImpl.load_source_info"
+            ) as mock_source_info,
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"test-package", "another-package"}
-            mock_bulk_map.return_value = BulkMap(
+            mock_source_info.return_value = ObsSourceInfo(
                 mapping={},
                 project="test-project",
                 fetched_at=datetime.now(UTC),
@@ -77,7 +77,7 @@ class TestValidateWorkflow:
             # Verify
             assert exit_code == 0, "Validate should succeed with valid data"
             # The product's configured OBS project is the one queried.
-            assert mock_bulk_map.call_args.args[0] == "TEST:Project:1.0"
+            assert mock_source_info.call_args.args[0] == "TEST:Project:1.0"
 
     def test_validate_workflow_finds_orphan_packages(self, tmp_path, monkeypatch):
         """Should detect packages in repo without maintainers."""
@@ -108,14 +108,14 @@ class TestValidateWorkflow:
                 "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.parse_source_packages"
             ) as mock_parse,
             patch(
-                "bugownerctl.repositories.obs_bulk_source_info_repository.ObsBulkSourceInfoRepositoryImpl.load_bulk_map"
-            ) as mock_bulk_map,
+                "bugownerctl.repositories.obs_source_info_repository.ObsSourceInfoRepositoryImpl.load_source_info"
+            ) as mock_source_info,
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"maintained-package", "orphan-package"}
-            mock_bulk_map.return_value = BulkMap(
+            mock_source_info.return_value = ObsSourceInfo(
                 mapping={},
                 project="test-project",
                 fetched_at=datetime.now(UTC),

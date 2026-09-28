@@ -1,4 +1,4 @@
-"""BulkMap domain value object."""
+"""ObsSourceInfo domain value object."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -6,8 +6,8 @@ from datetime import datetime
 
 
 @dataclass(frozen=True)
-class BulkMap:
-    """Bulk binary-to-source package name mapping for an OBS project.
+class ObsSourceInfo:
+    """Binary-to-source package name mapping (OBS source info) for an OBS project.
 
     Attributes:
         mapping: Binary/subpackage/flavor name to canonical source package name.

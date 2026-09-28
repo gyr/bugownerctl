@@ -122,14 +122,14 @@ class TestCheckWhitelist:
     def test_check_whitelist_calls_validation_service_with_correct_parameters(
         self, tmp_path: Path
     ) -> None:
-        """Should pre-load bulk_map then call resolve_shipped_packages with bulk_map=.
+        """Should pre-load source_info then call resolve_shipped_packages with source_info=.
 
-        After Fix 1, check_whitelist pre-loads bulk_map (via bulk_map_repo.load_bulk_map)
-        and passes it as bulk_map= to resolve_shipped_packages.
+        After Fix 1, check_whitelist pre-loads source_info (via source_info_repo.load_source_info)
+        and passes it as source_info= to resolve_shipped_packages.
         """
-        mock_bulk_map = Mock(name="bulk_map")
+        mock_source_info = Mock(name="source_info")
         mock_validation_service = Mock()
-        mock_validation_service.bulk_map_repo.load_bulk_map.return_value = mock_bulk_map
+        mock_validation_service.source_info_repo.load_source_info.return_value = mock_source_info
         mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1"},  # valid_packages
             [],  # shipped_not_in_obs
@@ -154,21 +154,23 @@ class TestCheckWhitelist:
             obs_project=obs_project,
         )
 
-        # bulk_map loaded at orchestration layer
-        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(obs_project)
-        # resolve_shipped_packages receives the preloaded bulk_map=
+        # source_info loaded at orchestration layer
+        mock_validation_service.source_info_repo.load_source_info.assert_called_once_with(
+            obs_project
+        )
+        # resolve_shipped_packages receives the preloaded source_info=
         mock_validation_service.resolve_shipped_packages.assert_called_once_with(
             shipped_packages,
             overrides_file,
             obs_project,
-            bulk_map=mock_bulk_map,
+            source_info=mock_source_info,
         )
 
     def test_check_whitelist_propagates_unresolved_names(self, tmp_path: Path) -> None:
         """Should propagate validation pipeline's unresolved_names into the result.
 
         Mirrors ValidationResult.unresolved_names semantics: names that
-        fell through the bulk_map/overrides pipeline and aren't in the OBS package set.
+        fell through the source_info/overrides pipeline and aren't in the OBS package set.
         """
         mock_validation_service = Mock()
         mock_validation_service.resolve_shipped_packages.return_value = (

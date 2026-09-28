@@ -1,4 +1,4 @@
-"""Bulk OBS source-info repository.
+"""OBS source-info repository.
 
 Fetches `/source/<project>?view=info&parse=1` from the OBS API via `osc api`
 (SSH-signature auth is delegated to the user's local `osc` install), parses
@@ -27,7 +27,7 @@ from xml.etree.ElementTree import Element  # type annotation only; parsing uses 
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
 
-from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.domain.obs_source_info import ObsSourceInfo
 from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 OBS_HOST = "https://api.suse.de"
 DEFAULT_TIMEOUT = 120  # seconds for the osc api subprocess
 
-# Hard ceiling on raw XML size accepted from OBS. Real bulk responses are
+# Hard ceiling on raw XML size accepted from OBS. Real source-info responses are
 # ~4 MB; 50 MB leaves comfortable headroom while bounding the worst case so
 # a hostile/corrupted response cannot exhaust process memory before parsing.
 MAX_XML_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -47,22 +47,22 @@ MAX_XML_BYTES = 50 * 1024 * 1024  # 50 MB
 _PROJECT_RE = re.compile(r"^[A-Za-z0-9:_.+\-]{1,200}$")
 
 
-class ObsBulkSourceInfoRepository(Protocol):
-    """Fetch and parse OBS bulk source-info into a binary→source name map.
+class ObsSourceInfoRepository(Protocol):
+    """Fetch and parse OBS source-info into a binary→source name map.
 
     One HTTP round-trip per call; the reply is parsed in memory and never
     written to disk.
     """
 
-    def load_bulk_map(self, project: str) -> BulkMap:
-        """Fetch `project`'s source-info from OBS and return it as a BulkMap.
+    def load_source_info(self, project: str) -> ObsSourceInfo:
+        """Fetch `project`'s source-info from OBS and return it as an ObsSourceInfo.
 
         Args:
             project: OBS project name, e.g. "SUSE:SLFO:Main". Must match
                 [A-Za-z0-9:_.+-]{1,200} (validated before any subprocess call).
 
         Returns:
-            BulkMap resolving both source-package identity (apache2 → apache2)
+            ObsSourceInfo resolving both source-package identity (apache2 → apache2)
             and binary/subpack/multibuild aliases (apache2-devel → apache2,
             kernel-azure → kernel-source-azure-base).
 
@@ -78,18 +78,18 @@ class ObsBulkSourceInfoRepository(Protocol):
         ...
 
 
-class ObsBulkSourceInfoRepositoryImpl:
+class ObsSourceInfoRepositoryImpl:
     """Adapter implementation backed by `osc api`."""
 
-    def load_bulk_map(self, project: str) -> BulkMap:
+    def load_source_info(self, project: str) -> ObsSourceInfo:
         self._validate_inputs(project)
-        logger.info("Fetching OBS bulk source-info for project %s", project)
+        logger.info("Fetching OBS source-info for project %s", project)
         xml_body = self._fetch_via_osc_api(project)
         fetched_at = datetime.now(UTC)
         root = self._parse_sourceinfolist(xml_body)
         self._validate_sourceinfolist(root, project)
-        return BulkMap(
-            mapping=self._build_bulk_map(root),
+        return ObsSourceInfo(
+            mapping=self._build_mapping(root),
             project=project,
             fetched_at=fetched_at,
             packages=self._extract_package_names(root),
@@ -150,20 +150,20 @@ class ObsBulkSourceInfoRepositoryImpl:
         # Size cap: refuse oversized bodies before allocating an ET tree.
         if len(xml_body) > MAX_XML_BYTES:
             raise RuntimeError(
-                f"OBS bulk response exceeds {MAX_XML_BYTES} bytes ({len(xml_body)}); "
+                f"OBS source-info response exceeds {MAX_XML_BYTES} bytes ({len(xml_body)}); "
                 "refusing to parse to avoid memory exhaustion"
             )
         try:
             root: Element = ET.fromstring(xml_body, forbid_dtd=True)
         except DefusedXmlException as exc:
             raise RuntimeError(
-                "OBS bulk response contains a DOCTYPE declaration; refusing to parse "
+                "OBS source-info response contains a DOCTYPE declaration; refusing to parse "
                 "(prevents entity-expansion attacks). Real OBS responses never contain DOCTYPE."
             ) from exc
         except ET.ParseError as exc:
             snippet = xml_body[:200].decode(errors="replace")
             raise RuntimeError(
-                f"OBS bulk response is not valid XML: {exc} (body starts: {snippet!r})"
+                f"OBS source-info response is not valid XML: {exc} (body starts: {snippet!r})"
             ) from exc
         return root
 
@@ -223,7 +223,7 @@ class ObsBulkSourceInfoRepositoryImpl:
         return frozenset(packages)
 
     @staticmethod
-    def _build_bulk_map(root: Element) -> dict[str, str]:
+    def _build_mapping(root: Element) -> dict[str, str]:
         """Build a binary→canonical-source map from a parsed <sourceinfolist>.
 
         Rules:
@@ -265,17 +265,17 @@ class ObsBulkSourceInfoRepositoryImpl:
             target = canonical.get(name, name)
             return target if target == name else resolve(target, seen)
 
-        bulk_map: dict[str, str] = {}
+        mapping: dict[str, str] = {}
         # Source-side identities first.
         for src in canonical:
-            bulk_map[src] = resolve(src)
+            mapping[src] = resolve(src)
         # Subpackage → source.
         for src, subs in subpacks_by_source.items():
             root_src = resolve(src)
             for sub in subs:
-                existing = bulk_map.get(sub)
+                existing = mapping.get(sub)
                 if existing is None:
-                    bulk_map[sub] = root_src
+                    mapping[sub] = root_src
                     continue
                 if existing == sub:
                     # Identity already wins (sub is its own source);
@@ -287,6 +287,6 @@ class ObsBulkSourceInfoRepositoryImpl:
                 # binary name equals the resolved source name (identity);
                 # otherwise first write wins (do nothing).
                 if sub == root_src:
-                    bulk_map[sub] = root_src
+                    mapping[sub] = root_src
 
-        return bulk_map
+        return mapping

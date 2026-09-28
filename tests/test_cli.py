@@ -187,12 +187,6 @@ class TestCreateParser:
         args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
         assert args.config is None
 
-    def test_check_maintainership_rejects_refresh_bulk_map_flag(self) -> None:
-        """check maintainership no longer accepts the removed --refresh-bulk-map flag."""
-        parser = create_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["check", "maintainership", "-r", "16.1", "--refresh-bulk-map"])
-
     def test_check_whitelist_accepts_config_flag(self) -> None:
         """check whitelist should accept --config flag."""
         parser = create_parser()
@@ -206,12 +200,6 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["check", "whitelist", "-r", "16.1"])
         assert args.config is None
-
-    def test_check_whitelist_rejects_refresh_bulk_map_flag(self) -> None:
-        """check whitelist no longer accepts the removed --refresh-bulk-map flag."""
-        parser = create_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["check", "whitelist", "-r", "16.1", "--refresh-bulk-map"])
 
     def test_check_requires_subcommand(self) -> None:
         """check should require a subcommand (maintainership or whitelist)."""

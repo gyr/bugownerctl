@@ -9,9 +9,9 @@ from .name_overrides_repository import (
     NameOverridesRepository,
     NameOverridesRepositoryImpl,
 )
-from .obs_bulk_source_info_repository import (
-    ObsBulkSourceInfoRepository,
-    ObsBulkSourceInfoRepositoryImpl,
+from .obs_source_info_repository import (
+    ObsSourceInfoRepository,
+    ObsSourceInfoRepositoryImpl,
 )
 from .repo_metadata_repository import RepoMetadataRepository, RepoMetadataRepositoryImpl
 
@@ -22,8 +22,8 @@ __all__ = [
     "MaintainershipRepositoryImpl",
     "NameOverridesRepository",
     "NameOverridesRepositoryImpl",
-    "ObsBulkSourceInfoRepository",
-    "ObsBulkSourceInfoRepositoryImpl",
+    "ObsSourceInfoRepository",
+    "ObsSourceInfoRepositoryImpl",
     "RepoMetadataRepository",
     "RepoMetadataRepositoryImpl",
 ]

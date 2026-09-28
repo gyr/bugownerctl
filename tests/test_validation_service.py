@@ -6,22 +6,22 @@ from unittest.mock import Mock
 
 import pytest
 
-from bugownerctl.domain.bulk_map import BulkMap
 from bugownerctl.domain.maintainer import MaintainershipData
+from bugownerctl.domain.obs_source_info import ObsSourceInfo
 from bugownerctl.services.validation_service import ValidationResult, ValidationService
 
 # Synthetic OBS project name passed to every service call that requires one.
 _OBS_PROJECT = "TEST:Project:1.0"
 
 
-def _make_bulk_map(
+def _make_source_info(
     mapping: dict[str, str],
     project: str = "SUSE:SLFO:Main",
     *,
     packages: frozenset[str] = frozenset(),
-) -> BulkMap:
-    """Build a BulkMap value object for tests."""
-    return BulkMap(
+) -> ObsSourceInfo:
+    """Build an ObsSourceInfo value object for tests."""
+    return ObsSourceInfo(
         mapping=mapping,
         project=project,
         fetched_at=datetime(2026, 6, 8, tzinfo=UTC),
@@ -33,7 +33,7 @@ def _make_service(
     *,
     maintainership_repo: object = None,
     metadata_repo: object = None,
-    bulk_map_repo: object | None = None,
+    source_info_repo: object | None = None,
     overrides_repo: object | None = None,
 ) -> ValidationService:
     """Build a ValidationService with sensible mock defaults for tests.
@@ -42,15 +42,15 @@ def _make_service(
     them; this helper provides Mock() instances so the required ctor args
     are satisfied.
     """
-    if bulk_map_repo is None:
-        bulk_map_repo = Mock()
+    if source_info_repo is None:
+        source_info_repo = Mock()
     if overrides_repo is None:
         overrides_repo = Mock()
         overrides_repo.load.return_value = {}
     return ValidationService(
         maintainership_repo,  # type: ignore[arg-type]
         metadata_repo,  # type: ignore[arg-type]
-        bulk_map_repo=bulk_map_repo,  # type: ignore[arg-type]
+        source_info_repo=source_info_repo,  # type: ignore[arg-type]
         overrides_repo=overrides_repo,  # type: ignore[arg-type]
     )
 
@@ -241,19 +241,19 @@ class TestFindMaintainedPackagesNotInObs:
 
 
 class TestResolveShippedPackages:
-    """Test ValidationService.resolve_shipped_packages (bulk-map pipeline).
+    """Test ValidationService.resolve_shipped_packages (source-info pipeline).
 
-    The new pipeline consults overrides FIRST then the bulk map for each
+    The new pipeline consults overrides FIRST then the OBS source info for each
     shipped name; unmapped names fall through as their own source.
     """
 
-    def test_resolves_shipped_via_bulk_map(self):
-        """Should resolve binary names to source names via the bulk map."""
+    def test_resolves_shipped_via_source_info(self):
+        """Should resolve binary names to source names via the OBS source info."""
         service = _make_service()
 
         shipped = {"apache2-devel"}
         overrides_file = Path("/tmp/overrides.json")
-        bulk_map = _make_bulk_map(
+        source_info = _make_source_info(
             {"apache2-devel": "apache2", "apache2": "apache2"}, packages=frozenset({"apache2"})
         )
 
@@ -261,15 +261,15 @@ class TestResolveShippedPackages:
             shipped,
             overrides_file,
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         assert valid == {"apache2"}
         assert residue == []
         assert unresolved == []
 
-    def test_override_takes_priority_over_bulk_map(self):
-        """Should prefer overrides over bulk_map when both have an entry."""
+    def test_override_takes_priority_over_source_info(self):
+        """Should prefer overrides over source_info when both have an entry."""
         overrides_repo = Mock()
         # Override says kernel-azure → kernel-source-azure
         overrides_repo.load.return_value = {"kernel-azure": "kernel-source-azure"}
@@ -277,8 +277,8 @@ class TestResolveShippedPackages:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"kernel-azure"}
-        # Bulk_map says kernel-azure → kernel-azure-base (different from override).
-        bulk_map = _make_bulk_map(
+        # OBS source info says kernel-azure → kernel-azure-base (different from override).
+        source_info = _make_source_info(
             {"kernel-azure": "kernel-azure-base"}, packages=frozenset({"kernel-source-azure"})
         )
 
@@ -286,7 +286,7 @@ class TestResolveShippedPackages:
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         # Override wins: resolved to kernel-source-azure, which IS in the OBS package set.
@@ -302,13 +302,13 @@ class TestResolveShippedPackages:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"SLES-release"}
-        bulk_map = _make_bulk_map({})
+        source_info = _make_source_info({})
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         # SLES-release explicitly suppressed: NOT in valid, NOT in residue, NOT unresolved.
@@ -321,13 +321,13 @@ class TestResolveShippedPackages:
         service = _make_service()
 
         shipped = {"orphan-pkg"}
-        bulk_map = _make_bulk_map({})  # no entry for orphan-pkg
+        source_info = _make_source_info({})  # no entry for orphan-pkg
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         # Passthrough: orphan-pkg → orphan-pkg, not in the OBS package set → residue.
@@ -336,43 +336,43 @@ class TestResolveShippedPackages:
         assert residue == ["orphan-pkg"]
         assert unresolved == ["orphan-pkg"]
 
-    def test_no_subprocess_invoked_when_bulk_map_preloaded(self):
-        """Should NOT call bulk_map_repo.load_bulk_map when bulk_map passed in.
+    def test_no_subprocess_invoked_when_source_info_preloaded(self):
+        """Should NOT call source_info_repo.load_source_info when source_info passed in.
 
-        Performance contract: when validate_all has already loaded the bulk
-        map once, resolve_shipped_packages must reuse it rather than
+        Performance contract: when validate_all has already loaded the OBS
+        source info once, resolve_shipped_packages must reuse it rather than
         triggering a second (potentially network-bound) load.
         """
-        bulk_map_repo = Mock()
-        bulk_map_repo.load_bulk_map.side_effect = AssertionError("must not be called")
+        source_info_repo = Mock()
+        source_info_repo.load_source_info.side_effect = AssertionError("must not be called")
 
-        service = _make_service(bulk_map_repo=bulk_map_repo)
+        service = _make_service(source_info_repo=source_info_repo)
 
-        bulk_map = _make_bulk_map({"pkg1": "pkg1"}, packages=frozenset({"pkg1"}))
+        source_info = _make_source_info({"pkg1": "pkg1"}, packages=frozenset({"pkg1"}))
 
         # Must not raise.
         valid, residue, unresolved = service.resolve_shipped_packages(
             {"pkg1"},
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         assert valid == {"pkg1"}
-        bulk_map_repo.load_bulk_map.assert_not_called()
+        source_info_repo.load_source_info.assert_not_called()
 
     def test_empty_shipped_packages(self):
         """Should return empty sets when no shipped packages."""
         service = _make_service()
 
         shipped: set[str] = set()
-        bulk_map = _make_bulk_map({}, packages=frozenset({"pkg1", "pkg2"}))
+        source_info = _make_source_info({}, packages=frozenset({"pkg1", "pkg2"}))
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         assert valid == set()
@@ -383,9 +383,9 @@ class TestResolveShippedPackages:
         """Override target must land in residue when not in the OBS package set.
 
         When overrides[shipped] maps to a value NOT in the OBS package set,
-        the override's resolved value lands in residue. The bulk_map's
+        the override's resolved value lands in residue. The source_info's
         competing answer for the same shipped name MUST be ignored
-        entirely (no silent leak into valid via the bulk_map branch).
+        entirely (no silent leak into valid via the source_info branch).
         """
         overrides_repo = Mock()
         # Override says X → Y.
@@ -394,20 +394,20 @@ class TestResolveShippedPackages:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"X"}
-        # OBS package set contains Z (bulk_map's answer), NOT Y (override's answer).
-        # Bulk_map says X → Z, but override must win and bulk_map answer
+        # OBS package set contains Z (source_info's answer), NOT Y (override's answer).
+        # OBS source info says X → Z, but override must win and source_info answer
         # must NOT leak through.
-        bulk_map = _make_bulk_map({"X": "Z"}, packages=frozenset({"Z"}))
+        source_info = _make_source_info({"X": "Z"}, packages=frozenset({"Z"}))
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         # Override wins: resolved to Y. Y is not in the OBS package set → residue.
-        # Z (bulk_map's answer) must NOT be in valid.
+        # Z (source_info's answer) must NOT be in valid.
         # Y came from overrides branch (not identity) → NOT unresolved.
         assert valid == set()
         assert residue == ["Y"]
@@ -416,7 +416,7 @@ class TestResolveShippedPackages:
     def test_overrides_keyed_on_shipped_name_not_resolved_value(self):
         """Overrides must be consulted on the shipped name, not the resolved value.
 
-        If bulk_map resolves shipped name N to value X, and overrides has
+        If source_info resolves shipped name N to value X, and overrides has
         an entry for X (NOT for N), the override on X must NOT apply.
         Only direct overrides on shipped names take effect.
         """
@@ -427,34 +427,34 @@ class TestResolveShippedPackages:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"N"}
-        # Bulk_map resolves N → X. The override on X is irrelevant because
+        # OBS source info resolves N → X. The override on X is irrelevant because
         # lookup is overrides["N"], not overrides["X"].
-        bulk_map = _make_bulk_map({"N": "X"})
+        source_info = _make_source_info({"N": "X"})
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
-        # X falls through bulk_map and lands in residue (override on X ignored).
-        # N resolved via bulk_map branch → NOT unresolved.
+        # X falls through source_info and lands in residue (override on X ignored).
+        # N resolved via source_info branch → NOT unresolved.
         assert valid == set()
         assert residue == ["X"]
         assert unresolved == []
 
-    def test_loads_overrides_and_bulk_map_when_not_preloaded(self):
-        """Should call repos to load overrides/bulk_map if caller did not pass them in."""
+    def test_loads_overrides_and_source_info_when_not_preloaded(self):
+        """Should call repos to load overrides/source_info if caller did not pass them in."""
         overrides_repo = Mock()
         overrides_repo.load.return_value = {}
 
-        bulk_map_repo = Mock()
-        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map(
+        source_info_repo = Mock()
+        source_info_repo.load_source_info.return_value = _make_source_info(
             {"pkg1": "pkg1"}, packages=frozenset({"pkg1"})
         )
 
-        service = _make_service(bulk_map_repo=bulk_map_repo, overrides_repo=overrides_repo)
+        service = _make_service(source_info_repo=source_info_repo, overrides_repo=overrides_repo)
 
         overrides_file = Path("/tmp/overrides.json")
 
@@ -468,15 +468,15 @@ class TestResolveShippedPackages:
         assert residue == []
         assert unresolved == []
         overrides_repo.load.assert_called_once_with(overrides_file)
-        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT)
+        source_info_repo.load_source_info.assert_called_once_with(_OBS_PROJECT)
 
     def test_unresolved_names_subset_of_residue_only_identity_fallthrough(self):
         """unresolved should contain only identity-fallthrough names not in the OBS package set.
 
         Scenario:
           - M is in overrides → resolved to "M-src" (in the set). NOT residue.
-          - B is in bulk_map → resolved to "B-src" (in the set). NOT residue.
-          - I has no override, no bulk_map entry → identity fallthrough.
+          - B is in source_info → resolved to "B-src" (in the set). NOT residue.
+          - I has no override, no source_info entry → identity fallthrough.
             I is NOT in the set → goes to residue AND unresolved.
         """
         overrides_repo = Mock()
@@ -484,13 +484,13 @@ class TestResolveShippedPackages:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"M", "B", "I"}
-        bulk_map = _make_bulk_map({"B": "B-src"}, packages=frozenset({"M-src", "B-src"}))
+        source_info = _make_source_info({"B": "B-src"}, packages=frozenset({"M-src", "B-src"}))
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         assert valid == {"M-src", "B-src"}
@@ -508,35 +508,35 @@ class TestResolveShippedPackages:
         service = _make_service(overrides_repo=overrides_repo)
 
         shipped = {"O"}
-        bulk_map = _make_bulk_map({})
+        source_info = _make_source_info({})
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         assert valid == set()
         assert residue == ["O-bogus"]
         assert unresolved == []
 
-    def test_unresolved_excludes_bulk_map_residue(self):
-        """Bulk_map target landing in residue must NOT be classified as unresolved.
+    def test_unresolved_excludes_source_info_residue(self):
+        """OBS source info target landing in residue must NOT be classified as unresolved.
 
-        Resolution went through the bulk_map branch, so the name had a
+        Resolution went through the source_info branch, so the name had a
         mapping decision; the target just happens not to be in the OBS package set.
         """
         service = _make_service()
 
         shipped = {"K"}
-        bulk_map = _make_bulk_map({"K": "K-bogus"})
+        source_info = _make_source_info({"K": "K-bogus"})
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         assert valid == set()
@@ -548,13 +548,13 @@ class TestResolveShippedPackages:
         service = _make_service()
 
         shipped = {"S"}
-        bulk_map = _make_bulk_map({}, packages=frozenset({"S"}))
+        source_info = _make_source_info({}, packages=frozenset({"S"}))
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             obs_project=_OBS_PROJECT,
-            bulk_map=bulk_map,
+            source_info=source_info,
         )
 
         assert valid == {"S"}
@@ -569,7 +569,7 @@ class TestResolveShippedPackages:
             service.resolve_shipped_packages(  # type: ignore[call-arg]  # omission under test
                 {"pkg1"},
                 Path("/tmp/overrides.json"),
-                bulk_map=_make_bulk_map({}),
+                source_info=_make_source_info({}),
             )
 
 
@@ -582,7 +582,7 @@ class TestValidateAll:
         maintainership_packages: dict[str, list[str]],
         obs_packages: frozenset[str],
         shipped: set[str],
-        bulk_map_mapping: dict[str, str],
+        source_info_mapping: dict[str, str],
         overrides: dict[str, str | None] | None = None,
     ) -> tuple[ValidationService, Mock, Mock, Mock, Mock]:
         """Wire a service with all four mocked dependencies for validate_all."""
@@ -591,9 +591,9 @@ class TestValidateAll:
         metadata_repo = Mock()
         metadata_repo.parse_source_packages.return_value = shipped
 
-        bulk_map_repo = Mock()
-        bulk_map_repo.load_bulk_map.return_value = _make_bulk_map(
-            bulk_map_mapping, packages=obs_packages
+        source_info_repo = Mock()
+        source_info_repo.load_source_info.return_value = _make_source_info(
+            source_info_mapping, packages=obs_packages
         )
         overrides_repo = Mock()
         overrides_repo.load.return_value = overrides if overrides is not None else {}
@@ -601,10 +601,10 @@ class TestValidateAll:
         service = ValidationService(
             maintainership_repo=maintainership_repo,
             metadata_repo=metadata_repo,
-            bulk_map_repo=bulk_map_repo,
+            source_info_repo=source_info_repo,
             overrides_repo=overrides_repo,
         )
-        return service, maintainership_repo, metadata_repo, bulk_map_repo, overrides_repo
+        return service, maintainership_repo, metadata_repo, source_info_repo, overrides_repo
 
     def test_validate_all_happy_path_no_issues(self):
         """Should orchestrate all validations when no issues found."""
@@ -612,7 +612,7 @@ class TestValidateAll:
             maintainership_packages={"pkg1": ["user1"], "pkg2": ["user2"]},
             obs_packages=frozenset({"pkg1", "pkg2"}),
             shipped={"pkg1", "pkg2"},
-            bulk_map_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
+            source_info_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
         )
 
         maintainership_file = Path("/tmp/maintainership.json")
@@ -643,7 +643,7 @@ class TestValidateAll:
             },
             obs_packages=frozenset({"pkg1", "pkg2"}),
             shipped={"pkg1", "pkg2"},
-            bulk_map_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
+            source_info_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
         )
 
         result = service.validate_all(
@@ -662,7 +662,7 @@ class TestValidateAll:
             maintainership_packages={"pkg1": ["user1"], "pkg2": ["user2"]},
             obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1", "pkg2"},
-            bulk_map_mapping={"pkg1": "pkg1"},  # pkg2 unmapped → passthrough → residue
+            source_info_mapping={"pkg1": "pkg1"},  # pkg2 unmapped → passthrough → residue
         )
 
         result = service.validate_all(
@@ -680,7 +680,7 @@ class TestValidateAll:
         """Orphan check must use valid_packages, not raw shipped_packages.
 
         pkg3 is shipped but neither in the OBS package set nor mapped by
-        overrides/bulk_map, so it must NOT appear in orphan_packages even
+        overrides/source_info, so it must NOT appear in orphan_packages even
         though it lacks a maintainer. Only pkg2 (valid via the OBS package
         set, no maintainer) is an orphan.
         """
@@ -692,8 +692,8 @@ class TestValidateAll:
             },
             obs_packages=frozenset({"pkg1", "pkg2"}),
             shipped={"pkg1", "pkg2", "pkg3"},
-            # bulk_map only knows pkg1/pkg2 → passthrough; pkg3 unmapped → residue
-            bulk_map_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
+            # source_info only knows pkg1/pkg2 → passthrough; pkg3 unmapped → residue
+            source_info_mapping={"pkg1": "pkg1", "pkg2": "pkg2"},
         )
 
         result = service.validate_all(
@@ -719,7 +719,7 @@ class TestValidateAll:
             },
             obs_packages=frozenset({"obspkg1", "obspkg2"}),
             shipped={"pkg1", "pkg2", "pkg3"},
-            bulk_map_mapping={},  # nothing mapped → all passthrough → all residue
+            source_info_mapping={},  # nothing mapped → all passthrough → all residue
         )
 
         result = service.validate_all(
@@ -739,7 +739,7 @@ class TestValidateAll:
             maintainership_packages={},
             obs_packages=frozenset(),
             shipped=set(),
-            bulk_map_mapping={},
+            source_info_mapping={},
         )
 
         result = service.validate_all(
@@ -765,7 +765,7 @@ class TestValidateAll:
             },
             obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1", "pkg2", "pkg3"},
-            bulk_map_mapping={"pkg1": "pkg1"},
+            source_info_mapping={"pkg1": "pkg1"},
         )
 
         result = service.validate_all(
@@ -777,13 +777,13 @@ class TestValidateAll:
 
         assert result.maintained_packages_not_in_obs == ["pkg2", "pkg3"]
 
-    def test_validate_all_loads_bulk_map_exactly_once(self):
-        """validate_all should fetch bulk_map a single time per invocation."""
-        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
+    def test_validate_all_loads_source_info_exactly_once(self):
+        """validate_all should fetch source_info a single time per invocation."""
+        service, _, _, source_info_repo, _ = self._make_validate_all_service(
             maintainership_packages={"pkg1": ["user1"]},
             obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1"},
-            bulk_map_mapping={"pkg1": "pkg1"},
+            source_info_mapping={"pkg1": "pkg1"},
         )
 
         service.validate_all(
@@ -793,7 +793,7 @@ class TestValidateAll:
             obs_project=_OBS_PROJECT,
         )
 
-        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT)
+        source_info_repo.load_source_info.assert_called_once_with(_OBS_PROJECT)
 
     def test_validate_all_populates_unresolved_names_from_residue(self):
         """validate_all should set ValidationResult.unresolved_names to the
@@ -802,7 +802,7 @@ class TestValidateAll:
             maintainership_packages={},
             obs_packages=frozenset({"pkg1"}),
             shipped={"pkg1", "orphan-z", "orphan-a"},
-            bulk_map_mapping={"pkg1": "pkg1"},
+            source_info_mapping={"pkg1": "pkg1"},
         )
 
         result = service.validate_all(
@@ -818,11 +818,11 @@ class TestValidateAll:
 
     def test_validate_all_requires_obs_project(self):
         """Omitting obs_project is a TypeError — there is no silent default project."""
-        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
+        service, _, _, source_info_repo, _ = self._make_validate_all_service(
             maintainership_packages={},
             obs_packages=frozenset(),
             shipped=set(),
-            bulk_map_mapping={},
+            source_info_mapping={},
         )
 
         with pytest.raises(TypeError, match="obs_project"):
@@ -832,15 +832,15 @@ class TestValidateAll:
                 overrides_file=Path("/tmp/overrides.json"),
             )
 
-        bulk_map_repo.load_bulk_map.assert_not_called()
+        source_info_repo.load_source_info.assert_not_called()
 
-    def test_validate_all_orphan_check_uses_source_resolved_via_bulk_map(self):
+    def test_validate_all_orphan_check_uses_source_resolved_via_source_info(self):
         """A binary resolved to a source in the OBS package set makes that source valid."""
         service, *_ = self._make_validate_all_service(
             maintainership_packages={"pkg-a": []},
             obs_packages=frozenset({"pkg-a"}),
             shipped={"pkg-a-devel", "stray-bin"},
-            bulk_map_mapping={"pkg-a-devel": "pkg-a", "pkg-a": "pkg-a"},
+            source_info_mapping={"pkg-a-devel": "pkg-a", "pkg-a": "pkg-a"},
         )
 
         result = service.validate_all(
@@ -865,7 +865,7 @@ class TestValidateAll:
             maintainership_packages={"pkg-a": ["user1"], "pkg-b": ["user2"], "pkg-c": []},
             obs_packages=frozenset({"pkg-a", "pkg-b", "pkg-c", "pkg-d"}),
             shipped={"pkg-a", "pkg-a-devel", "stray-bin"},
-            bulk_map_mapping={"pkg-a-devel": "pkg-a", "pkg-a": "pkg-a"},
+            source_info_mapping={"pkg-a-devel": "pkg-a", "pkg-a": "pkg-a"},
         )
 
         result = service.validate_all(

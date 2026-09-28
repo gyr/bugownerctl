@@ -1,19 +1,19 @@
-"""Tests for BulkMap domain value object."""
+"""Tests for ObsSourceInfo domain value object."""
 
 from datetime import UTC, datetime
 
 import pytest
 
-from bugownerctl.domain.bulk_map import BulkMap
+from bugownerctl.domain.obs_source_info import ObsSourceInfo
 
 
-class TestBulkMap:
-    """Tests for BulkMap value object."""
+class TestObsSourceInfo:
+    """Tests for ObsSourceInfo value object."""
 
-    def test_bulk_map_exposes_constructor_fields(self):
-        """BulkMap should expose mapping, project, fetched_at, and packages."""
+    def test_source_info_exposes_constructor_fields(self):
+        """ObsSourceInfo should expose mapping, project, fetched_at, and packages."""
         fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        bm = BulkMap(
+        bm = ObsSourceInfo(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
@@ -24,9 +24,9 @@ class TestBulkMap:
         assert bm.fetched_at == fetched
         assert bm.packages == frozenset({"apache2"})
 
-    def test_bulk_map_is_frozen(self):
-        """BulkMap should be immutable (frozen dataclass)."""
-        bm = BulkMap(
+    def test_source_info_is_frozen(self):
+        """ObsSourceInfo should be immutable (frozen dataclass)."""
+        bm = ObsSourceInfo(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -37,7 +37,7 @@ class TestBulkMap:
 
     def test_entry_count_matches_len_of_mapping(self):
         """entry_count should equal len(mapping) for non-empty mapping."""
-        bm = BulkMap(
+        bm = ObsSourceInfo(
             mapping={"apache2-devel": "apache2", "libapr1": "apr"},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -48,7 +48,7 @@ class TestBulkMap:
 
     def test_entry_count_zero_for_empty_mapping(self):
         """entry_count should be 0 for empty mapping."""
-        bm = BulkMap(
+        bm = ObsSourceInfo(
             mapping={},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -56,16 +56,16 @@ class TestBulkMap:
         )
         assert bm.entry_count == 0
 
-    def test_bulk_map_equality(self):
-        """Two BulkMaps with identical fields should be equal."""
+    def test_source_info_equality(self):
+        """Two ObsSourceInfo instances with identical fields should be equal."""
         fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        bm1 = BulkMap(
+        bm1 = ObsSourceInfo(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
             packages=frozenset(),
         )
-        bm2 = BulkMap(
+        bm2 = ObsSourceInfo(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
@@ -73,16 +73,16 @@ class TestBulkMap:
         )
         assert bm1 == bm2
 
-    def test_bulk_map_inequality_different_project(self):
-        """BulkMaps with different project should not be equal."""
+    def test_source_info_inequality_different_project(self):
+        """ObsSourceInfo instances with different project should not be equal."""
         fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        bm1 = BulkMap(
+        bm1 = ObsSourceInfo(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
             packages=frozenset(),
         )
-        bm2 = BulkMap(
+        bm2 = ObsSourceInfo(
             mapping={"apache2-devel": "apache2"},
             project="openSUSE:Factory",
             fetched_at=fetched,
@@ -90,16 +90,16 @@ class TestBulkMap:
         )
         assert bm1 != bm2
 
-    def test_bulk_map_inequality_different_mapping(self):
-        """BulkMaps with different mapping should not be equal."""
+    def test_source_info_inequality_different_mapping(self):
+        """ObsSourceInfo instances with different mapping should not be equal."""
         fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        bm1 = BulkMap(
+        bm1 = ObsSourceInfo(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
             packages=frozenset(),
         )
-        bm2 = BulkMap(
+        bm2 = ObsSourceInfo(
             mapping={"libapr1": "apr"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
@@ -109,7 +109,7 @@ class TestBulkMap:
 
     def test_mapping_lookup_returns_canonical_source(self):
         """Mapping should resolve binary/subpackage name to source package."""
-        bm = BulkMap(
+        bm = ObsSourceInfo(
             mapping={"apache2-devel": "apache2", "libapr1": "apr"},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),

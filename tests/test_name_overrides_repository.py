@@ -2,7 +2,7 @@
 
 Phase 3 of the OBS source-name resolution refactor. The overrides file is a
 hand-curated `binary_name → source_name | None` JSON used by the Phase 4
-service to short-circuit the bulk-map lookup for cases the bulk map gets
+service to short-circuit the OBS source-info lookup for cases OBS source info gets
 wrong (e.g. kernel-azure cycles).
 
 Tests cover:
@@ -75,7 +75,7 @@ class TestLoad:
     def test_load_rejects_oversize_file(self, tmp_path: Path) -> None:
         """Files larger than MAX_OVERRIDES_BYTES are rejected before parsing.
 
-        Mirrors test_load_bulk_map_rejects_oversized_xml: use multiplication
+        Mirrors test_load_source_info_rejects_oversized_xml: use multiplication
         to synthesize the body, never allocate a real megabyte in test data.
         """
         path = tmp_path / "overrides.json"
