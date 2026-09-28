@@ -105,23 +105,23 @@ def run_maintainership(args: argparse.Namespace) -> int:
         )
 
     # SET 1: Maintained packages not in the OBS package set (count → stdout; list → stderr)
-    if result.maintained_packages_without_submodule:
+    if result.maintained_packages_not_in_obs:
         print(
-            f"Found {len(result.maintained_packages_without_submodule)} "
-            "maintained packages without an equivalent git submodule."
+            f"Found {len(result.maintained_packages_not_in_obs)} "
+            f"maintained packages not in OBS project {slfo_context.obs_project}."
         )
-        logger.info("Maintained packages without an equivalent git submodule:")
-        for pkg in result.maintained_packages_without_submodule:
+        logger.info("Maintained packages not in OBS project %s:", slfo_context.obs_project)
+        for pkg in result.maintained_packages_not_in_obs:
             logger.info("- %s", pkg)
 
     # SET 3: Shipped packages not in the OBS package set (count → stdout; list → stderr)
-    if result.shipped_not_in_submodule:
+    if result.shipped_not_in_obs:
         print(
-            f"Found {len(result.shipped_not_in_submodule)} "
-            "shipped packages not found in git submodule."
+            f"Found {len(result.shipped_not_in_obs)} "
+            f"shipped packages not in OBS project {slfo_context.obs_project}."
         )
-        logger.info("Shipped packages not found in git submodule:")
-        for pkg in result.shipped_not_in_submodule:
+        logger.info("Shipped packages not in OBS project %s:", slfo_context.obs_project)
+        for pkg in result.shipped_not_in_obs:
             logger.info("- %s", pkg)
 
     # SET 3b: Names with no source mapping (count → stdout; list → stderr)
@@ -147,9 +147,9 @@ def run_maintainership(args: argparse.Namespace) -> int:
     gate = bool(result.orphan_packages)
     if args.strict:
         gate = gate or bool(
-            result.shipped_not_in_submodule
+            result.shipped_not_in_obs
             or result.unresolved_names
-            or result.maintained_packages_without_submodule
+            or result.maintained_packages_not_in_obs
         )
     return ExitCode.ISSUES if gate else ExitCode.OK
 

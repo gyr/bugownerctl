@@ -18,9 +18,9 @@ class TestCheckWhitelist:
         """Should return empty list when validated packages don't overlap with whitelist."""
         # Setup mock validation service (3-tuple return: valid, residue, unresolved)
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1", "pkg2"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
@@ -51,9 +51,9 @@ class TestCheckWhitelist:
     ) -> None:
         """Should find packages that are BOTH shipped AND whitelisted."""
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1", "pkg2", "pkg3"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
@@ -81,9 +81,9 @@ class TestCheckWhitelist:
     def test_check_whitelist_handles_empty_whitelist(self, tmp_path: Path) -> None:
         """Should return no inconsistencies when whitelist is empty."""
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1", "pkg2"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
@@ -130,18 +130,18 @@ class TestCheckWhitelist:
     def test_check_whitelist_calls_validation_service_with_correct_parameters(
         self, tmp_path: Path
     ) -> None:
-        """Should pre-load bulk_map then call find_shipped_without_submodule with bulk_map=.
+        """Should pre-load bulk_map then call resolve_shipped_packages with bulk_map=.
 
         After Fix 1, check_whitelist pre-loads bulk_map (via bulk_map_repo.load_bulk_map)
-        and passes it as bulk_map= to find_shipped_without_submodule.  force_refresh
-        lives at load_bulk_map, not at find_shipped_without_submodule.
+        and passes it as bulk_map= to resolve_shipped_packages.  force_refresh
+        lives at load_bulk_map, not at resolve_shipped_packages.
         """
         mock_bulk_map = Mock(name="bulk_map")
         mock_validation_service = Mock()
         mock_validation_service.bulk_map_repo.load_bulk_map.return_value = mock_bulk_map
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
@@ -169,8 +169,8 @@ class TestCheckWhitelist:
         mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
             obs_project, cache_dir, force_refresh=False
         )
-        # find_shipped_without_submodule receives bulk_map=, never force_refresh=
-        mock_validation_service.find_shipped_without_submodule.assert_called_once_with(
+        # resolve_shipped_packages receives bulk_map=, never force_refresh=
+        mock_validation_service.resolve_shipped_packages.assert_called_once_with(
             shipped_packages,
             overrides_file,
             cache_dir,
@@ -185,9 +185,9 @@ class TestCheckWhitelist:
         fell through the bulk_map/overrides pipeline and aren't in the OBS package set.
         """
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1"},  # valid_packages
-            ["mystery-pkg"],  # shipped_not_in_submodule (residue)
+            ["mystery-pkg"],  # shipped_not_in_obs (residue)
             ["mystery-pkg"],  # unresolved_names (strict subset of residue)
         )
 
@@ -214,10 +214,10 @@ class TestCheckWhitelist:
         by default when the flag is not provided.
 
         After Fix 1, force_refresh is honoured at the load_bulk_map call in
-        check_whitelist, NOT forwarded to find_shipped_without_submodule.
+        check_whitelist, NOT forwarded to resolve_shipped_packages.
         """
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1"},
             [],
             [],
@@ -247,10 +247,10 @@ class TestCheckWhitelist:
         when the caller sets force_refresh=True.
 
         After Fix 1, force_refresh is honoured at the load_bulk_map call in
-        check_whitelist, NOT forwarded to find_shipped_without_submodule.
+        check_whitelist, NOT forwarded to resolve_shipped_packages.
         """
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1"},
             [],
             [],
@@ -293,9 +293,9 @@ class TestCheckWhitelist:
     def test_check_whitelist_returns_sorted_inconsistent_packages(self, tmp_path: Path) -> None:
         """Should return inconsistent packages in sorted order."""
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"zebra", "apple", "banana"},  # valid_packages (unsorted)
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 

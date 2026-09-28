@@ -120,7 +120,7 @@ class WhitelistService:
 
         # Pre-load bulk_map here (mirrors the pattern validate_all uses) so
         # that force_refresh is honoured at this orchestration layer rather
-        # than being buried in find_shipped_without_submodule.
+        # than being buried in resolve_shipped_packages.
         bulk_map = self.validation_service.bulk_map_repo.load_bulk_map(
             obs_project, cache_dir, force_refresh=force_refresh
         )
@@ -130,14 +130,12 @@ class WhitelistService:
         # about valid packages — but unresolved_names is surfaced so the
         # command layer can warn operators about names with no source
         # mapping (same UX as the validate command).
-        valid_packages, _, unresolved_names = (
-            self.validation_service.find_shipped_without_submodule(
-                shipped_packages,
-                overrides_file,
-                cache_dir,
-                obs_project,
-                bulk_map=bulk_map,
-            )
+        valid_packages, _, unresolved_names = self.validation_service.resolve_shipped_packages(
+            shipped_packages,
+            overrides_file,
+            cache_dir,
+            obs_project,
+            bulk_map=bulk_map,
         )
 
         # Find intersection: packages BOTH shipped AND whitelisted (inconsistency)

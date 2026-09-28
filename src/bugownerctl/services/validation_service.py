@@ -30,8 +30,8 @@ class ValidationResult:
     """Results from validation workflow."""
 
     orphan_packages: list[str]
-    maintained_packages_without_submodule: list[str]
-    shipped_not_in_submodule: list[str]
+    maintained_packages_not_in_obs: list[str]
+    shipped_not_in_obs: list[str]
     unresolved_names: list[str] = field(default_factory=list)
 
 
@@ -67,7 +67,7 @@ class ValidationService:
             [pkg for pkg in shipped_packages if not maintainership_data.packages.get(pkg)]
         )
 
-    def find_maintained_packages_without_submodule(
+    def find_maintained_packages_not_in_obs(
         self, maintainership_data: MaintainershipData, obs_packages: frozenset[str]
     ) -> list[str]:
         """Find packages in maintainership file but not in the OBS package set.
@@ -81,7 +81,7 @@ class ValidationService:
         """
         return sorted(set(maintainership_data.packages.keys()) - obs_packages)
 
-    def find_shipped_without_submodule(
+    def resolve_shipped_packages(
         self,
         shipped_packages: set[str],
         overrides_file: Path,
@@ -91,7 +91,7 @@ class ValidationService:
         bulk_map: BulkMap | None = None,
         overrides: Mapping[str, str | None] | None = None,
     ) -> tuple[set[str], list[str], list[str]]:
-        """Find shipped packages not in the OBS package set using the bulk-map pipeline.
+        """Resolve shipped names and split them against the OBS package set.
 
         Resolution order per shipped name N:
             1. N in overrides: value None drops N entirely; str value wins.
@@ -113,9 +113,9 @@ class ValidationService:
             overrides: Preloaded overrides mapping
 
         Returns:
-            Tuple of (valid_packages, shipped_not_in_submodule, unresolved_names)
+            Tuple of (valid_packages, shipped_not_in_obs, unresolved_names)
             - valid_packages: Resolved names that ARE in the OBS package set.
-            - shipped_not_in_submodule: Sorted residue — resolved names that
+            - shipped_not_in_obs: Sorted residue — resolved names that
               are NOT in the OBS package set (regardless of which branch
               resolved them).
             - unresolved_names: STRICT SUBSET of residue. Names that hit
@@ -179,25 +179,25 @@ class ValidationService:
         shipped_packages = self.metadata_repo.parse_source_packages(repo_metadata_file)
 
         # Pre-load bulk_map and overrides exactly once here so
-        # find_shipped_without_submodule reuses them.
+        # resolve_shipped_packages reuses them.
         overrides = self.overrides_repo.load(overrides_file)
         bulk_map = self.bulk_map_repo.load_bulk_map(
             obs_project, cache_dir, force_refresh=force_refresh
         )
 
         logger.info("starting validate_all for %d shipped packages", len(shipped_packages))
-        maintained_packages_without_submodule = self.find_maintained_packages_without_submodule(
+        maintained_packages_not_in_obs = self.find_maintained_packages_not_in_obs(
             maintainership_data, bulk_map.packages
         )
         logger.debug(
             "found %d maintained packages not in the OBS package set",
-            len(maintained_packages_without_submodule),
+            len(maintained_packages_not_in_obs),
         )
         (
             valid_packages,
-            shipped_not_in_submodule,
+            shipped_not_in_obs,
             unresolved_names,
-        ) = self.find_shipped_without_submodule(
+        ) = self.resolve_shipped_packages(
             shipped_packages,
             overrides_file,
             cache_dir,
@@ -211,7 +211,7 @@ class ValidationService:
 
         return ValidationResult(
             orphan_packages=orphan_packages,
-            maintained_packages_without_submodule=maintained_packages_without_submodule,
-            shipped_not_in_submodule=shipped_not_in_submodule,
+            maintained_packages_not_in_obs=maintained_packages_not_in_obs,
+            shipped_not_in_obs=shipped_not_in_obs,
             unresolved_names=unresolved_names,
         )

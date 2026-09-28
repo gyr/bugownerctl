@@ -34,8 +34,8 @@ def _empty_validation_result() -> ValidationResult:
     """Build a ValidationResult with no findings."""
     return ValidationResult(
         orphan_packages=[],
-        maintained_packages_without_submodule=[],
-        shipped_not_in_submodule=[],
+        maintained_packages_not_in_obs=[],
+        shipped_not_in_obs=[],
     )
 
 
@@ -310,8 +310,8 @@ class TestCheckMaintainershipCommand:
             monkeypatch,
             ValidationResult(
                 orphan_packages=["orphan-pkg1", "orphan-pkg2"],
-                maintained_packages_without_submodule=[],
-                shipped_not_in_submodule=[],
+                maintained_packages_not_in_obs=[],
+                shipped_not_in_obs=[],
             ),
         )
 
@@ -322,18 +322,18 @@ class TestCheckMaintainershipCommand:
 
         assert result == 2
 
-    def test_run_returns_zero_for_shipped_not_in_submodule_without_strict(
+    def test_run_returns_zero_for_shipped_not_in_obs_without_strict(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """shipped_not_in_submodule alone does NOT gate without --strict."""
+        """shipped_not_in_obs alone does NOT gate without --strict."""
         _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
             ValidationResult(
                 orphan_packages=[],
-                maintained_packages_without_submodule=[],
-                shipped_not_in_submodule=["pkg1"],
+                maintained_packages_not_in_obs=[],
+                shipped_not_in_obs=["pkg1"],
             ),
         )
         args = argparse.Namespace(
@@ -342,18 +342,18 @@ class TestCheckMaintainershipCommand:
         result = run_maintainership(args)
         assert result == 0
 
-    def test_run_returns_two_for_shipped_not_in_submodule_with_strict(
+    def test_run_returns_two_for_shipped_not_in_obs_with_strict(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """shipped_not_in_submodule gates when --strict is set."""
+        """shipped_not_in_obs gates when --strict is set."""
         _patch_maint_prep(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
             ValidationResult(
                 orphan_packages=[],
-                maintained_packages_without_submodule=[],
-                shipped_not_in_submodule=["pkg1"],
+                maintained_packages_not_in_obs=[],
+                shipped_not_in_obs=["pkg1"],
             ),
         )
         args = argparse.Namespace(
@@ -372,8 +372,8 @@ class TestCheckMaintainershipCommand:
             monkeypatch,
             ValidationResult(
                 orphan_packages=["pkg1", "pkg2"],
-                maintained_packages_without_submodule=[],
-                shipped_not_in_submodule=[],
+                maintained_packages_not_in_obs=[],
+                shipped_not_in_obs=[],
             ),
         )
 
@@ -393,15 +393,18 @@ class TestCheckMaintainershipCommand:
         capsys: pytest.CaptureFixture[str],
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Count lines on stdout (no INFO prefix); detail lists on stderr via logger.info."""
-        _patch_maint_prep(monkeypatch)
+        """Count lines on stdout (no INFO prefix); detail lists on stderr via logger.info.
+
+        The OBS project named in the output comes from the release's config.
+        """
+        _patch_maint_prep(monkeypatch, obs_project="TEST:Other:2.0")
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
             ValidationResult(
                 orphan_packages=["orphan1", "orphan2"],
-                maintained_packages_without_submodule=["maintained1", "maintained2"],
-                shipped_not_in_submodule=["shipped1"],
+                maintained_packages_not_in_obs=["maintained1", "maintained2"],
+                shipped_not_in_obs=["shipped1"],
             ),
         )
 
@@ -415,18 +418,18 @@ class TestCheckMaintainershipCommand:
         output = captured.out
 
         # Count lines on stdout (no INFO prefix)
-        assert "Found 2 maintained packages without an equivalent git submodule." in output
-        assert "Found 1 shipped packages not found in git submodule." in output
+        assert "Found 2 maintained packages not in OBS project TEST:Other:2.0." in output
+        assert "Found 1 shipped packages not in OBS project TEST:Other:2.0." in output
         assert "Found 2 orphan packages." in output
         assert "Orphan packages:" in output
         assert "- orphan1" in output
         assert "- orphan2" in output
 
         # Detail lists on stderr (caplog)
-        assert "Maintained packages without an equivalent git submodule:" in caplog.text
+        assert "Maintained packages not in OBS project TEST:Other:2.0:" in caplog.text
         assert "maintained1" in caplog.text
         assert "maintained2" in caplog.text
-        assert "Shipped packages not found in git submodule:" in caplog.text
+        assert "Shipped packages not in OBS project TEST:Other:2.0:" in caplog.text
         assert "shipped1" in caplog.text
 
         # INFO prefix must NOT appear on stdout
@@ -449,9 +452,7 @@ class TestCheckMaintainershipCommand:
         output = captured.out
 
         assert "No orphan packages found." in output
-        assert (
-            "No maintained packages without an equivalent git submodule were found." not in output
-        )
+        assert "No maintained packages not in OBS project" not in output
         assert "INFO:" not in output
 
     def test_validate_prints_unresolved_names_section(
@@ -467,8 +468,8 @@ class TestCheckMaintainershipCommand:
             monkeypatch,
             ValidationResult(
                 orphan_packages=[],
-                maintained_packages_without_submodule=[],
-                shipped_not_in_submodule=["mystery-pkg"],
+                maintained_packages_not_in_obs=[],
+                shipped_not_in_obs=["mystery-pkg"],
                 unresolved_names=["mystery-pkg"],
             ),
         )

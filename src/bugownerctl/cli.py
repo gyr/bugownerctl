@@ -116,10 +116,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--strict",
         action="store_true",
         default=False,
-        help=(
-            "Also gate on shipped-not-in-submodule, unresolved-names,"
-            " and maintained-without-submodule"
-        ),
+        help="Also gate on shipped-not-in-OBS, unresolved-names, and maintained-not-in-OBS",
     )
     maintainership_parser.set_defaults(func=check.run_maintainership)
 

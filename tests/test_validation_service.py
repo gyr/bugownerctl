@@ -62,27 +62,27 @@ class TestValidationResult:
         """Should initialize with all required fields."""
         result = ValidationResult(
             orphan_packages=["pkg1", "pkg2"],
-            maintained_packages_without_submodule=["pkg4"],
-            shipped_not_in_submodule=["pkg3"],
+            maintained_packages_not_in_obs=["pkg4"],
+            shipped_not_in_obs=["pkg3"],
             unresolved_names=["pkg3"],
         )
 
         assert result.orphan_packages == ["pkg1", "pkg2"]
-        assert result.maintained_packages_without_submodule == ["pkg4"]
-        assert result.shipped_not_in_submodule == ["pkg3"]
+        assert result.maintained_packages_not_in_obs == ["pkg4"]
+        assert result.shipped_not_in_obs == ["pkg3"]
         assert result.unresolved_names == ["pkg3"]
 
     def test_validation_result_with_empty_lists(self):
         """Should handle empty lists."""
         result = ValidationResult(
             orphan_packages=[],
-            maintained_packages_without_submodule=[],
-            shipped_not_in_submodule=[],
+            maintained_packages_not_in_obs=[],
+            shipped_not_in_obs=[],
         )
 
         assert result.orphan_packages == []
-        assert result.maintained_packages_without_submodule == []
-        assert result.shipped_not_in_submodule == []
+        assert result.maintained_packages_not_in_obs == []
+        assert result.shipped_not_in_obs == []
         # unresolved_names defaults to []
         assert result.unresolved_names == []
 
@@ -157,10 +157,10 @@ class TestFindOrphanPackages:
         assert result == ["apple", "middle", "zebra"]
 
 
-class TestFindMaintainedPackagesWithoutSubmodule:
-    """Test ValidationService.find_maintained_packages_without_submodule method."""
+class TestFindMaintainedPackagesNotInObs:
+    """Test ValidationService.find_maintained_packages_not_in_obs method."""
 
-    def test_finds_packages_in_maintainership_not_in_submodules(self):
+    def test_finds_packages_in_maintainership_not_in_obs(self):
         """Should identify packages in maintainership but not in the OBS package set."""
         service = _make_service()
         maintainership = MaintainershipData(
@@ -172,11 +172,11 @@ class TestFindMaintainedPackagesWithoutSubmodule:
         )
         obs_packages = frozenset({"pkg2", "pkg4"})  # pkg1 and pkg3 missing
 
-        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
+        result = service.find_maintained_packages_not_in_obs(maintainership, obs_packages)
 
         assert result == ["pkg1", "pkg3"]
 
-    def test_all_packages_have_submodules(self):
+    def test_all_packages_in_obs(self):
         """Should return empty list when all maintained packages are in the OBS package set."""
         service = _make_service()
         maintainership = MaintainershipData(
@@ -187,11 +187,11 @@ class TestFindMaintainedPackagesWithoutSubmodule:
         )
         obs_packages = frozenset({"pkg1", "pkg2", "pkg3"})
 
-        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
+        result = service.find_maintained_packages_not_in_obs(maintainership, obs_packages)
 
         assert result == []
 
-    def test_all_packages_lack_submodules_returns_sorted(self):
+    def test_no_packages_in_obs_returns_sorted(self):
         """Should return sorted list when no package is in the OBS package set."""
         service = _make_service()
         maintainership = MaintainershipData(
@@ -203,7 +203,7 @@ class TestFindMaintainedPackagesWithoutSubmodule:
         )
         obs_packages: frozenset[str] = frozenset()
 
-        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
+        result = service.find_maintained_packages_not_in_obs(maintainership, obs_packages)
 
         assert result == ["apple", "middle", "zebra"]
 
@@ -213,11 +213,11 @@ class TestFindMaintainedPackagesWithoutSubmodule:
         maintainership = MaintainershipData(packages={})
         obs_packages = frozenset({"mod1", "mod2"})
 
-        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
+        result = service.find_maintained_packages_not_in_obs(maintainership, obs_packages)
 
         assert result == []
 
-    def test_empty_submodules_returns_all_maintained(self):
+    def test_empty_obs_package_set_returns_all_maintained(self):
         """Should return all maintained packages when the OBS package set is empty."""
         service = _make_service()
         maintainership = MaintainershipData(
@@ -229,13 +229,13 @@ class TestFindMaintainedPackagesWithoutSubmodule:
         )
         obs_packages: frozenset[str] = frozenset()
 
-        result = service.find_maintained_packages_without_submodule(maintainership, obs_packages)
+        result = service.find_maintained_packages_not_in_obs(maintainership, obs_packages)
 
         assert result == ["pkg1", "pkg2", "pkg3"]
 
 
-class TestFindShippedWithoutSubmodule:
-    """Test ValidationService.find_shipped_without_submodule (bulk-map pipeline).
+class TestResolveShippedPackages:
+    """Test ValidationService.resolve_shipped_packages (bulk-map pipeline).
 
     The new pipeline consults overrides FIRST then the bulk map for each
     shipped name; unmapped names fall through as their own source.
@@ -252,7 +252,7 @@ class TestFindShippedWithoutSubmodule:
             {"apache2-devel": "apache2", "apache2": "apache2"}, packages=frozenset({"apache2"})
         )
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             overrides_file,
             cache_dir,
@@ -278,7 +278,7 @@ class TestFindShippedWithoutSubmodule:
             {"kernel-azure": "kernel-azure-base"}, packages=frozenset({"kernel-source-azure"})
         )
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -301,7 +301,7 @@ class TestFindShippedWithoutSubmodule:
         shipped = {"SLES-release"}
         bulk_map = _make_bulk_map({})
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -321,7 +321,7 @@ class TestFindShippedWithoutSubmodule:
         shipped = {"orphan-pkg"}
         bulk_map = _make_bulk_map({})  # no entry for orphan-pkg
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -339,7 +339,7 @@ class TestFindShippedWithoutSubmodule:
         """Should NOT call bulk_map_repo.load_bulk_map when bulk_map passed in.
 
         Performance contract: when validate_all has already loaded the bulk
-        map once, find_shipped_without_submodule must reuse it rather than
+        map once, resolve_shipped_packages must reuse it rather than
         triggering a second (potentially network-bound) load.
         """
         bulk_map_repo = Mock()
@@ -350,7 +350,7 @@ class TestFindShippedWithoutSubmodule:
         bulk_map = _make_bulk_map({"pkg1": "pkg1"}, packages=frozenset({"pkg1"}))
 
         # Must not raise.
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             {"pkg1"},
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -368,7 +368,7 @@ class TestFindShippedWithoutSubmodule:
         shipped: set[str] = set()
         bulk_map = _make_bulk_map({}, packages=frozenset({"pkg1", "pkg2"}))
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -380,7 +380,7 @@ class TestFindShippedWithoutSubmodule:
         assert residue == []
         assert unresolved == []
 
-    def test_override_target_not_in_submodules_lands_in_residue(self):
+    def test_override_target_not_in_obs_lands_in_residue(self):
         """Override target must land in residue when not in the OBS package set.
 
         When overrides[shipped] maps to a value NOT in the OBS package set,
@@ -400,7 +400,7 @@ class TestFindShippedWithoutSubmodule:
         # must NOT leak through.
         bulk_map = _make_bulk_map({"X": "Z"}, packages=frozenset({"Z"}))
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -433,7 +433,7 @@ class TestFindShippedWithoutSubmodule:
         # lookup is overrides["N"], not overrides["X"].
         bulk_map = _make_bulk_map({"N": "X"})
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -462,7 +462,7 @@ class TestFindShippedWithoutSubmodule:
         overrides_file = Path("/tmp/overrides.json")
         cache_dir = Path("/tmp/cache")
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             {"pkg1"},
             overrides_file,
             cache_dir,
@@ -475,8 +475,8 @@ class TestFindShippedWithoutSubmodule:
         overrides_repo.load.assert_called_once_with(overrides_file)
         bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT, cache_dir)
 
-    def test_find_shipped_without_submodule_rejects_force_refresh_kwarg(self):
-        """force_refresh must not be a parameter of find_shipped_without_submodule.
+    def test_resolve_shipped_packages_rejects_force_refresh_kwarg(self):
+        """force_refresh must not be a parameter of resolve_shipped_packages.
 
         The parameter was removed (Fix 1) so that force_refresh only lives at
         the orchestration layer (validate_all / check_whitelist).  Passing it
@@ -486,7 +486,7 @@ class TestFindShippedWithoutSubmodule:
         bulk_map = _make_bulk_map({})
 
         with pytest.raises(TypeError):
-            service.find_shipped_without_submodule(
+            service.resolve_shipped_packages(
                 {"pkg1"},
                 Path("/tmp/overrides.json"),
                 Path("/tmp/cache"),
@@ -511,7 +511,7 @@ class TestFindShippedWithoutSubmodule:
         shipped = {"M", "B", "I"}
         bulk_map = _make_bulk_map({"B": "B-src"}, packages=frozenset({"M-src", "B-src"}))
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -536,7 +536,7 @@ class TestFindShippedWithoutSubmodule:
         shipped = {"O"}
         bulk_map = _make_bulk_map({})
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -559,7 +559,7 @@ class TestFindShippedWithoutSubmodule:
         shipped = {"K"}
         bulk_map = _make_bulk_map({"K": "K-bogus"})
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -571,14 +571,14 @@ class TestFindShippedWithoutSubmodule:
         assert residue == ["K-bogus"]
         assert unresolved == []
 
-    def test_unresolved_excludes_identity_in_submodules(self):
+    def test_unresolved_excludes_identity_in_obs(self):
         """Identity fallthrough in the OBS package set lands in valid, not residue/unresolved."""
         service = _make_service()
 
         shipped = {"S"}
         bulk_map = _make_bulk_map({}, packages=frozenset({"S"}))
 
-        valid, residue, unresolved = service.find_shipped_without_submodule(
+        valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
             Path("/tmp/cache"),
@@ -590,12 +590,12 @@ class TestFindShippedWithoutSubmodule:
         assert residue == []
         assert unresolved == []
 
-    def test_find_shipped_without_submodule_requires_obs_project(self):
+    def test_resolve_shipped_packages_requires_obs_project(self):
         """Omitting obs_project is a TypeError — there is no silent default project."""
         service = _make_service()
 
         with pytest.raises(TypeError, match="obs_project"):
-            service.find_shipped_without_submodule(  # type: ignore[call-arg]  # omission under test
+            service.resolve_shipped_packages(  # type: ignore[call-arg]  # omission under test
                 {"pkg1"},
                 Path("/tmp/overrides.json"),
                 Path("/tmp/cache"),
@@ -662,7 +662,7 @@ class TestValidateAll:
         md_repo.parse_source_packages.assert_called_once_with(repo_metadata_file)
 
         assert result.orphan_packages == []
-        assert result.shipped_not_in_submodule == []
+        assert result.shipped_not_in_obs == []
         assert result.unresolved_names == []
 
     def test_validate_all_finds_orphan_packages(self):
@@ -687,9 +687,9 @@ class TestValidateAll:
         )
 
         assert result.orphan_packages == ["pkg2"]
-        assert result.shipped_not_in_submodule == []
+        assert result.shipped_not_in_obs == []
 
-    def test_validate_all_finds_shipped_not_in_submodule(self):
+    def test_validate_all_finds_shipped_not_in_obs(self):
         """Should identify shipped packages not in the OBS package set."""
         service, *_ = self._make_validate_all_service(
             maintainership_packages={"pkg1": ["user1"], "pkg2": ["user2"]},
@@ -707,7 +707,7 @@ class TestValidateAll:
         )
 
         assert result.orphan_packages == []
-        assert result.shipped_not_in_submodule == ["pkg2"]
+        assert result.shipped_not_in_obs == ["pkg2"]
         assert result.unresolved_names == ["pkg2"]
 
     def test_validate_all_uses_valid_packages_for_orphan_check(self):
@@ -739,7 +739,7 @@ class TestValidateAll:
         )
 
         assert result.orphan_packages == ["pkg2"]
-        assert result.shipped_not_in_submodule == ["pkg3"]
+        assert result.shipped_not_in_obs == ["pkg3"]
         assert result.unresolved_names == ["pkg3"]
 
     def test_validate_all_with_multiple_issues(self):
@@ -767,7 +767,7 @@ class TestValidateAll:
 
         # No shipped packages are valid (none in the OBS package set) → no orphans checked
         assert result.orphan_packages == []
-        assert result.shipped_not_in_submodule == ["pkg1", "pkg2", "pkg3"]
+        assert result.shipped_not_in_obs == ["pkg1", "pkg2", "pkg3"]
 
     def test_validate_all_with_empty_inputs(self):
         """Should handle completely empty inputs gracefully."""
@@ -787,13 +787,13 @@ class TestValidateAll:
         )
 
         assert result.orphan_packages == []
-        assert result.shipped_not_in_submodule == []
+        assert result.shipped_not_in_obs == []
 
         m_repo.load.assert_called_once()
         md_repo.parse_source_packages.assert_called_once()
 
-    def test_validate_all_includes_maintained_packages_without_submodule(self):
-        """Should include maintained_packages_without_submodule in ValidationResult."""
+    def test_validate_all_includes_maintained_packages_not_in_obs(self):
+        """Should include maintained_packages_not_in_obs in ValidationResult."""
         service, *_ = self._make_validate_all_service(
             maintainership_packages={
                 "pkg1": ["alice@example.com"],
@@ -813,7 +813,7 @@ class TestValidateAll:
             obs_project=_OBS_PROJECT,
         )
 
-        assert result.maintained_packages_without_submodule == ["pkg2", "pkg3"]
+        assert result.maintained_packages_not_in_obs == ["pkg2", "pkg3"]
 
     def test_validate_all_loads_bulk_map_exactly_once(self):
         """validate_all should fetch bulk_map a single time per invocation."""
@@ -897,7 +897,7 @@ class TestValidateAll:
 
         # Residue is sorted: orphan-a, orphan-z
         assert result.unresolved_names == ["orphan-a", "orphan-z"]
-        assert result.shipped_not_in_submodule == ["orphan-a", "orphan-z"]
+        assert result.shipped_not_in_obs == ["orphan-a", "orphan-z"]
 
     def test_validate_all_requires_obs_project(self):
         """Omitting obs_project is a TypeError — there is no silent default project."""
@@ -935,7 +935,7 @@ class TestValidateAll:
             obs_project=_OBS_PROJECT,
         )
 
-        assert result.shipped_not_in_submodule == ["stray-bin"]
+        assert result.shipped_not_in_obs == ["stray-bin"]
         assert result.unresolved_names == ["stray-bin"]
         # pkg-a is in the OBS package set → valid → orphan (empty maintainer list).
         assert result.orphan_packages == ["pkg-a"]
