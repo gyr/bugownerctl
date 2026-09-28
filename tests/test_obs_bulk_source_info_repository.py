@@ -352,6 +352,59 @@ class TestParsing:
         assert not (tmp_path / "obs_bulk_map.xml").exists()
         assert not (tmp_path / "obs_bulk_map.meta.json").exists()
 
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_status_reply_raises_with_project_root_tag_and_summary(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
+        """An OBS <status> error document stops the run and is never cached."""
+        xml = b'<status code="unknown_project"><summary> Project not found </summary></status>'
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        with pytest.raises(RuntimeError) as exc_info:
+            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        assert str(exc_info.value) == (
+            "OBS reply for project SUSE:SLFO:Main is not a package list "
+            "(root element <status>): Project not found"
+        )
+        # Distinct from the empty-<sourceinfolist> error.
+        assert "lists no packages" not in str(exc_info.value)
+        assert not (tmp_path / "obs_bulk_map.xml").exists()
+        assert not (tmp_path / "obs_bulk_map.meta.json").exists()
+
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_non_sourceinfolist_reply_without_summary_ends_at_root_tag(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
+        """No <summary> child: the message ends after the root element, no dangling colon."""
+        mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        with pytest.raises(RuntimeError) as exc_info:
+            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        assert str(exc_info.value) == (
+            "OBS reply for project SUSE:SLFO:Main is not a package list (root element <directory>)"
+        )
+        assert not (tmp_path / "obs_bulk_map.xml").exists()
+        assert not (tmp_path / "obs_bulk_map.meta.json").exists()
+
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_empty_sourceinfolist_raises_no_packages_and_is_not_cached(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
+        """A valid but empty <sourceinfolist> stops the run and is never cached."""
+        mock_run.return_value = _make_proc(returncode=0, stdout=b"<sourceinfolist/>")
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        with pytest.raises(RuntimeError) as exc_info:
+            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        message = str(exc_info.value)
+        assert message == (
+            "OBS project SUSE:SLFO:Main lists no packages; check 'obs_project' in your config"
+        )
+        # Distinct from the non-<sourceinfolist> error.
+        assert "not a package list" not in message
+        assert "root element" not in message
+        assert not (tmp_path / "obs_bulk_map.xml").exists()
+        assert not (tmp_path / "obs_bulk_map.meta.json").exists()
+
     def test_parse_sourceinfolist_rejects_doctype_declaration(self) -> None:
         """DOCTYPE declarations enable billion-laughs entity-expansion DoS; refuse them."""
         repo = ObsBulkSourceInfoRepositoryImpl()
@@ -454,6 +507,48 @@ class TestCache:
         mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
         bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
         assert bm.packages == frozenset({"pkg", "other"})
+
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_cache_hit_with_empty_sourceinfolist_raises_no_packages(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
+        """A fresh, sha-valid cached empty reply is rejected like a fetched one."""
+        body = b"<sourceinfolist/>"
+        (tmp_path / "obs_bulk_map.xml").write_bytes(body)
+        (tmp_path / "obs_bulk_map.meta.json").write_text(
+            json.dumps(
+                {
+                    "project": "SUSE:SLFO:Main",
+                    "fetched_at": datetime.now(UTC).isoformat(),
+                    "sha256": hashlib.sha256(body).hexdigest(),
+                }
+            )
+        )
+        mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        with pytest.raises(RuntimeError, match="lists no packages"):
+            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_cache_hit_with_status_reply_raises_not_a_package_list(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
+        """A <status> reply cached before this check existed is rejected on read."""
+        body = b"<status><summary>Project not found</summary></status>"
+        (tmp_path / "obs_bulk_map.xml").write_bytes(body)
+        (tmp_path / "obs_bulk_map.meta.json").write_text(
+            json.dumps(
+                {
+                    "project": "SUSE:SLFO:Main",
+                    "fetched_at": datetime.now(UTC).isoformat(),
+                    "sha256": hashlib.sha256(body).hexdigest(),
+                }
+            )
+        )
+        mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        with pytest.raises(RuntimeError, match="is not a package list"):
+            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_force_refresh_bypasses_cache(

@@ -91,8 +91,9 @@ class ObsBulkSourceInfoRepository(Protocol):
                 or exceeds 200 chars, or `cache_dir` is not absolute.
             MissingBinaryError: If osc is not in PATH.
             NetworkTimeoutError: If the osc api subprocess exceeds the timeout.
-            RuntimeError: If `osc api` exits non-zero or the response is not
-                parseable as <sourceinfolist>.
+            RuntimeError: If `osc api` exits non-zero, the response is not
+                valid XML or not a <sourceinfolist> (e.g. an OBS <status>
+                error document), or it lists no <sourceinfo>.
         """
         ...
 
@@ -136,6 +137,7 @@ class ObsBulkSourceInfoRepositoryImpl:
             os.chmod(cache_dir, 0o700)
             # Parse FIRST so a malformed body never leaves a partial cache.
             root = self._parse_sourceinfolist(xml_body)
+            self._validate_sourceinfolist(root, project)
             mapping = self._build_bulk_map(root)
             packages = self._extract_package_names(root)
             self._write_cache_atomic(xml_path, meta_path, project, xml_body, fetched_at)
@@ -147,6 +149,7 @@ class ObsBulkSourceInfoRepositoryImpl:
             )
 
         root = self._parse_sourceinfolist(xml_body)
+        self._validate_sourceinfolist(root, project)
         return BulkMap(
             mapping=self._build_bulk_map(root),
             project=project,
@@ -311,6 +314,32 @@ class ObsBulkSourceInfoRepositoryImpl:
                 f"OBS bulk response is not valid XML: {exc} (body starts: {snippet!r})"
             ) from exc
         return root
+
+    @staticmethod
+    def _validate_sourceinfolist(root: Element, project: str) -> None:
+        """Reject a parsed reply that is not a non-empty <sourceinfolist>.
+
+        Args:
+            root: Root element returned by `_parse_sourceinfolist`.
+            project: The requested OBS project name, used in error messages.
+
+        Raises:
+            RuntimeError: If the root element is not <sourceinfolist> (message
+                carries the root tag and any <summary> text), or if it has no
+                <sourceinfo> children.
+        """
+        if root.tag != "sourceinfolist":
+            message = (
+                f"OBS reply for project {project} is not a package list (root element <{root.tag}>)"
+            )
+            summary = (root.findtext("summary") or "").strip()
+            if summary:
+                message = f"{message}: {summary}"
+            raise RuntimeError(message)
+        if root.find("sourceinfo") is None:
+            raise RuntimeError(
+                f"OBS project {project} lists no packages; check 'obs_project' in your config"
+            )
 
     @staticmethod
     def _extract_package_names(root: Element) -> frozenset[str]:
