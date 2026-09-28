@@ -253,7 +253,6 @@ class TestResolveShippedPackages:
 
         shipped = {"apache2-devel"}
         overrides_file = Path("/tmp/overrides.json")
-        cache_dir = Path("/tmp/cache")
         bulk_map = _make_bulk_map(
             {"apache2-devel": "apache2", "apache2": "apache2"}, packages=frozenset({"apache2"})
         )
@@ -261,7 +260,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             overrides_file,
-            cache_dir,
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -287,7 +285,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -310,7 +307,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -330,7 +326,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -359,7 +354,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             {"pkg1"},
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -377,7 +371,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -409,7 +402,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -442,7 +434,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -466,12 +457,10 @@ class TestResolveShippedPackages:
         service = _make_service(bulk_map_repo=bulk_map_repo, overrides_repo=overrides_repo)
 
         overrides_file = Path("/tmp/overrides.json")
-        cache_dir = Path("/tmp/cache")
 
         valid, residue, unresolved = service.resolve_shipped_packages(
             {"pkg1"},
             overrides_file,
-            cache_dir,
             obs_project=_OBS_PROJECT,
         )
 
@@ -479,7 +468,7 @@ class TestResolveShippedPackages:
         assert residue == []
         assert unresolved == []
         overrides_repo.load.assert_called_once_with(overrides_file)
-        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT, cache_dir)
+        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT)
 
     def test_unresolved_names_subset_of_residue_only_identity_fallthrough(self):
         """unresolved should contain only identity-fallthrough names not in the OBS package set.
@@ -500,7 +489,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -525,7 +513,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -548,7 +535,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -567,7 +553,6 @@ class TestResolveShippedPackages:
         valid, residue, unresolved = service.resolve_shipped_packages(
             shipped,
             Path("/tmp/overrides.json"),
-            Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
             bulk_map=bulk_map,
         )
@@ -584,7 +569,6 @@ class TestResolveShippedPackages:
             service.resolve_shipped_packages(  # type: ignore[call-arg]  # omission under test
                 {"pkg1"},
                 Path("/tmp/overrides.json"),
-                Path("/tmp/cache"),
                 bulk_map=_make_bulk_map({}),
             )
 
@@ -634,13 +618,11 @@ class TestValidateAll:
         maintainership_file = Path("/tmp/maintainership.json")
         repo_metadata_file = Path("/tmp/primary.xml.gz")
         overrides_file = Path("/tmp/overrides.json")
-        cache_dir = Path("/tmp/cache")
 
         result = service.validate_all(
             maintainership_file=maintainership_file,
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
         )
 
@@ -668,7 +650,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -688,7 +669,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -720,7 +700,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -747,7 +726,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -768,7 +746,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -795,7 +772,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -814,11 +790,10 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
-        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT, Path("/tmp/cache"))
+        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT)
 
     def test_validate_all_populates_unresolved_names_from_residue(self):
         """validate_all should set ValidationResult.unresolved_names to the
@@ -834,7 +809,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -856,7 +830,6 @@ class TestValidateAll:
                 maintainership_file=Path("/tmp/maintainership.json"),
                 repo_metadata_file=Path("/tmp/primary.xml.gz"),
                 overrides_file=Path("/tmp/overrides.json"),
-                cache_dir=Path("/tmp/cache"),
             )
 
         bulk_map_repo.load_bulk_map.assert_not_called()
@@ -874,7 +847,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 
@@ -900,7 +872,6 @@ class TestValidateAll:
             maintainership_file=Path("/tmp/maintainership.json"),
             repo_metadata_file=Path("/tmp/primary.xml.gz"),
             overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
             obs_project=_OBS_PROJECT,
         )
 

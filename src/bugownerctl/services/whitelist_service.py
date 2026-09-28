@@ -86,7 +86,6 @@ class WhitelistService:
         whitelist_file: Path,
         shipped_packages: set[str],
         overrides_file: Path,
-        cache_dir: Path,
         obs_project: str,
     ) -> WhitelistCheckResult:
         """Check whitelist for inconsistencies with shipped packages.
@@ -98,7 +97,6 @@ class WhitelistService:
             whitelist_file: Path to whitelist JSON file
             shipped_packages: Set of shipped package names from metadata
             overrides_file: Path to hand-curated binary→source overrides JSON
-            cache_dir: Cache directory for the OBS bulk-map XML
             obs_project: OBS project to query for package resolution
 
         Returns:
@@ -117,7 +115,7 @@ class WhitelistService:
 
         # Pre-load bulk_map here (mirrors the pattern validate_all uses) and
         # pass it to resolve_shipped_packages.
-        bulk_map = self.validation_service.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
+        bulk_map = self.validation_service.bulk_map_repo.load_bulk_map(obs_project)
 
         # Get validated shipped packages using validation pipeline.
         # Residue is dropped — the whitelist consistency check only cares
@@ -127,7 +125,6 @@ class WhitelistService:
         valid_packages, _, unresolved_names = self.validation_service.resolve_shipped_packages(
             shipped_packages,
             overrides_file,
-            cache_dir,
             obs_project,
             bulk_map=bulk_map,
         )

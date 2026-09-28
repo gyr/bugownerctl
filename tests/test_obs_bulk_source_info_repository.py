@@ -2,18 +2,14 @@
 
 Phase 2 of the OBS source-name resolution refactor. Tests cover:
   - Protocol shape.
-  - Input validation (project name, cache dir).
+  - Input validation (project name).
   - Subprocess invocation (mocked; argv-style; timeout).
   - XML parsing (alias/subpack/originpackage chain; collision rules).
-  - On-disk cache (write, hit, stale TTL, sha256 integrity).
+  - No caching (osc runs on every call; nothing written to disk).
   - Failure modes (non-zero exit, timeout, malformed XML, osc not installed).
 """
 
-import hashlib
-import json
-import os
 import subprocess
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -62,41 +58,36 @@ class TestProtocol:
 
 
 class TestInputValidation:
-    def test_load_bulk_map_rejects_relative_cache_dir(self, tmp_path: Path) -> None:
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        with pytest.raises(ValueError, match="absolute"):
-            repo.load_bulk_map("SUSE:SLFO:Main", Path("cache"))
-
-    def test_load_bulk_map_rejects_invalid_project_chars(self, tmp_path: Path) -> None:
+    def test_load_bulk_map_rejects_invalid_project_chars(self) -> None:
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("../etc", tmp_path)
+            repo.load_bulk_map("../etc")
 
-    def test_project_with_shell_metachars_rejected(self, tmp_path: Path) -> None:
+    def test_project_with_shell_metachars_rejected(self) -> None:
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("SUSE; rm -rf /", tmp_path)
+            repo.load_bulk_map("SUSE; rm -rf /")
 
-    def test_project_with_newline_rejected(self, tmp_path: Path) -> None:
+    def test_project_with_newline_rejected(self) -> None:
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("SUSE\nfoo", tmp_path)
+            repo.load_bulk_map("SUSE\nfoo")
 
-    def test_project_with_path_traversal_rejected(self, tmp_path: Path) -> None:
+    def test_project_with_path_traversal_rejected(self) -> None:
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("../etc/passwd", tmp_path)
+            repo.load_bulk_map("../etc/passwd")
 
-    def test_empty_project_rejected(self, tmp_path: Path) -> None:
+    def test_empty_project_rejected(self) -> None:
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("", tmp_path)
+            repo.load_bulk_map("")
 
-    def test_project_exceeding_200_chars_rejected(self, tmp_path: Path) -> None:
+    def test_project_exceeding_200_chars_rejected(self) -> None:
         """Real OBS project names are <100 chars; bound at 200 to cap argv/URL growth."""
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(ValueError, match="project"):
-            repo.load_bulk_map("A" * 201, tmp_path)
+            repo.load_bulk_map("A" * 201)
 
 
 # ---------------------------------------------------------------------------
@@ -105,12 +96,10 @@ class TestInputValidation:
 
 class TestSubprocessInvocation:
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_runs_osc_api_with_correct_args(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
+    def test_load_bulk_map_runs_osc_api_with_correct_args(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
         repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        repo.load_bulk_map("SUSE:SLFO:Main")
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
         assert args[0] == [
@@ -127,31 +116,27 @@ class TestSubprocessInvocation:
         assert kwargs.get("timeout") > 0
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_subprocess_nonzero_raises_runtime_error(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
+    def test_load_bulk_map_subprocess_nonzero_raises_runtime_error(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=1, stderr=b"auth failed")
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError, match="osc"):
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+            repo.load_bulk_map("SUSE:SLFO:Main")
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_subprocess_timeout_raises_network_timeout_error(
-        self, mock_run: Mock, tmp_path: Path
+        self, mock_run: Mock
     ) -> None:
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="osc", timeout=120)
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(NetworkTimeoutError, match="timed out"):
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+            repo.load_bulk_map("SUSE:SLFO:Main")
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_osc_not_installed_raises_missing_binary_error(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
+    def test_osc_not_installed_raises_missing_binary_error(self, mock_run: Mock) -> None:
         mock_run.side_effect = FileNotFoundError("osc")
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(MissingBinaryError, match="osc"):
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+            repo.load_bulk_map("SUSE:SLFO:Main")
 
 
 # ---------------------------------------------------------------------------
@@ -160,13 +145,12 @@ class TestSubprocessInvocation:
 
 class TestParsing:
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_parses_fixture_into_expected_mapping(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
+    def test_load_bulk_map_parses_fixture_into_expected_mapping(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
         repo = ObsBulkSourceInfoRepositoryImpl()
-        bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        bm = repo.load_bulk_map("SUSE:SLFO:Main")
         assert isinstance(bm, BulkMap)
+        assert bm.project == "SUSE:SLFO:Main"
         m = bm.mapping
         # identity
         assert m["apache2"] == "apache2"
@@ -194,9 +178,7 @@ class TestParsing:
         assert m["chain-c"] == "chain-c"
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_packages_exclude_multibuild_flavors(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
+    def test_load_bulk_map_packages_exclude_multibuild_flavors(self, mock_run: Mock) -> None:
         """packages holds plain <sourceinfo package> names; `pkg:flav` flavors are excluded."""
         xml = (
             b"<sourceinfolist>"
@@ -209,12 +191,12 @@ class TestParsing:
         )
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
         repo = ObsBulkSourceInfoRepositoryImpl()
-        bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        bm = repo.load_bulk_map("SUSE:SLFO:Main")
         assert bm.packages == frozenset({"pkg", "other"})
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_packages_keep_linked_packages_without_colon(
-        self, mock_run: Mock, tmp_path: Path
+        self, mock_run: Mock
     ) -> None:
         """An <originpackage> without `:` in the name is a real package, not a flavor."""
         xml = (
@@ -227,12 +209,12 @@ class TestParsing:
         )
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
         repo = ObsBulkSourceInfoRepositoryImpl()
-        bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        bm = repo.load_bulk_map("SUSE:SLFO:Main")
         assert bm.packages == frozenset({"pkg", "linked-src"})
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_sourceinfo_with_error_stays_in_packages_and_warns(
-        self, mock_run: Mock, tmp_path: Path, caplog: pytest.LogCaptureFixture
+        self, mock_run: Mock, caplog: pytest.LogCaptureFixture
     ) -> None:
         """A <sourceinfo> carrying <error> is still a project package; a warning names it."""
         xml = (
@@ -247,7 +229,7 @@ class TestParsing:
         repo = ObsBulkSourceInfoRepositoryImpl()
 
         with caplog.at_level("WARNING"):
-            bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+            bm = repo.load_bulk_map("SUSE:SLFO:Main")
 
         assert bm.packages == frozenset({"pkg-ok", "pkg-broken"})
         warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
@@ -410,58 +392,47 @@ class TestParsing:
         assert m["Y"] == "Y"
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_invalid_xml_raises_runtime_error(self, mock_run: Mock, tmp_path: Path) -> None:
+    def test_invalid_xml_raises_runtime_error(self, mock_run: Mock) -> None:
         mock_run.return_value = _make_proc(returncode=0, stdout=b"not xml at all")
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError, match="not valid XML"):
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        # No partial cache file should have been written.
-        assert not (tmp_path / "obs_bulk_map.xml").exists()
-        assert not (tmp_path / "obs_bulk_map.meta.json").exists()
+            repo.load_bulk_map("SUSE:SLFO:Main")
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_status_reply_raises_with_project_root_tag_and_summary(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
-        """An OBS <status> error document stops the run and is never cached."""
+    def test_status_reply_raises_with_project_root_tag_and_summary(self, mock_run: Mock) -> None:
+        """An OBS <status> error document stops the run."""
         xml = b'<status code="unknown_project"><summary> Project not found </summary></status>'
         mock_run.return_value = _make_proc(returncode=0, stdout=xml)
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError) as exc_info:
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+            repo.load_bulk_map("SUSE:SLFO:Main")
         assert str(exc_info.value) == (
             "OBS reply for project SUSE:SLFO:Main is not a package list "
             "(root element <status>): Project not found"
         )
         # Distinct from the empty-<sourceinfolist> error.
         assert "lists no packages" not in str(exc_info.value)
-        assert not (tmp_path / "obs_bulk_map.xml").exists()
-        assert not (tmp_path / "obs_bulk_map.meta.json").exists()
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_non_sourceinfolist_reply_without_summary_ends_at_root_tag(
-        self, mock_run: Mock, tmp_path: Path
+        self, mock_run: Mock
     ) -> None:
         """No <summary> child: the message ends after the root element, no dangling colon."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<directory/>")
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError) as exc_info:
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+            repo.load_bulk_map("SUSE:SLFO:Main")
         assert str(exc_info.value) == (
             "OBS reply for project SUSE:SLFO:Main is not a package list (root element <directory>)"
         )
-        assert not (tmp_path / "obs_bulk_map.xml").exists()
-        assert not (tmp_path / "obs_bulk_map.meta.json").exists()
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_empty_sourceinfolist_raises_no_packages_and_is_not_cached(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
-        """A valid but empty <sourceinfolist> stops the run and is never cached."""
+    def test_empty_sourceinfolist_raises_no_packages(self, mock_run: Mock) -> None:
+        """A valid but empty <sourceinfolist> stops the run."""
         mock_run.return_value = _make_proc(returncode=0, stdout=b"<sourceinfolist/>")
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError) as exc_info:
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+            repo.load_bulk_map("SUSE:SLFO:Main")
         message = str(exc_info.value)
         assert message == (
             "OBS project SUSE:SLFO:Main lists no packages; check 'obs_project' in your config"
@@ -469,8 +440,6 @@ class TestParsing:
         # Distinct from the non-<sourceinfolist> error.
         assert "not a package list" not in message
         assert "root element" not in message
-        assert not (tmp_path / "obs_bulk_map.xml").exists()
-        assert not (tmp_path / "obs_bulk_map.meta.json").exists()
 
     def test_parse_sourceinfolist_rejects_doctype_declaration(self) -> None:
         """DOCTYPE declarations enable billion-laughs entity-expansion DoS; refuse them."""
@@ -523,216 +492,27 @@ class TestParsing:
 
 
 # ---------------------------------------------------------------------------
-# Cache behavior
+# No caching
 
 
-class TestCache:
+class TestNoCache:
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_writes_cache_files(self, mock_run: Mock, tmp_path: Path) -> None:
-        body = _fixture_xml()
-        mock_run.return_value = _make_proc(returncode=0, stdout=body)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        xml_path = tmp_path / "obs_bulk_map.xml"
-        meta_path = tmp_path / "obs_bulk_map.meta.json"
-        assert xml_path.exists()
-        assert meta_path.exists()
-        assert xml_path.read_bytes() == body
-        meta = json.loads(meta_path.read_text())
-        assert meta["project"] == "SUSE:SLFO:Main"
-        assert "fetched_at" in meta
-        assert meta["sha256"] == hashlib.sha256(body).hexdigest()
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_cache_hit_skips_subprocess(self, mock_run: Mock, tmp_path: Path) -> None:
-        body = _fixture_xml()
-        # First call populates the cache.
-        mock_run.return_value = _make_proc(returncode=0, stdout=body)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        bm1 = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        assert mock_run.call_count == 1
-        # Second call: subprocess must NOT be invoked. Make it fail if called.
-        mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
-        bm2 = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        # Cached fetched_at carried through (from meta).
-        assert bm2.fetched_at == bm1.fetched_at
-        assert bm2.mapping == bm1.mapping
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_cache_hit_yields_packages(self, mock_run: Mock, tmp_path: Path) -> None:
-        """The cache-hit path re-derives packages from the cached XML."""
-        xml = (
-            b"<sourceinfolist>"
-            b'<sourceinfo package="pkg"><subpacks>pkg</subpacks></sourceinfo>'
-            b'<sourceinfo package="pkg:flav"><originpackage>pkg</originpackage></sourceinfo>'
-            b'<sourceinfo package="other"><subpacks>other</subpacks></sourceinfo>'
-            b"</sourceinfolist>"
-        )
-        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
-        bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        assert bm.packages == frozenset({"pkg", "other"})
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_cache_hit_with_empty_sourceinfolist_raises_no_packages(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
-        """A fresh, sha-valid cached empty reply is rejected like a fetched one."""
-        body = b"<sourceinfolist/>"
-        (tmp_path / "obs_bulk_map.xml").write_bytes(body)
-        (tmp_path / "obs_bulk_map.meta.json").write_text(
-            json.dumps(
-                {
-                    "project": "SUSE:SLFO:Main",
-                    "fetched_at": datetime.now(UTC).isoformat(),
-                    "sha256": hashlib.sha256(body).hexdigest(),
-                }
-            )
-        )
-        mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        with pytest.raises(RuntimeError, match="lists no packages"):
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_cache_hit_with_status_reply_raises_not_a_package_list(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
-        """A <status> reply cached before this check existed is rejected on read."""
-        body = b"<status><summary>Project not found</summary></status>"
-        (tmp_path / "obs_bulk_map.xml").write_bytes(body)
-        (tmp_path / "obs_bulk_map.meta.json").write_text(
-            json.dumps(
-                {
-                    "project": "SUSE:SLFO:Main",
-                    "fetched_at": datetime.now(UTC).isoformat(),
-                    "sha256": hashlib.sha256(body).hexdigest(),
-                }
-            )
-        )
-        mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        with pytest.raises(RuntimeError, match="is not a package list"):
-            repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_stale_cache_triggers_refetch(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
-        body = _fixture_xml()
-        # Write a stale cache by hand (TTL is 7d; set fetched_at to 8d ago).
-        (tmp_path / "obs_bulk_map.xml").write_bytes(body)
-        stale = datetime.now(UTC) - timedelta(days=8)
-        (tmp_path / "obs_bulk_map.meta.json").write_text(
-            json.dumps(
-                {
-                    "project": "SUSE:SLFO:Main",
-                    "fetched_at": stale.isoformat(),
-                    "sha256": hashlib.sha256(body).hexdigest(),
-                }
-            )
-        )
-        mock_run.return_value = _make_proc(returncode=0, stdout=body)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        # Stale cache → must have invoked subprocess.
-        assert mock_run.call_count == 1
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_cache_dir_has_owner_only_perms(self, mock_run: Mock, tmp_path: Path) -> None:
-        """cache_dir is chmod 0o700 to prevent other-user reads of cached XML."""
-        mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
-        cache_dir = tmp_path / "obscache"
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", cache_dir)
-        assert (cache_dir.stat().st_mode & 0o777) == 0o700
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_cache_xml_has_owner_only_perms(self, mock_run: Mock, tmp_path: Path) -> None:
-        """Cached XML file is chmod 0o600 (never visible to other users)."""
+    def test_load_bulk_map_runs_osc_on_every_call(self, mock_run: Mock) -> None:
+        """Two consecutive calls each fetch from OBS; nothing is reused between them."""
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
         repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        xml_path = tmp_path / "obs_bulk_map.xml"
-        assert (xml_path.stat().st_mode & 0o777) == 0o600
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_cache_meta_has_owner_only_perms(self, mock_run: Mock, tmp_path: Path) -> None:
-        """Cached meta JSON is chmod 0o600 (never visible to other users)."""
-        mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        meta_path = tmp_path / "obs_bulk_map.meta.json"
-        assert (meta_path.stat().st_mode & 0o777) == 0o600
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_corrupted_cache_xml_triggers_refetch(self, mock_run: Mock, tmp_path: Path) -> None:
-        body = _fixture_xml()
-        mock_run.return_value = _make_proc(returncode=0, stdout=body)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        assert mock_run.call_count == 1
-        # Tamper with the cached XML so its sha256 no longer matches meta.
-        (tmp_path / "obs_bulk_map.xml").write_bytes(b"<sourceinfolist/>")
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        # Mismatch should have forced a re-fetch.
+        repo.load_bulk_map("SUSE:SLFO:Main")
+        repo.load_bulk_map("SUSE:SLFO:Main")
         assert mock_run.call_count == 2
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_rejects_symlink_cache_files(
-        self, mock_run: Mock, tmp_path: Path
+    def test_load_bulk_map_writes_no_files(
+        self, mock_run: Mock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Mirror false_positives_repository: refuse to read/write a symlinked cache file.
-
-        Prevents an attacker who can plant a symlink in cache_dir from redirecting
-        the cache write to an arbitrary file. Mirrors the precedent in
-        false_positives_repository.save (RuntimeError, message contains 'symlink').
-        """
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir()
-        target = tmp_path / "decoy"
-        target.write_bytes(b"<sourceinfolist/>")
-        # Plant a symlink where the XML cache file would live.
-        os.symlink(target, cache_dir / "obs_bulk_map.xml")
-        # Mock subprocess so the test never touches the network even if the
-        # symlink check is missing; what we assert is that the check fires.
+        """The reply is parsed in memory; no file is created, not even in cwd."""
+        monkeypatch.chdir(tmp_path)
         mock_run.return_value = _make_proc(returncode=0, stdout=_fixture_xml())
-
         repo = ObsBulkSourceInfoRepositoryImpl()
-        with pytest.raises(RuntimeError, match="symlink"):
-            repo.load_bulk_map("SUSE:SLFO:Main", cache_dir)
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_different_project_refetches(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
-        """Two projects sharing one cache_dir must not cross-contaminate.
-
-        The on-disk cache stores `meta["project"]`; a call for a different
-        project must trigger a refetch (not be served from the stale cache).
-        """
-        body_a = _fixture_xml()
-        # Distinct XML body for project B so we can prove it was actually
-        # refetched (and not served from project A's cache).
-        body_b = (
-            b"<sourceinfolist>"
-            b'<sourceinfo package="only-in-b"><subpacks>only-in-b</subpacks></sourceinfo>'
-            b"</sourceinfolist>"
-        )
-        mock_run.return_value = _make_proc(returncode=0, stdout=body_a)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        assert mock_run.call_count == 1
-
-        # Second call for a DIFFERENT project sharing the same cache_dir.
-        mock_run.return_value = _make_proc(returncode=0, stdout=body_b)
-        bm_b = repo.load_bulk_map("openSUSE:Factory", tmp_path)
-
-        # Refetch MUST have occurred.
-        assert mock_run.call_count == 2
-        # Returned BulkMap must reflect project B, not project A's cached data.
-        assert bm_b.project == "openSUSE:Factory"
-        assert "only-in-b" in bm_b.mapping
-        assert "apache2" not in bm_b.mapping
+        repo.load_bulk_map("SUSE:SLFO:Main")
+        assert list(tmp_path.rglob("obs_bulk_map.*")) == []
+        assert list(tmp_path.iterdir()) == []

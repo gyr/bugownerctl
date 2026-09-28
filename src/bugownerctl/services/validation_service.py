@@ -88,7 +88,6 @@ class ValidationService:
         self,
         shipped_packages: set[str],
         overrides_file: Path,
-        cache_dir: Path,
         obs_project: str,
         *,
         bulk_map: BulkMap | None = None,
@@ -108,7 +107,6 @@ class ValidationService:
         Args:
             shipped_packages: Set of package names from repo metadata
             overrides_file: Path to hand-curated overrides JSON
-            cache_dir: Cache directory for bulk-map XML
             obs_project: OBS project to query
             bulk_map: Preloaded BulkMap value object (avoids re-fetching when
                 validate_all already loaded it). Its `packages` set is the
@@ -130,7 +128,7 @@ class ValidationService:
         if overrides is None:
             overrides = self.overrides_repo.load(overrides_file)
         if bulk_map is None:
-            bulk_map = self.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
+            bulk_map = self.bulk_map_repo.load_bulk_map(obs_project)
 
         obs_packages = bulk_map.packages
         resolved_names: set[str] = set()
@@ -159,7 +157,6 @@ class ValidationService:
         maintainership_file: Path,
         repo_metadata_file: Path,
         overrides_file: Path,
-        cache_dir: Path,
         obs_project: str,
     ) -> ValidationResult:
         """Orchestrate all validation checks.
@@ -168,7 +165,6 @@ class ValidationService:
             maintainership_file: Path to _maintainership.json
             repo_metadata_file: Path to primary.xml.gz (downloaded metadata)
             overrides_file: Path to hand-curated overrides JSON
-            cache_dir: Cache dir for the OBS bulk-map XML
             obs_project: OBS project to query
 
         Returns:
@@ -181,7 +177,7 @@ class ValidationService:
         # Pre-load bulk_map and overrides exactly once here so
         # resolve_shipped_packages reuses them.
         overrides = self.overrides_repo.load(overrides_file)
-        bulk_map = self.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
+        bulk_map = self.bulk_map_repo.load_bulk_map(obs_project)
 
         logger.info("starting validate_all for %d shipped packages", len(shipped_packages))
         maintained_packages_not_in_obs = self.find_maintained_packages_not_in_obs(
@@ -198,7 +194,6 @@ class ValidationService:
         ) = self.resolve_shipped_packages(
             shipped_packages,
             overrides_file,
-            cache_dir,
             obs_project=obs_project,
             bulk_map=bulk_map,
             overrides=overrides,

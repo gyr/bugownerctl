@@ -31,14 +31,12 @@ class TestCheckWhitelist:
         whitelist_file.write_text('["pkg3", "pkg4"]')
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "pkg2", "pkg5"},
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
         )
 
@@ -64,14 +62,12 @@ class TestCheckWhitelist:
         whitelist_file.write_text('["pkg1", "pkg2", "pkg4"]')
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "pkg2", "pkg3", "pkg5"},
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
         )
 
@@ -94,14 +90,12 @@ class TestCheckWhitelist:
         whitelist_file.write_text("[]")
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "pkg2"},
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
         )
 
@@ -115,7 +109,6 @@ class TestCheckWhitelist:
 
         whitelist_file = tmp_path / "nonexistent.json"
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute and verify
         with pytest.raises(FileNotFoundError, match="Whitelist file .* does not exist"):
@@ -123,7 +116,6 @@ class TestCheckWhitelist:
                 whitelist_file=whitelist_file,
                 shipped_packages={"pkg1"},
                 overrides_file=overrides_file,
-                cache_dir=cache_dir,
                 obs_project=_OBS_PROJECT,
             )
 
@@ -151,7 +143,6 @@ class TestCheckWhitelist:
         whitelist_file.write_text('["pkg1"]')
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
         shipped_packages = {"pkg1", "pkg2"}
         obs_project = "TEST:PROJECT"
 
@@ -160,19 +151,15 @@ class TestCheckWhitelist:
             whitelist_file=whitelist_file,
             shipped_packages=shipped_packages,
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=obs_project,
         )
 
         # bulk_map loaded at orchestration layer
-        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            obs_project, cache_dir
-        )
+        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(obs_project)
         # resolve_shipped_packages receives the preloaded bulk_map=
         mock_validation_service.resolve_shipped_packages.assert_called_once_with(
             shipped_packages,
             overrides_file,
-            cache_dir,
             obs_project,
             bulk_map=mock_bulk_map,
         )
@@ -196,13 +183,11 @@ class TestCheckWhitelist:
         whitelist_file.write_text('["pkg1"]')
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"pkg1", "mystery-pkg"},
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
         )
 
@@ -219,7 +204,6 @@ class TestCheckWhitelist:
                 whitelist_file=whitelist_file,
                 shipped_packages={"pkg1"},
                 overrides_file=tmp_path / "overrides.json",
-                cache_dir=tmp_path / "cache",
             )
 
     def test_check_whitelist_returns_sorted_inconsistent_packages(self, tmp_path: Path) -> None:
@@ -238,14 +222,12 @@ class TestCheckWhitelist:
         whitelist_file.write_text('["banana", "zebra", "apple"]')
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
             whitelist_file=whitelist_file,
             shipped_packages={"zebra", "apple", "banana"},
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=_OBS_PROJECT,
         )
 

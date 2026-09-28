@@ -99,7 +99,6 @@ def run_maintainership(args: argparse.Namespace) -> int:
             maintainership_file=maintainership_file,
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
-            cache_dir=slfo_context.cache_dir,
             obs_project=slfo_context.obs_project,
         )
 
@@ -210,7 +209,6 @@ def run_whitelist(args: argparse.Namespace) -> int:
             whitelist_file=whitelist_file,
             shipped_packages=shipped_packages,
             overrides_file=overrides_file,
-            cache_dir=slfo_context.cache_dir,
             obs_project=slfo_context.obs_project,
         )
 

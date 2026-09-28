@@ -2,8 +2,8 @@
 
 Fetches `/source/<project>?view=info&parse=1` from the OBS API via `osc api`
 (SSH-signature auth is delegated to the user's local `osc` install), parses
-the response into a `dict[binary_or_subpack → canonical_source]`, and caches
-both the raw XML and metadata on disk so subsequent runs avoid the network.
+the response in memory into a `dict[binary_or_subpack → canonical_source]`.
+Nothing is cached: every run fetches the current state from OBS.
 
 This module requires the `osc` (openSUSE Commander) command-line tool to be
 installed and available in PATH. Install it with:
@@ -17,14 +17,10 @@ existing credential manager configuration. See SOURCE_NAME_RESOLUTION_REFACTOR_P
 section 9 for the full discussion.
 """
 
-import hashlib
-import json
 import logging
-import os
 import re
 import subprocess
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Protocol
 from xml.etree.ElementTree import Element  # type annotation only; parsing uses defusedxml
 
@@ -37,16 +33,12 @@ from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 logger = logging.getLogger(__name__)
 
 OBS_HOST = "https://api.suse.de"
-CACHE_TTL = timedelta(days=7)
 DEFAULT_TIMEOUT = 120  # seconds for the osc api subprocess
 
 # Hard ceiling on raw XML size accepted from OBS. Real bulk responses are
 # ~4 MB; 50 MB leaves comfortable headroom while bounding the worst case so
 # a hostile/corrupted response cannot exhaust process memory before parsing.
 MAX_XML_BYTES = 50 * 1024 * 1024  # 50 MB
-
-XML_FILENAME = "obs_bulk_map.xml"
-META_FILENAME = "obs_bulk_map.meta.json"
 
 # Allow only characters that are safe both in a URL path segment and in an argv.
 # Project names look like "SUSE:SLFO:Main"; this rejects shell metachars,
@@ -58,21 +50,16 @@ _PROJECT_RE = re.compile(r"^[A-Za-z0-9:_.+\-]{1,200}$")
 class ObsBulkSourceInfoRepository(Protocol):
     """Fetch and parse OBS bulk source-info into a binary→source name map.
 
-    One HTTP round-trip per cache-miss run; on cache hit the on-disk XML is
-    re-parsed (no network).
+    One HTTP round-trip per call; the reply is parsed in memory and never
+    written to disk.
     """
 
-    def load_bulk_map(self, project: str, cache_dir: Path) -> BulkMap:
-        """Return a BulkMap for `project`, fetching from OBS if cache is stale.
-
-        Cache layout under cache_dir:
-            obs_bulk_map.xml         # raw OBS response body
-            obs_bulk_map.meta.json   # {"project", "fetched_at", "sha256"}
+    def load_bulk_map(self, project: str) -> BulkMap:
+        """Fetch `project`'s source-info from OBS and return it as a BulkMap.
 
         Args:
             project: OBS project name, e.g. "SUSE:SLFO:Main". Must match
                 [A-Za-z0-9:_.+-]{1,200} (validated before any subprocess call).
-            cache_dir: Absolute path to the cache root directory.
 
         Returns:
             BulkMap resolving both source-package identity (apache2 → apache2)
@@ -81,7 +68,7 @@ class ObsBulkSourceInfoRepository(Protocol):
 
         Raises:
             ValueError: If `project` contains characters outside [A-Za-z0-9:_.+-]
-                or exceeds 200 chars, or `cache_dir` is not absolute.
+                or exceeds 200 chars.
             MissingBinaryError: If osc is not in PATH.
             NetworkTimeoutError: If the osc api subprocess exceeds the timeout.
             RuntimeError: If `osc api` exits non-zero, the response is not
@@ -92,49 +79,13 @@ class ObsBulkSourceInfoRepository(Protocol):
 
 
 class ObsBulkSourceInfoRepositoryImpl:
-    """Adapter implementation backed by `osc api` and an on-disk XML cache."""
+    """Adapter implementation backed by `osc api`."""
 
-    def load_bulk_map(self, project: str, cache_dir: Path) -> BulkMap:
-        self._validate_inputs(project, cache_dir)
-
-        xml_path = cache_dir / XML_FILENAME
-        meta_path = cache_dir / META_FILENAME
-
-        # Refuse to read or write through a symlink. Mirrors false_positives_repository
-        # precedent: an attacker who can plant a symlink in cache_dir could otherwise
-        # redirect the cache write to an arbitrary file (e.g. ~/.ssh/authorized_keys).
-        # Check before any read or write touches these paths.
-        if xml_path.is_symlink():
-            raise RuntimeError(f"Refusing to read/write symlink cache file: {xml_path}")
-        if meta_path.is_symlink():
-            raise RuntimeError(f"Refusing to read/write symlink cache file: {meta_path}")
-
-        cached = self._read_fresh_cache(xml_path, meta_path, project)
-        if cached is not None:
-            xml_body, fetched_at = cached
-            logger.debug("OBS bulk cache hit for %s (fetched_at=%s)", project, fetched_at)
-        else:
-            logger.info("Fetching OBS bulk source-info for project %s", project)
-            xml_body = self._fetch_via_osc_api(project)
-            fetched_at = datetime.now(UTC)
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            # Restrict the cache directory to owner-only (mirrors
-            # false_positives_repository pattern). Cached XML may include
-            # internal project metadata that other local users should not read.
-            os.chmod(cache_dir, 0o700)
-            # Parse FIRST so a malformed body never leaves a partial cache.
-            root = self._parse_sourceinfolist(xml_body)
-            self._validate_sourceinfolist(root, project)
-            mapping = self._build_bulk_map(root)
-            packages = self._extract_package_names(root)
-            self._write_cache_atomic(xml_path, meta_path, project, xml_body, fetched_at)
-            return BulkMap(
-                mapping=mapping,
-                project=project,
-                fetched_at=fetched_at,
-                packages=packages,
-            )
-
+    def load_bulk_map(self, project: str) -> BulkMap:
+        self._validate_inputs(project)
+        logger.info("Fetching OBS bulk source-info for project %s", project)
+        xml_body = self._fetch_via_osc_api(project)
+        fetched_at = datetime.now(UTC)
         root = self._parse_sourceinfolist(xml_body)
         self._validate_sourceinfolist(root, project)
         return BulkMap(
@@ -148,95 +99,9 @@ class ObsBulkSourceInfoRepositoryImpl:
     # Validation
 
     @staticmethod
-    def _validate_inputs(project: str, cache_dir: Path) -> None:
-        if not isinstance(cache_dir, Path) or not cache_dir.is_absolute():
-            raise ValueError(f"cache_dir must be an absolute Path, got: {cache_dir!r}")
+    def _validate_inputs(project: str) -> None:
         if not project or not _PROJECT_RE.match(project):
             raise ValueError(f"project name must match [A-Za-z0-9:_.+-]{{1,200}}, got: {project!r}")
-
-    # ------------------------------------------------------------------
-    # Cache I/O
-
-    def _read_fresh_cache(
-        self, xml_path: Path, meta_path: Path, project: str
-    ) -> tuple[bytes, datetime] | None:
-        """Return (xml_body, fetched_at) when both files exist, the meta hash
-        matches the on-disk XML, the cached project matches `project`, and the
-        timestamp is within the TTL window."""
-        if not xml_path.exists() or not meta_path.exists():
-            return None
-        try:
-            meta = json.loads(meta_path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            logger.warning("Cache meta unreadable (%s); refetching", exc)
-            return None
-
-        fetched_raw = meta.get("fetched_at")
-        sha_expected = meta.get("sha256")
-        cached_project = meta.get("project")
-        if not isinstance(fetched_raw, str) or not isinstance(sha_expected, str):
-            logger.warning("Cache meta missing required fields; refetching")
-            return None
-        if cached_project != project:
-            logger.info(
-                "OBS bulk cache project mismatch (cached=%r, requested=%r); refetching",
-                cached_project,
-                project,
-            )
-            return None
-        try:
-            fetched_at = datetime.fromisoformat(fetched_raw)
-        except ValueError:
-            logger.warning("Cache meta has invalid fetched_at; refetching")
-            return None
-
-        if datetime.now(UTC) - fetched_at > CACHE_TTL:
-            logger.info("OBS bulk cache stale (age > %s); refetching", CACHE_TTL)
-            return None
-
-        try:
-            xml_body = xml_path.read_bytes()
-        except OSError as exc:
-            logger.warning("Cache XML unreadable (%s); refetching", exc)
-            return None
-
-        sha_actual = hashlib.sha256(xml_body).hexdigest()
-        if sha_actual != sha_expected:
-            logger.warning(
-                "OBS bulk cache XML sha256 mismatch (expected=%s, actual=%s); refetching",
-                sha_expected,
-                sha_actual,
-            )
-            return None
-
-        return xml_body, fetched_at
-
-    @staticmethod
-    def _write_cache_atomic(
-        xml_path: Path,
-        meta_path: Path,
-        project: str,
-        xml_body: bytes,
-        fetched_at: datetime,
-    ) -> None:
-        """Write XML + meta JSON via tmp-then-rename to avoid partial files.
-
-        Each tmp file is chmod 0o600 BEFORE os.replace so the final file is
-        never observable in the filesystem with a wider mode.
-        """
-        xml_tmp = xml_path.with_suffix(xml_path.suffix + ".tmp")
-        meta_tmp = meta_path.with_suffix(meta_path.suffix + ".tmp")
-        xml_tmp.write_bytes(xml_body)
-        os.chmod(xml_tmp, 0o600)
-        os.replace(xml_tmp, xml_path)
-        meta = {
-            "project": project,
-            "fetched_at": fetched_at.isoformat(),
-            "sha256": hashlib.sha256(xml_body).hexdigest(),
-        }
-        meta_tmp.write_text(json.dumps(meta, indent=2, sort_keys=True))
-        os.chmod(meta_tmp, 0o600)
-        os.replace(meta_tmp, meta_path)
 
     # ------------------------------------------------------------------
     # Subprocess

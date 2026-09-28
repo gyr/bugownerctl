@@ -264,10 +264,10 @@ class TestCheckMaintainershipCommand:
         args = argparse.Namespace(release="16.1", debug=False, config=None, strict=False)
         run_maintainership(args)
 
-        # Verify download_primary_metadata called with version
-        repos["metadata"].return_value.download_primary_metadata.assert_called_once()
-        download_call_args = repos["metadata"].return_value.download_primary_metadata.call_args[0]
-        assert download_call_args[0] == "16.1"
+        # primary.xml.gz must land in the context's cache_dir, NOT in CWD
+        repos["metadata"].return_value.download_primary_metadata.assert_called_once_with(
+            "16.1", fake_slfo_context.cache_dir
+        )
 
         # Verify validate_all called with correct parameters
         instance.validate_all.assert_called_once()
@@ -275,9 +275,8 @@ class TestCheckMaintainershipCommand:
         assert isinstance(call_args["maintainership_file"], Path)
         assert isinstance(call_args["repo_metadata_file"], Path)
         assert "git_dir" not in call_args
-        # cache_dir must come from config (expanded), NOT from CWD
-        expected_cache_dir = Path("~/.cache/bugownerctl").expanduser()
-        assert call_args["cache_dir"] == expected_cache_dir
+        # The OBS bulk map is fetched on every run; no cache_dir is passed.
+        assert "cache_dir" not in call_args
         # overrides_file must resolve via importlib.resources (lives under
         # the installed package's data dir); just confirm it's a Path and
         # points at the shipped basename.
@@ -810,14 +809,19 @@ class TestCheckWhitelistCommand:
         args = argparse.Namespace(release="16.1", config=None, strict=False)
         run_whitelist(args)
 
+        # primary.xml.gz must land in the context's cache_dir, NOT in CWD
+        repos["metadata"].return_value.download_primary_metadata.assert_called_once_with(
+            "16.1", fake_slfo_context.cache_dir
+        )
+
         services["whitelist_service"].check_whitelist.assert_called_once()
         call_args = services["whitelist_service"].check_whitelist.call_args[1]
         # whitelist_file must come from slfo_repo_path
         assert call_args["whitelist_file"] == slfo_repo_path / "whitelist_maintainership.json"
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert "submodules" not in call_args
-        # cache_dir must come from fake_slfo_context
-        assert call_args["cache_dir"] == fake_slfo_context.cache_dir
+        # The OBS bulk map is fetched on every run; no cache_dir is passed.
+        assert "cache_dir" not in call_args
         # overrides_file must resolve via importlib.resources to the shipped JSON
         assert isinstance(call_args["overrides_file"], Path)
         assert call_args["overrides_file"].name == "false_positives_overrides.json"
