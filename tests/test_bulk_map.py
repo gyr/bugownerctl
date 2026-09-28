@@ -11,16 +11,18 @@ class TestBulkMap:
     """Tests for BulkMap value object."""
 
     def test_bulk_map_exposes_constructor_fields(self):
-        """BulkMap should expose mapping, project, and fetched_at."""
+        """BulkMap should expose mapping, project, fetched_at, and packages."""
         fetched = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         bm = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
+            packages=frozenset({"apache2"}),
         )
         assert bm.mapping == {"apache2-devel": "apache2"}
         assert bm.project == "SUSE:SLFO:Main"
         assert bm.fetched_at == fetched
+        assert bm.packages == frozenset({"apache2"})
 
     def test_bulk_map_is_frozen(self):
         """BulkMap should be immutable (frozen dataclass)."""
@@ -28,6 +30,7 @@ class TestBulkMap:
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+            packages=frozenset(),
         )
         with pytest.raises((AttributeError, TypeError)):
             bm.project = "openSUSE:Factory"
@@ -38,6 +41,7 @@ class TestBulkMap:
             mapping={"apache2-devel": "apache2", "libapr1": "apr"},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+            packages=frozenset(),
         )
         assert bm.entry_count == 2
         assert bm.entry_count == len(bm.mapping)
@@ -48,6 +52,7 @@ class TestBulkMap:
             mapping={},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+            packages=frozenset(),
         )
         assert bm.entry_count == 0
 
@@ -58,11 +63,13 @@ class TestBulkMap:
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
+            packages=frozenset(),
         )
         bm2 = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
+            packages=frozenset(),
         )
         assert bm1 == bm2
 
@@ -73,11 +80,13 @@ class TestBulkMap:
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
+            packages=frozenset(),
         )
         bm2 = BulkMap(
             mapping={"apache2-devel": "apache2"},
             project="openSUSE:Factory",
             fetched_at=fetched,
+            packages=frozenset(),
         )
         assert bm1 != bm2
 
@@ -88,11 +97,13 @@ class TestBulkMap:
             mapping={"apache2-devel": "apache2"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
+            packages=frozenset(),
         )
         bm2 = BulkMap(
             mapping={"libapr1": "apr"},
             project="SUSE:SLFO:Main",
             fetched_at=fetched,
+            packages=frozenset(),
         )
         assert bm1 != bm2
 
@@ -102,6 +113,7 @@ class TestBulkMap:
             mapping={"apache2-devel": "apache2", "libapr1": "apr"},
             project="SUSE:SLFO:Main",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+            packages=frozenset(),
         )
         assert bm.mapping["apache2-devel"] == "apache2"
         assert bm.mapping["libapr1"] == "apr"

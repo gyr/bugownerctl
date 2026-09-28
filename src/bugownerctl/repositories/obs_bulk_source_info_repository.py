@@ -26,6 +26,7 @@ import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
+from xml.etree.ElementTree import Element  # type annotation only; parsing uses defusedxml
 
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
@@ -134,12 +135,24 @@ class ObsBulkSourceInfoRepositoryImpl:
             # internal project metadata that other local users should not read.
             os.chmod(cache_dir, 0o700)
             # Parse FIRST so a malformed body never leaves a partial cache.
-            mapping = self._build_bulk_map(xml_body)
+            root = self._parse_sourceinfolist(xml_body)
+            mapping = self._build_bulk_map(root)
+            packages = self._extract_package_names(root)
             self._write_cache_atomic(xml_path, meta_path, project, xml_body, fetched_at)
-            return BulkMap(mapping=mapping, project=project, fetched_at=fetched_at)
+            return BulkMap(
+                mapping=mapping,
+                project=project,
+                fetched_at=fetched_at,
+                packages=packages,
+            )
 
-        mapping = self._build_bulk_map(xml_body)
-        return BulkMap(mapping=mapping, project=project, fetched_at=fetched_at)
+        root = self._parse_sourceinfolist(xml_body)
+        return BulkMap(
+            mapping=self._build_bulk_map(root),
+            project=project,
+            fetched_at=fetched_at,
+            packages=self._extract_package_names(root),
+        )
 
     # ------------------------------------------------------------------
     # Validation
@@ -263,17 +276,21 @@ class ObsBulkSourceInfoRepositoryImpl:
     # Parsing
 
     @staticmethod
-    def _build_bulk_map(xml_body: bytes) -> dict[str, str]:
-        """Parse <sourceinfolist> XML into a binary→canonical-source map.
+    def _parse_sourceinfolist(xml_body: bytes) -> Element:
+        """Parse a raw <sourceinfolist> body into its root element.
 
-        Rules:
-          - <sourceinfo package="P"> with <originpackage>X</originpackage>
-            → P is a multibuild flavor of X.
-          - Each <subpacks>S</subpacks> child → S is a binary built by P.
-          - When P is a flavor, every binary attributes to the parent X.
-          - Flavor chains resolved recursively with a cycle guard.
-          - Collision (two sources claim same binary): identity wins over
-            alias; else first-write wins.
+        Guards: size cap, DOCTYPE refusal (entity-expansion defence), and
+        malformed-XML rejection.
+
+        Args:
+            xml_body: Raw response body from the OBS source-info endpoint.
+
+        Returns:
+            The parsed root element.
+
+        Raises:
+            RuntimeError: If the body is oversized, declares a DOCTYPE, or is
+                not valid XML.
         """
         # Size cap: refuse oversized bodies before allocating an ET tree.
         if len(xml_body) > MAX_XML_BYTES:
@@ -282,7 +299,7 @@ class ObsBulkSourceInfoRepositoryImpl:
                 "refusing to parse to avoid memory exhaustion"
             )
         try:
-            root = ET.fromstring(xml_body, forbid_dtd=True)
+            root: Element = ET.fromstring(xml_body, forbid_dtd=True)
         except DefusedXmlException as exc:
             raise RuntimeError(
                 "OBS bulk response contains a DOCTYPE declaration; refusing to parse "
@@ -293,7 +310,40 @@ class ObsBulkSourceInfoRepositoryImpl:
             raise RuntimeError(
                 f"OBS bulk response is not valid XML: {exc} (body starts: {snippet!r})"
             ) from exc
+        return root
 
+    @staticmethod
+    def _extract_package_names(root: Element) -> frozenset[str]:
+        """Return the project's source package names from a parsed <sourceinfolist>.
+
+        Names containing `:` are multibuild flavors (`pkg:flav`) and are
+        excluded; empty `package` attributes are skipped.
+
+        Args:
+            root: Root element returned by `_parse_sourceinfolist`.
+
+        Returns:
+            The set of non-flavor source package names.
+        """
+        return frozenset(
+            pkg
+            for si in root.findall("sourceinfo")
+            if (pkg := si.get("package", "")) and ":" not in pkg
+        )
+
+    @staticmethod
+    def _build_bulk_map(root: Element) -> dict[str, str]:
+        """Build a binary→canonical-source map from a parsed <sourceinfolist>.
+
+        Rules:
+          - <sourceinfo package="P"> with <originpackage>X</originpackage>
+            → P is a multibuild flavor of X.
+          - Each <subpacks>S</subpacks> child → S is a binary built by P.
+          - When P is a flavor, every binary attributes to the parent X.
+          - Flavor chains resolved recursively with a cycle guard.
+          - Collision (two sources claim same binary): identity wins over
+            alias; else first-write wins.
+        """
         canonical: dict[str, str] = {}  # P → X if flavor else P → P
         subpacks_by_source: dict[str, list[str]] = {}
 

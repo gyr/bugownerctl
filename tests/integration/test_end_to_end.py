@@ -72,6 +72,7 @@ class TestValidateWorkflow:
                 mapping={},
                 project="test-project",
                 fetched_at=datetime.now(UTC),
+                packages=frozenset(),
             )
 
             # Execute
@@ -127,6 +128,7 @@ class TestValidateWorkflow:
                 mapping={},
                 project="test-project",
                 fetched_at=datetime.now(UTC),
+                packages=frozenset(),
             )
 
             # Execute

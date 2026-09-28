@@ -20,6 +20,7 @@ def _make_bulk_map(mapping: dict[str, str], project: str = "SUSE:SLFO:Main") -> 
         mapping=mapping,
         project=project,
         fetched_at=datetime(2026, 6, 8, tzinfo=UTC),
+        packages=frozenset(),
     )
 
 

@@ -193,6 +193,56 @@ class TestParsing:
         assert m["chain-b"] == "chain-c"
         assert m["chain-c"] == "chain-c"
 
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_load_bulk_map_packages_exclude_multibuild_flavors(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
+        """packages holds plain <sourceinfo package> names; `pkg:flav` flavors are excluded."""
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="pkg"><subpacks>pkg</subpacks></sourceinfo>'
+            b'<sourceinfo package="pkg:flav">'
+            b"<originpackage>pkg</originpackage><subpacks>pkg-flav</subpacks>"
+            b"</sourceinfo>"
+            b'<sourceinfo package="other"><subpacks>other-devel</subpacks></sourceinfo>'
+            b"</sourceinfolist>"
+        )
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        assert bm.packages == frozenset({"pkg", "other"})
+
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_load_bulk_map_packages_keep_linked_packages_without_colon(
+        self, mock_run: Mock, tmp_path: Path
+    ) -> None:
+        """An <originpackage> without `:` in the name is a real package, not a flavor."""
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="pkg"><subpacks>pkg</subpacks></sourceinfo>'
+            b'<sourceinfo package="linked-src">'
+            b"<originpackage>pkg</originpackage><subpacks>linked-src</subpacks>"
+            b"</sourceinfo>"
+            b"</sourceinfolist>"
+        )
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        assert bm.packages == frozenset({"pkg", "linked-src"})
+
+    def test_extract_package_names_skips_empty_and_missing_package_attribute(self) -> None:
+        """Empty or absent `package` attributes never yield an empty-string name."""
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package=""><subpacks>x</subpacks></sourceinfo>'
+            b"<sourceinfo><subpacks>y</subpacks></sourceinfo>"
+            b'<sourceinfo package="real"/>'
+            b"</sourceinfolist>"
+        )
+        root = repo._parse_sourceinfolist(xml)
+        assert repo._extract_package_names(root) == frozenset({"real"})
+
     def test_build_bulk_map_resolves_originpackage_chain(self) -> None:
         repo = ObsBulkSourceInfoRepositoryImpl()
         xml = b"""<sourceinfolist>
@@ -204,7 +254,7 @@ class TestParsing:
             <originpackage>B</originpackage><subpacks>A</subpacks>
           </sourceinfo>
         </sourceinfolist>"""
-        m = repo._build_bulk_map(xml)
+        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
         assert m["A"] == "C"
         assert m["B"] == "C"
         assert m["C"] == "C"
@@ -217,7 +267,7 @@ class TestParsing:
             <subpacks>Y</subpacks><subpacks>X</subpacks>
           </sourceinfo>
         </sourceinfolist>"""
-        m = repo._build_bulk_map(xml)
+        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
         # Identity wins: X → X, NOT X → Y.
         assert m["X"] == "X"
         assert m["Y"] == "Y"
@@ -232,21 +282,21 @@ class TestParsing:
         assert not (tmp_path / "obs_bulk_map.xml").exists()
         assert not (tmp_path / "obs_bulk_map.meta.json").exists()
 
-    def test_build_bulk_map_rejects_doctype_declaration(self) -> None:
+    def test_parse_sourceinfolist_rejects_doctype_declaration(self) -> None:
         """DOCTYPE declarations enable billion-laughs entity-expansion DoS; refuse them."""
         repo = ObsBulkSourceInfoRepositoryImpl()
         evil = b'<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY a "evil">]><sourceinfolist/>'
         with pytest.raises(RuntimeError, match="DOCTYPE"):
-            repo._build_bulk_map(evil)
+            repo._parse_sourceinfolist(evil)
 
-    def test_build_bulk_map_rejects_doctype_beyond_4096_bytes(self) -> None:
+    def test_parse_sourceinfolist_rejects_doctype_beyond_4096_bytes(self) -> None:
         """DOCTYPE beyond the 4096-byte scan window must still be rejected."""
         repo = ObsBulkSourceInfoRepositoryImpl()
         # 5001-byte comment pushes <!DOCTYPE past the former [:4096] scan window.
         padding = b"<!-- " + b"x" * 5001 + b" -->"
         evil = padding + b'<!DOCTYPE foo [<!ENTITY a "x">]><sourceinfolist/>'
         with pytest.raises(RuntimeError, match="DOCTYPE"):
-            repo._build_bulk_map(evil)
+            repo._parse_sourceinfolist(evil)
 
     def test_build_bulk_map_ignores_whitespace_only_subpacks(self) -> None:
         """A <subpacks>   </subpacks> element must not produce a whitespace key.
@@ -265,7 +315,7 @@ class TestParsing:
             b"</sourceinfo>"
             b"</sourceinfolist>"
         )
-        m = repo._build_bulk_map(xml)
+        m = repo._build_bulk_map(repo._parse_sourceinfolist(xml))
         # No whitespace-only keys at all.
         assert all(k.strip() == k and k for k in m)
         # The real subpack survives.
@@ -273,13 +323,13 @@ class TestParsing:
         # The source identity remains.
         assert m["pkg"] == "pkg"
 
-    def test_build_bulk_map_rejects_oversized_xml(self) -> None:
+    def test_parse_sourceinfolist_rejects_oversized_xml(self) -> None:
         """Bodies larger than MAX_XML_BYTES are rejected before parsing."""
         repo = ObsBulkSourceInfoRepositoryImpl()
         # Use multiplication, not a real 50 MB allocation.
         oversized = b"x" * (MAX_XML_BYTES + 1)
         with pytest.raises(RuntimeError, match="exceeds"):
-            repo._build_bulk_map(oversized)
+            repo._parse_sourceinfolist(oversized)
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +367,23 @@ class TestCache:
         # Cached fetched_at carried through (from meta).
         assert bm2.fetched_at == bm1.fetched_at
         assert bm2.mapping == bm1.mapping
+
+    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
+    def test_load_bulk_map_cache_hit_yields_packages(self, mock_run: Mock, tmp_path: Path) -> None:
+        """The cache-hit path re-derives packages from the cached XML."""
+        xml = (
+            b"<sourceinfolist>"
+            b'<sourceinfo package="pkg"><subpacks>pkg</subpacks></sourceinfo>'
+            b'<sourceinfo package="pkg:flav"><originpackage>pkg</originpackage></sourceinfo>'
+            b'<sourceinfo package="other"><subpacks>other</subpacks></sourceinfo>'
+            b"</sourceinfolist>"
+        )
+        mock_run.return_value = _make_proc(returncode=0, stdout=xml)
+        repo = ObsBulkSourceInfoRepositoryImpl()
+        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        mock_run.side_effect = AssertionError("subprocess must not run on cache hit")
+        bm = repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
+        assert bm.packages == frozenset({"pkg", "other"})
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_force_refresh_bypasses_cache(
