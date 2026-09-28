@@ -107,12 +107,6 @@ def create_parser() -> argparse.ArgumentParser:
         help="Validate maintainership data for inconsistencies and orphan packages",
     )
     maintainership_parser.add_argument(
-        "--refresh-bulk-map",
-        action="store_true",
-        default=False,
-        help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
-    )
-    maintainership_parser.add_argument(
         "--strict",
         action="store_true",
         default=False,
@@ -126,12 +120,6 @@ def create_parser() -> argparse.ArgumentParser:
         parents=[context],
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="Validate that whitelisted packages are NOT shipped",
-    )
-    whitelist_parser.add_argument(
-        "--refresh-bulk-map",
-        action="store_true",
-        default=False,
-        help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
     )
     whitelist_parser.add_argument(
         "--strict",

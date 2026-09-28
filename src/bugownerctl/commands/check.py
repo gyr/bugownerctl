@@ -101,7 +101,6 @@ def run_maintainership(args: argparse.Namespace) -> int:
             overrides_file=overrides_file,
             cache_dir=slfo_context.cache_dir,
             obs_project=slfo_context.obs_project,
-            force_refresh=args.refresh_bulk_map,
         )
 
     # Package totals (always on stdout, before any finding)
@@ -213,7 +212,6 @@ def run_whitelist(args: argparse.Namespace) -> int:
             overrides_file=overrides_file,
             cache_dir=slfo_context.cache_dir,
             obs_project=slfo_context.obs_project,
-            force_refresh=args.refresh_bulk_map,
         )
 
     # Names with no source mapping (mirrors validate command's SET 3b).

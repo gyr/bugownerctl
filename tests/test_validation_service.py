@@ -481,26 +481,6 @@ class TestResolveShippedPackages:
         overrides_repo.load.assert_called_once_with(overrides_file)
         bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT, cache_dir)
 
-    def test_resolve_shipped_packages_rejects_force_refresh_kwarg(self):
-        """force_refresh must not be a parameter of resolve_shipped_packages.
-
-        The parameter was removed (Fix 1) so that force_refresh only lives at
-        the orchestration layer (validate_all / check_whitelist).  Passing it
-        here must raise TypeError immediately.
-        """
-        service = _make_service()
-        bulk_map = _make_bulk_map({})
-
-        with pytest.raises(TypeError):
-            service.resolve_shipped_packages(
-                {"pkg1"},
-                Path("/tmp/overrides.json"),
-                Path("/tmp/cache"),
-                obs_project=_OBS_PROJECT,
-                bulk_map=bulk_map,
-                force_refresh=True,  # must no longer be accepted
-            )
-
     def test_unresolved_names_subset_of_residue_only_identity_fallthrough(self):
         """unresolved should contain only identity-fallthrough names not in the OBS package set.
 
@@ -838,50 +818,7 @@ class TestValidateAll:
             obs_project=_OBS_PROJECT,
         )
 
-        assert bulk_map_repo.load_bulk_map.call_count == 1
-
-    def test_validate_all_passes_force_refresh_false_by_default(self):
-        """validate_all should call load_bulk_map with force_refresh=False by default."""
-        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
-            maintainership_packages={"pkg1": ["user1"]},
-            obs_packages=frozenset({"pkg1"}),
-            shipped={"pkg1"},
-            bulk_map_mapping={"pkg1": "pkg1"},
-        )
-
-        service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
-            repo_metadata_file=Path("/tmp/primary.xml.gz"),
-            overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
-            obs_project=_OBS_PROJECT,
-        )
-
-        bulk_map_repo.load_bulk_map.assert_called_once_with(
-            _OBS_PROJECT, Path("/tmp/cache"), force_refresh=False
-        )
-
-    def test_validate_all_passes_force_refresh_true_when_requested(self):
-        """validate_all should pass force_refresh=True to load_bulk_map when set."""
-        service, _, _, bulk_map_repo, _ = self._make_validate_all_service(
-            maintainership_packages={"pkg1": ["user1"]},
-            obs_packages=frozenset({"pkg1"}),
-            shipped={"pkg1"},
-            bulk_map_mapping={"pkg1": "pkg1"},
-        )
-
-        service.validate_all(
-            maintainership_file=Path("/tmp/maintainership.json"),
-            repo_metadata_file=Path("/tmp/primary.xml.gz"),
-            overrides_file=Path("/tmp/overrides.json"),
-            cache_dir=Path("/tmp/cache"),
-            obs_project=_OBS_PROJECT,
-            force_refresh=True,
-        )
-
-        bulk_map_repo.load_bulk_map.assert_called_once_with(
-            _OBS_PROJECT, Path("/tmp/cache"), force_refresh=True
-        )
+        bulk_map_repo.load_bulk_map.assert_called_once_with(_OBS_PROJECT, Path("/tmp/cache"))
 
     def test_validate_all_populates_unresolved_names_from_residue(self):
         """validate_all should set ValidationResult.unresolved_names to the

@@ -62,13 +62,7 @@ class ObsBulkSourceInfoRepository(Protocol):
     re-parsed (no network).
     """
 
-    def load_bulk_map(
-        self,
-        project: str,
-        cache_dir: Path,
-        *,
-        force_refresh: bool = False,
-    ) -> BulkMap:
+    def load_bulk_map(self, project: str, cache_dir: Path) -> BulkMap:
         """Return a BulkMap for `project`, fetching from OBS if cache is stale.
 
         Cache layout under cache_dir:
@@ -79,7 +73,6 @@ class ObsBulkSourceInfoRepository(Protocol):
             project: OBS project name, e.g. "SUSE:SLFO:Main". Must match
                 [A-Za-z0-9:_.+-]{1,200} (validated before any subprocess call).
             cache_dir: Absolute path to the cache root directory.
-            force_refresh: If True, bypass cache freshness check and re-fetch.
 
         Returns:
             BulkMap resolving both source-package identity (apache2 → apache2)
@@ -101,13 +94,7 @@ class ObsBulkSourceInfoRepository(Protocol):
 class ObsBulkSourceInfoRepositoryImpl:
     """Adapter implementation backed by `osc api` and an on-disk XML cache."""
 
-    def load_bulk_map(
-        self,
-        project: str,
-        cache_dir: Path,
-        *,
-        force_refresh: bool = False,
-    ) -> BulkMap:
+    def load_bulk_map(self, project: str, cache_dir: Path) -> BulkMap:
         self._validate_inputs(project, cache_dir)
 
         xml_path = cache_dir / XML_FILENAME
@@ -122,7 +109,7 @@ class ObsBulkSourceInfoRepositoryImpl:
         if meta_path.is_symlink():
             raise RuntimeError(f"Refusing to read/write symlink cache file: {meta_path}")
 
-        cached = None if force_refresh else self._read_fresh_cache(xml_path, meta_path, project)
+        cached = self._read_fresh_cache(xml_path, meta_path, project)
         if cached is not None:
             xml_body, fetched_at = cached
             logger.debug("OBS bulk cache hit for %s (fetched_at=%s)", project, fetched_at)

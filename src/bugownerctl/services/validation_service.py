@@ -101,9 +101,9 @@ class ValidationService:
             2. N in bulk_map: use bulk_map[N].
             3. Else: passthrough (N is its own source name = identity).
 
-        Callers that need cache refresh must pre-load the bulk_map themselves
-        (with force_refresh=True on bulk_map_repo.load_bulk_map) before
-        passing it here.  validate_all and check_whitelist both do this.
+        Callers that already loaded the bulk_map (via
+        bulk_map_repo.load_bulk_map) pass it here as bulk_map= to avoid
+        re-fetching.  validate_all and check_whitelist both do this.
 
         Args:
             shipped_packages: Set of package names from repo metadata
@@ -161,8 +161,6 @@ class ValidationService:
         overrides_file: Path,
         cache_dir: Path,
         obs_project: str,
-        *,
-        force_refresh: bool = False,
     ) -> ValidationResult:
         """Orchestrate all validation checks.
 
@@ -172,7 +170,6 @@ class ValidationService:
             overrides_file: Path to hand-curated overrides JSON
             cache_dir: Cache dir for the OBS bulk-map XML
             obs_project: OBS project to query
-            force_refresh: If True, bypass cache and re-fetch from OBS.
 
         Returns:
             ValidationResult with all validation findings.
@@ -184,9 +181,7 @@ class ValidationService:
         # Pre-load bulk_map and overrides exactly once here so
         # resolve_shipped_packages reuses them.
         overrides = self.overrides_repo.load(overrides_file)
-        bulk_map = self.bulk_map_repo.load_bulk_map(
-            obs_project, cache_dir, force_refresh=force_refresh
-        )
+        bulk_map = self.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
 
         logger.info("starting validate_all for %d shipped packages", len(shipped_packages))
         maintained_packages_not_in_obs = self.find_maintained_packages_not_in_obs(

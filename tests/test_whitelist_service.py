@@ -133,8 +133,7 @@ class TestCheckWhitelist:
         """Should pre-load bulk_map then call resolve_shipped_packages with bulk_map=.
 
         After Fix 1, check_whitelist pre-loads bulk_map (via bulk_map_repo.load_bulk_map)
-        and passes it as bulk_map= to resolve_shipped_packages.  force_refresh
-        lives at load_bulk_map, not at resolve_shipped_packages.
+        and passes it as bulk_map= to resolve_shipped_packages.
         """
         mock_bulk_map = Mock(name="bulk_map")
         mock_validation_service = Mock()
@@ -165,11 +164,11 @@ class TestCheckWhitelist:
             obs_project=obs_project,
         )
 
-        # bulk_map loaded at orchestration layer with default force_refresh=False
+        # bulk_map loaded at orchestration layer
         mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            obs_project, cache_dir, force_refresh=False
+            obs_project, cache_dir
         )
-        # resolve_shipped_packages receives bulk_map=, never force_refresh=
+        # resolve_shipped_packages receives the preloaded bulk_map=
         mock_validation_service.resolve_shipped_packages.assert_called_once_with(
             shipped_packages,
             overrides_file,
@@ -208,73 +207,6 @@ class TestCheckWhitelist:
         )
 
         assert result.unresolved_names == ["mystery-pkg"]
-
-    def test_check_whitelist_force_refresh_defaults_to_false(self, tmp_path: Path) -> None:
-        """check_whitelist should pass force_refresh=False to bulk_map_repo.load_bulk_map
-        by default when the flag is not provided.
-
-        After Fix 1, force_refresh is honoured at the load_bulk_map call in
-        check_whitelist, NOT forwarded to resolve_shipped_packages.
-        """
-        mock_validation_service = Mock()
-        mock_validation_service.resolve_shipped_packages.return_value = (
-            {"pkg1"},
-            [],
-            [],
-        )
-        service = WhitelistService(mock_validation_service)
-
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg2"]')
-
-        overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
-
-        service.check_whitelist(
-            whitelist_file=whitelist_file,
-            shipped_packages={"pkg1"},
-            overrides_file=overrides_file,
-            cache_dir=cache_dir,
-            obs_project=_OBS_PROJECT,
-        )
-
-        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            _OBS_PROJECT, cache_dir, force_refresh=False
-        )
-
-    def test_check_whitelist_passes_force_refresh_true_when_requested(self, tmp_path: Path) -> None:
-        """check_whitelist should pass force_refresh=True to bulk_map_repo.load_bulk_map
-        when the caller sets force_refresh=True.
-
-        After Fix 1, force_refresh is honoured at the load_bulk_map call in
-        check_whitelist, NOT forwarded to resolve_shipped_packages.
-        """
-        mock_validation_service = Mock()
-        mock_validation_service.resolve_shipped_packages.return_value = (
-            {"pkg1"},
-            [],
-            [],
-        )
-        service = WhitelistService(mock_validation_service)
-
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg2"]')
-
-        overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
-
-        service.check_whitelist(
-            whitelist_file=whitelist_file,
-            shipped_packages={"pkg1"},
-            overrides_file=overrides_file,
-            cache_dir=cache_dir,
-            obs_project=_OBS_PROJECT,
-            force_refresh=True,
-        )
-
-        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            _OBS_PROJECT, cache_dir, force_refresh=True
-        )
 
     def test_check_whitelist_requires_obs_project(self, tmp_path: Path) -> None:
         """Omitting obs_project is a TypeError — there is no silent default project."""

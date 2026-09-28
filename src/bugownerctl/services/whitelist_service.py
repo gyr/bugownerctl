@@ -88,8 +88,6 @@ class WhitelistService:
         overrides_file: Path,
         cache_dir: Path,
         obs_project: str,
-        *,
-        force_refresh: bool = False,
     ) -> WhitelistCheckResult:
         """Check whitelist for inconsistencies with shipped packages.
 
@@ -102,7 +100,6 @@ class WhitelistService:
             overrides_file: Path to hand-curated binary→source overrides JSON
             cache_dir: Cache directory for the OBS bulk-map XML
             obs_project: OBS project to query for package resolution
-            force_refresh: If True, bypass cache and re-fetch OBS bulk map.
 
         Returns:
             WhitelistCheckResult with inconsistent packages
@@ -118,12 +115,9 @@ class WhitelistService:
         # Load whitelist
         whitelist = self.load_whitelist(whitelist_file)
 
-        # Pre-load bulk_map here (mirrors the pattern validate_all uses) so
-        # that force_refresh is honoured at this orchestration layer rather
-        # than being buried in resolve_shipped_packages.
-        bulk_map = self.validation_service.bulk_map_repo.load_bulk_map(
-            obs_project, cache_dir, force_refresh=force_refresh
-        )
+        # Pre-load bulk_map here (mirrors the pattern validate_all uses) and
+        # pass it to resolve_shipped_packages.
+        bulk_map = self.validation_service.bulk_map_repo.load_bulk_map(obs_project, cache_dir)
 
         # Get validated shipped packages using validation pipeline.
         # Residue is dropped — the whitelist consistency check only cares

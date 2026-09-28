@@ -5,7 +5,7 @@ Phase 2 of the OBS source-name resolution refactor. Tests cover:
   - Input validation (project name, cache dir).
   - Subprocess invocation (mocked; argv-style; timeout).
   - XML parsing (alias/subpack/originpackage chain; collision rules).
-  - On-disk cache (write, hit, force-refresh, stale TTL, sha256 integrity).
+  - On-disk cache (write, hit, stale TTL, sha256 integrity).
   - Failure modes (non-zero exit, timeout, malformed XML, osc not installed).
 """
 
@@ -616,18 +616,6 @@ class TestCache:
         repo = ObsBulkSourceInfoRepositoryImpl()
         with pytest.raises(RuntimeError, match="is not a package list"):
             repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-
-    @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
-    def test_load_bulk_map_force_refresh_bypasses_cache(
-        self, mock_run: Mock, tmp_path: Path
-    ) -> None:
-        body = _fixture_xml()
-        mock_run.return_value = _make_proc(returncode=0, stdout=body)
-        repo = ObsBulkSourceInfoRepositoryImpl()
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path)
-        assert mock_run.call_count == 1
-        repo.load_bulk_map("SUSE:SLFO:Main", tmp_path, force_refresh=True)
-        assert mock_run.call_count == 2
 
     @patch("bugownerctl.repositories.obs_bulk_source_info_repository.subprocess.run")
     def test_load_bulk_map_stale_cache_triggers_refetch(
