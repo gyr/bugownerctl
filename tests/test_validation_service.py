@@ -64,6 +64,9 @@ class TestValidationResult:
             orphan_packages=["pkg1", "pkg2"],
             maintained_packages_not_in_obs=["pkg4"],
             shipped_not_in_obs=["pkg3"],
+            shipped_package_count=0,
+            obs_package_count=0,
+            maintained_package_count=0,
             unresolved_names=["pkg3"],
         )
 
@@ -78,6 +81,9 @@ class TestValidationResult:
             orphan_packages=[],
             maintained_packages_not_in_obs=[],
             shipped_not_in_obs=[],
+            shipped_package_count=0,
+            obs_package_count=0,
+            maintained_package_count=0,
         )
 
         assert result.orphan_packages == []
@@ -939,3 +945,28 @@ class TestValidateAll:
         assert result.unresolved_names == ["stray-bin"]
         # pkg-a is in the OBS package set → valid → orphan (empty maintainer list).
         assert result.orphan_packages == ["pkg-a"]
+
+    def test_validate_all_returns_package_totals(self):
+        """validate_all should report shipped, OBS and maintained package counts.
+
+        Shipped count is taken before name resolution; an entry with an empty
+        maintainer list is not counted as maintained.
+        """
+        service, *_ = self._make_validate_all_service(
+            maintainership_packages={"pkg-a": ["user1"], "pkg-b": ["user2"], "pkg-c": []},
+            obs_packages=frozenset({"pkg-a", "pkg-b", "pkg-c", "pkg-d"}),
+            shipped={"pkg-a", "pkg-a-devel", "stray-bin"},
+            bulk_map_mapping={"pkg-a-devel": "pkg-a", "pkg-a": "pkg-a"},
+        )
+
+        result = service.validate_all(
+            maintainership_file=Path("/tmp/maintainership.json"),
+            repo_metadata_file=Path("/tmp/primary.xml.gz"),
+            overrides_file=Path("/tmp/overrides.json"),
+            cache_dir=Path("/tmp/cache"),
+            obs_project=_OBS_PROJECT,
+        )
+
+        assert result.shipped_package_count == 3
+        assert result.obs_package_count == 4
+        assert result.maintained_package_count == 2

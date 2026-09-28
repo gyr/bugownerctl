@@ -32,6 +32,9 @@ class ValidationResult:
     orphan_packages: list[str]
     maintained_packages_not_in_obs: list[str]
     shipped_not_in_obs: list[str]
+    shipped_package_count: int
+    obs_package_count: int
+    maintained_package_count: int
     unresolved_names: list[str] = field(default_factory=list)
 
 
@@ -213,5 +216,11 @@ class ValidationService:
             orphan_packages=orphan_packages,
             maintained_packages_not_in_obs=maintained_packages_not_in_obs,
             shipped_not_in_obs=shipped_not_in_obs,
+            shipped_package_count=len(shipped_packages),
+            obs_package_count=len(bulk_map.packages),
+            # Same truthiness as find_orphan_packages: empty maintainer list = unmaintained
+            maintained_package_count=sum(
+                1 for maintainers in maintainership_data.packages.values() if maintainers
+            ),
             unresolved_names=unresolved_names,
         )

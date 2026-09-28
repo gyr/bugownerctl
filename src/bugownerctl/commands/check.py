@@ -104,6 +104,11 @@ def run_maintainership(args: argparse.Namespace) -> int:
             force_refresh=args.refresh_bulk_map,
         )
 
+    # Package totals (always on stdout, before any finding)
+    print(f"Shipped source packages: {result.shipped_package_count}")
+    print(f"Packages in OBS project {slfo_context.obs_project}: {result.obs_package_count}")
+    print(f"Maintained packages: {result.maintained_package_count}")
+
     # SET 1: Maintained packages not in the OBS package set (count → stdout; list → stderr)
     if result.maintained_packages_not_in_obs:
         print(

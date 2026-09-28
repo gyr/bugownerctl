@@ -36,6 +36,9 @@ def _empty_validation_result() -> ValidationResult:
         orphan_packages=[],
         maintained_packages_not_in_obs=[],
         shipped_not_in_obs=[],
+        shipped_package_count=0,
+        obs_package_count=0,
+        maintained_package_count=0,
     )
 
 
@@ -312,6 +315,9 @@ class TestCheckMaintainershipCommand:
                 orphan_packages=["orphan-pkg1", "orphan-pkg2"],
                 maintained_packages_not_in_obs=[],
                 shipped_not_in_obs=[],
+                shipped_package_count=0,
+                obs_package_count=0,
+                maintained_package_count=0,
             ),
         )
 
@@ -334,6 +340,9 @@ class TestCheckMaintainershipCommand:
                 orphan_packages=[],
                 maintained_packages_not_in_obs=[],
                 shipped_not_in_obs=["pkg1"],
+                shipped_package_count=0,
+                obs_package_count=0,
+                maintained_package_count=0,
             ),
         )
         args = argparse.Namespace(
@@ -354,6 +363,9 @@ class TestCheckMaintainershipCommand:
                 orphan_packages=[],
                 maintained_packages_not_in_obs=[],
                 shipped_not_in_obs=["pkg1"],
+                shipped_package_count=0,
+                obs_package_count=0,
+                maintained_package_count=0,
             ),
         )
         args = argparse.Namespace(
@@ -374,6 +386,9 @@ class TestCheckMaintainershipCommand:
                 orphan_packages=["pkg1", "pkg2"],
                 maintained_packages_not_in_obs=[],
                 shipped_not_in_obs=[],
+                shipped_package_count=0,
+                obs_package_count=0,
+                maintained_package_count=0,
             ),
         )
 
@@ -405,6 +420,9 @@ class TestCheckMaintainershipCommand:
                 orphan_packages=["orphan1", "orphan2"],
                 maintained_packages_not_in_obs=["maintained1", "maintained2"],
                 shipped_not_in_obs=["shipped1"],
+                shipped_package_count=0,
+                obs_package_count=0,
+                maintained_package_count=0,
             ),
         )
 
@@ -435,6 +453,37 @@ class TestCheckMaintainershipCommand:
         # INFO prefix must NOT appear on stdout
         assert "INFO:" not in output
 
+    def test_output_prints_package_totals_before_findings(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The three package totals print in order, before the first finding line."""
+        _patch_maint_prep(monkeypatch, obs_project="TEST:Other:2.0")
+        _patch_maint_other_repos(monkeypatch)
+        _patch_validation_service(
+            monkeypatch,
+            ValidationResult(
+                orphan_packages=[],
+                maintained_packages_not_in_obs=["maintained1"],
+                shipped_not_in_obs=[],
+                shipped_package_count=12,
+                obs_package_count=34,
+                maintained_package_count=56,
+            ),
+        )
+
+        args = argparse.Namespace(
+            release="16.1", debug=False, config=None, refresh_bulk_map=False, strict=False
+        )
+        run_maintainership(args)
+
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[:4] == [
+            "Shipped source packages: 12",
+            "Packages in OBS project TEST:Other:2.0: 34",
+            "Maintained packages: 56",
+            "Found 1 maintained packages not in OBS project TEST:Other:2.0.",
+        ]
+
     def test_output_format_clean_run_confirms_gating_sets_only(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -451,6 +500,11 @@ class TestCheckMaintainershipCommand:
         captured = capsys.readouterr()
         output = captured.out
 
+        assert output.splitlines()[:3] == [
+            "Shipped source packages: 0",
+            f"Packages in OBS project {_TEST_OBS_PROJECT}: 0",
+            "Maintained packages: 0",
+        ]
         assert "No orphan packages found." in output
         assert "No maintained packages not in OBS project" not in output
         assert "INFO:" not in output
@@ -470,6 +524,9 @@ class TestCheckMaintainershipCommand:
                 orphan_packages=[],
                 maintained_packages_not_in_obs=[],
                 shipped_not_in_obs=["mystery-pkg"],
+                shipped_package_count=0,
+                obs_package_count=0,
+                maintained_package_count=0,
                 unresolved_names=["mystery-pkg"],
             ),
         )
