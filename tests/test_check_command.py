@@ -132,6 +132,33 @@ _WHITELIST_BASE_CONFIG: dict[str, Any] = {
 }
 
 
+# Stand-in payload for the whitelist file inside the fake SLFO clone.
+_WHITELIST_CONTENT = b'["whitelisted-pkg"]'
+
+
+def _stub_slfo_whitelist_file(monkeypatch: pytest.MonkeyPatch, slfo_repo_path: Path) -> None:
+    """Make <slfo_repo_path>/whitelist_maintainership.json exist and serve _WHITELIST_CONTENT.
+
+    The fake clone does not exist on disk; any other path behaves normally.
+    """
+    whitelist_path = slfo_repo_path.resolve() / "whitelist_maintainership.json"
+    real_exists = Path.exists
+    real_read_bytes = Path.read_bytes
+
+    def fake_exists(self: Path, *, follow_symlinks: bool = True) -> bool:
+        if self == whitelist_path:
+            return True
+        return real_exists(self, follow_symlinks=follow_symlinks)
+
+    def fake_read_bytes(self: Path) -> bytes:
+        if self == whitelist_path:
+            return _WHITELIST_CONTENT
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+
+
 def _empty_whitelist_result() -> WhitelistCheckResult:
     """Build a WhitelistCheckResult with no inconsistencies."""
     return WhitelistCheckResult(inconsistent_packages=[])
@@ -156,6 +183,7 @@ def _patch_whitelist_prep(
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
+    _stub_slfo_whitelist_file(monkeypatch, slfo_repo_path)
     return mock_prep, fake_slfo_context
 
 
@@ -840,8 +868,8 @@ class TestCheckWhitelistCommand:
 
         services["whitelist_service"].check_whitelist.assert_called_once()
         call_args = services["whitelist_service"].check_whitelist.call_args[1]
-        # whitelist_file must come from slfo_repo_path
-        assert call_args["whitelist_file"] == slfo_repo_path / "whitelist_maintainership.json"
+        # whitelist bytes must be read from slfo_repo_path
+        assert call_args["whitelist_content"] == _WHITELIST_CONTENT
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert "submodules" not in call_args
         # OBS source info is fetched on every run; no cache_dir is passed.
@@ -849,6 +877,22 @@ class TestCheckWhitelistCommand:
         # overrides_file must resolve via importlib.resources to the shipped JSON
         assert isinstance(call_args["overrides_file"], Path)
         assert call_args["overrides_file"].name == "false_positives_overrides.json"
+
+    def test_run_missing_whitelist_file_raises_file_not_found(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Raises FileNotFoundError naming the resolved path when the whitelist is absent."""
+        config = {**_WHITELIST_BASE_CONFIG, "whitelist_file": "absent.json"}
+        _patch_whitelist_prep(monkeypatch, slfo_repo_path=tmp_path, config=config)
+        _patch_whitelist_other_repos(monkeypatch)
+        services = _patch_services(monkeypatch)
+
+        args = argparse.Namespace(release="16.1", config=None, strict=False)
+        missing = tmp_path.resolve() / "absent.json"
+        with pytest.raises(FileNotFoundError, match=rf"^Whitelist file {missing} does not exist$"):
+            run_whitelist(args)
+
+        services["whitelist_service"].check_whitelist.assert_not_called()
 
     def test_run_returns_zero_when_no_inconsistencies_found(
         self, monkeypatch: pytest.MonkeyPatch

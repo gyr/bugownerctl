@@ -11,6 +11,45 @@ from bugownerctl.services.whitelist_service import WhitelistCheckResult, Whiteli
 _OBS_PROJECT = "TEST:Project:1.0"
 
 
+class TestLoadWhitelist:
+    """Tests for WhitelistService.load_whitelist() method."""
+
+    def test_load_whitelist_parses_bytes_payload(self) -> None:
+        """Should return the package names from a JSON-array bytes payload."""
+        service = WhitelistService(Mock())
+
+        assert service.load_whitelist(b'["pkg1", "pkg2"]') == {"pkg1", "pkg2"}
+
+    def test_load_whitelist_rejects_oversized_payload(self) -> None:
+        """Should raise ValueError when the payload exceeds MAX_WHITELIST_SIZE."""
+        service = WhitelistService(Mock())
+        # Valid JSON array one byte over the limit, so only the size check can reject it.
+        oversized = b"[" + b" " * (WhitelistService.MAX_WHITELIST_SIZE - 1) + b"]"
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                rf"^Whitelist is too large: {len(oversized)} bytes "
+                rf"\(max {WhitelistService.MAX_WHITELIST_SIZE}\)$"
+            ),
+        ):
+            service.load_whitelist(oversized)
+
+    def test_load_whitelist_rejects_non_array(self) -> None:
+        """Should raise ValueError when the payload is not a JSON array."""
+        service = WhitelistService(Mock())
+
+        with pytest.raises(ValueError, match=r"^Whitelist must contain a JSON array, got dict$"):
+            service.load_whitelist(b'{"pkg1": 1}')
+
+    def test_load_whitelist_rejects_non_string_elements(self) -> None:
+        """Should raise ValueError when an array element is not a string."""
+        service = WhitelistService(Mock())
+
+        with pytest.raises(ValueError, match=r"^Whitelist must contain only strings$"):
+            service.load_whitelist(b'["pkg1", 1]')
+
+
 class TestCheckWhitelist:
     """Tests for WhitelistService.check_whitelist() method."""
 
@@ -26,15 +65,13 @@ class TestCheckWhitelist:
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist file with different packages
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg3", "pkg4"]')
+        whitelist_content = b'["pkg3", "pkg4"]'
 
         overrides_file = tmp_path / "overrides.json"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "pkg2", "pkg5"},
             overrides_file=overrides_file,
             obs_project=_OBS_PROJECT,
@@ -57,15 +94,13 @@ class TestCheckWhitelist:
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist with pkg1 and pkg2 (overlap with validated shipped)
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg1", "pkg2", "pkg4"]')
+        whitelist_content = b'["pkg1", "pkg2", "pkg4"]'
 
         overrides_file = tmp_path / "overrides.json"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "pkg2", "pkg3", "pkg5"},
             overrides_file=overrides_file,
             obs_project=_OBS_PROJECT,
@@ -85,15 +120,13 @@ class TestCheckWhitelist:
 
         service = WhitelistService(mock_validation_service)
 
-        # Create empty whitelist
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text("[]")
+        whitelist_content = b"[]"
 
         overrides_file = tmp_path / "overrides.json"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "pkg2"},
             overrides_file=overrides_file,
             obs_project=_OBS_PROJECT,
@@ -101,23 +134,6 @@ class TestCheckWhitelist:
 
         # Verify
         assert result.inconsistent_packages == []
-
-    def test_check_whitelist_raises_error_when_whitelist_file_missing(self, tmp_path: Path) -> None:
-        """Should raise FileNotFoundError when whitelist file doesn't exist."""
-        mock_validation_service = Mock()
-        service = WhitelistService(mock_validation_service)
-
-        whitelist_file = tmp_path / "nonexistent.json"
-        overrides_file = tmp_path / "overrides.json"
-
-        # Execute and verify
-        with pytest.raises(FileNotFoundError, match="Whitelist file .* does not exist"):
-            service.check_whitelist(
-                whitelist_file=whitelist_file,
-                shipped_packages={"pkg1"},
-                overrides_file=overrides_file,
-                obs_project=_OBS_PROJECT,
-            )
 
     def test_check_whitelist_calls_validation_service_with_correct_parameters(
         self, tmp_path: Path
@@ -138,9 +154,7 @@ class TestCheckWhitelist:
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg1"]')
+        whitelist_content = b'["pkg1"]'
 
         overrides_file = tmp_path / "overrides.json"
         shipped_packages = {"pkg1", "pkg2"}
@@ -148,7 +162,7 @@ class TestCheckWhitelist:
 
         # Execute
         service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages=shipped_packages,
             overrides_file=overrides_file,
             obs_project=obs_project,
@@ -181,13 +195,12 @@ class TestCheckWhitelist:
 
         service = WhitelistService(mock_validation_service)
 
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg1"]')
+        whitelist_content = b'["pkg1"]'
 
         overrides_file = tmp_path / "overrides.json"
 
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "mystery-pkg"},
             overrides_file=overrides_file,
             obs_project=_OBS_PROJECT,
@@ -198,12 +211,11 @@ class TestCheckWhitelist:
     def test_check_whitelist_requires_obs_project(self, tmp_path: Path) -> None:
         """Omitting obs_project is a TypeError — there is no silent default project."""
         service = WhitelistService(Mock())
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text("[]")
+        whitelist_content = b"[]"
 
         with pytest.raises(TypeError, match="obs_project"):
             service.check_whitelist(  # type: ignore[call-arg]  # omission under test
-                whitelist_file=whitelist_file,
+                whitelist_content=whitelist_content,
                 shipped_packages={"pkg1"},
                 overrides_file=tmp_path / "overrides.json",
             )
@@ -219,15 +231,13 @@ class TestCheckWhitelist:
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist with same packages (unsorted)
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["banana", "zebra", "apple"]')
+        whitelist_content = b'["banana", "zebra", "apple"]'
 
         overrides_file = tmp_path / "overrides.json"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"zebra", "apple", "banana"},
             overrides_file=overrides_file,
             obs_project=_OBS_PROJECT,

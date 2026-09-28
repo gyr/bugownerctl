@@ -38,52 +38,40 @@ class WhitelistService:
         """
         self.validation_service = validation_service
 
-    def load_whitelist(self, whitelist_file: Path) -> set[str]:
-        """Load existing whitelist file.
-
-        Returns empty set if file doesn't exist.
+    def load_whitelist(self, content: bytes) -> set[str]:
+        """Parse the whitelist document.
 
         Args:
-            whitelist_file: Path to whitelist JSON file
+            content: Raw bytes of the whitelist JSON document
 
         Returns:
             Set of package names from whitelist
 
         Raises:
-            json.JSONDecodeError: If whitelist file contains invalid JSON
-            ValueError: If whitelist file structure is invalid or too large
-            OSError: If file cannot be read (permissions, etc.)
+            json.JSONDecodeError: If content is not valid JSON
+            ValueError: If the whitelist structure is invalid or too large
         """
-        if not whitelist_file.exists():
-            return set()
-
-        # Check file size to prevent memory exhaustion
-        file_size = whitelist_file.stat().st_size
-        if file_size > self.MAX_WHITELIST_SIZE:
+        # Check payload size to prevent memory exhaustion
+        if len(content) > self.MAX_WHITELIST_SIZE:
             raise ValueError(
-                f"Whitelist file {whitelist_file} is too large: "
-                f"{file_size} bytes (max {self.MAX_WHITELIST_SIZE})"
+                f"Whitelist is too large: {len(content)} bytes (max {self.MAX_WHITELIST_SIZE})"
             )
 
-        with open(whitelist_file, encoding="utf-8") as f:
-            packages = json.load(f)
+        packages = json.loads(content)
 
         # Validate data type
         if not isinstance(packages, list):
-            raise ValueError(
-                f"Whitelist file {whitelist_file} must contain a JSON array, "
-                f"got {type(packages).__name__}"
-            )
+            raise ValueError(f"Whitelist must contain a JSON array, got {type(packages).__name__}")
 
         # Validate all elements are strings
         if not all(isinstance(pkg, str) for pkg in packages):
-            raise ValueError(f"Whitelist file {whitelist_file} must contain only strings")
+            raise ValueError("Whitelist must contain only strings")
 
         return set(packages)
 
     def check_whitelist(
         self,
-        whitelist_file: Path,
+        whitelist_content: bytes,
         shipped_packages: set[str],
         overrides_file: Path,
         obs_project: str,
@@ -94,7 +82,7 @@ class WhitelistService:
         that are BOTH whitelisted AND validated as shipped (inconsistency).
 
         Args:
-            whitelist_file: Path to whitelist JSON file
+            whitelist_content: Raw bytes of the whitelist JSON document
             shipped_packages: Set of shipped package names from metadata
             overrides_file: Path to hand-curated binary→source overrides JSON
             obs_project: OBS project to query for package resolution
@@ -103,15 +91,10 @@ class WhitelistService:
             WhitelistCheckResult with inconsistent packages
 
         Raises:
-            FileNotFoundError: If whitelist file doesn't exist
-            ValueError: If whitelist file is invalid
+            ValueError: If the whitelist is invalid
         """
-        # Validate whitelist file exists
-        if not whitelist_file.exists():
-            raise FileNotFoundError(f"Whitelist file {whitelist_file} does not exist")
-
         # Load whitelist
-        whitelist = self.load_whitelist(whitelist_file)
+        whitelist = self.load_whitelist(whitelist_content)
 
         # Pre-load source_info here (mirrors the pattern validate_all uses) and
         # pass it to resolve_shipped_packages.

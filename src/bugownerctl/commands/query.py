@@ -38,11 +38,12 @@ def run_package(args: argparse.Namespace) -> int:
     whitelist_file = validate_file_within_directory(
         slfo_context.slfo_repo_path, whitelist_file_name, "Whitelist file"
     )
+    whitelist_content = whitelist_file.read_bytes() if whitelist_file.exists() else None
 
     maintainership_repo = MaintainershipRepositoryImpl()
     service = QueryService(maintainership_repo)
     result = service.check_package_maintainership(
-        args.package_name, maintainership_file.read_bytes(), whitelist_file
+        args.package_name, maintainership_file.read_bytes(), whitelist_content
     )
 
     print(f"\nPackage: {result.package_name}")

@@ -43,6 +43,33 @@ def _stub_slfo_file_reads(monkeypatch: pytest.MonkeyPatch, slfo_repo_path: Path)
     monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
 
 
+# Stand-in payload for the whitelist file inside the fake SLFO clone.
+_WHITELIST_CONTENT = b'["whitelisted-pkg"]'
+
+
+def _stub_slfo_whitelist_file(monkeypatch: pytest.MonkeyPatch, slfo_repo_path: Path) -> None:
+    """Make <slfo_repo_path>/whitelist_maintainership.json exist and serve _WHITELIST_CONTENT.
+
+    The fake clone does not exist on disk; any other path behaves normally.
+    """
+    whitelist_path = slfo_repo_path.resolve() / "whitelist_maintainership.json"
+    real_exists = Path.exists
+    real_read_bytes = Path.read_bytes
+
+    def fake_exists(self: Path, *, follow_symlinks: bool = True) -> bool:
+        if self == whitelist_path:
+            return True
+        return real_exists(self, follow_symlinks=follow_symlinks)
+
+    def fake_read_bytes(self: Path) -> bytes:
+        if self == whitelist_path:
+            return _WHITELIST_CONTENT
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
+    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+
+
 def _patch_prep(
     monkeypatch: pytest.MonkeyPatch,
     slfo_repo_path: Path = Path("/cache/SLFO"),
@@ -59,6 +86,7 @@ def _patch_prep(
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.query.prepare_slfo_repo", mock_prep)
     _stub_slfo_file_reads(monkeypatch, slfo_repo_path)
+    _stub_slfo_whitelist_file(monkeypatch, slfo_repo_path)
     return mock_prep, fake_slfo_context
 
 
@@ -147,7 +175,7 @@ class TestRunPackage:
         call_args = mock_service.check_package_maintainership.call_args[0]
         assert call_args[0] == "test-pkg"
         assert call_args[1] == _MAINT_CONTENT
-        assert isinstance(call_args[2], Path)
+        assert call_args[2] == _WHITELIST_CONTENT
 
     def test_prints_maintained_status(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -273,7 +301,32 @@ class TestRunPackage:
 
         call_args = mock_service.check_package_maintainership.call_args[0]
         assert call_args[1] == _MAINT_CONTENT
-        assert call_args[2] == Path("/cache/SLFO/whitelist_maintainership.json")
+        assert call_args[2] == _WHITELIST_CONTENT
+
+    def test_run_package_passes_none_when_whitelist_file_missing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Should pass None as whitelist content when the whitelist file is absent."""
+        config = {**_BASE_CONFIG, "whitelist_file": "absent.json"}
+        _patch_prep(monkeypatch, slfo_repo_path=tmp_path, config=config)
+
+        monkeypatch.setattr("bugownerctl.commands.query.MaintainershipRepositoryImpl", Mock())
+
+        mock_service = Mock()
+        mock_service.check_package_maintainership.return_value = PackageMaintainershipResult(
+            package_name="test-pkg",
+            status=PackageStatus.NOT_FOUND,
+            maintainers=[],
+        )
+        monkeypatch.setattr(
+            "bugownerctl.commands.query.QueryService", Mock(return_value=mock_service)
+        )
+
+        args = argparse.Namespace(package_name="test-pkg", release="16.1", config=None)
+        run_package(args)
+
+        call_args = mock_service.check_package_maintainership.call_args[0]
+        assert call_args[2] is None
 
     def test_run_package_forwards_version_and_config_to_prepare_slfo_repo(
         self, monkeypatch: pytest.MonkeyPatch

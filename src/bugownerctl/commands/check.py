@@ -168,6 +168,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
 
     Raises:
         ConfigError: If the product has no `obs_project` configured.
+        FileNotFoundError: If the configured whitelist file is absent from the SLFO clone.
     """
     slfo_context = prepare_slfo_repo(args.release, args.config)
     if slfo_context.obs_project is None:
@@ -200,13 +201,15 @@ def run_whitelist(args: argparse.Namespace) -> int:
     whitelist_file = validate_file_within_directory(
         slfo_context.slfo_repo_path, whitelist_file_name, "Whitelist file"
     )
+    if not whitelist_file.exists():
+        raise FileNotFoundError(f"Whitelist file {whitelist_file} does not exist")
 
     # Resolve the shipped overrides JSON via importlib.resources so it
     # works whether the package is installed as a wheel or run from source.
     overrides_resource = files("bugownerctl.data").joinpath("false_positives_overrides.json")
     with as_file(overrides_resource) as overrides_file:
         result = whitelist_service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_file.read_bytes(),
             shipped_packages=shipped_packages,
             overrides_file=overrides_file,
             obs_project=slfo_context.obs_project,
