@@ -173,21 +173,31 @@ class RepoMetadataRepositoryImpl:
         # Check if cached file exists with matching checksum
         cached_file = metadata_cache_dir / "primary.xml.gz"
         if cached_file.exists():
-            # Calculate checksum of cached file
-            cached_checksum = hashlib.sha256(cached_file.read_bytes()).hexdigest()
-            if cached_checksum == expected_checksum:
-                # Cache hit - return cached file
-                logger.debug(
-                    "File %s already exists in cache and checksum matches. Skipping download.",
+            # Calculate checksum of cached file using the type declared in repomd.xml
+            try:
+                cached_checksum = hashlib.new(checksum_type, cached_file.read_bytes()).hexdigest()
+            except ValueError:
+                # Unsupported checksum type - cannot verify cache, treat as a miss
+                logger.warning(
+                    "Unsupported checksum type %r for %s in cache. Deleting and re-downloading.",
+                    checksum_type,
                     cached_file.name,
                 )
-                return cached_file
-            # Checksum mismatch - delete corrupted file and re-download
-            logger.warning(
-                "Checksum mismatch for %s in cache. Deleting and re-downloading.",
-                cached_file.name,
-            )
-            cached_file.unlink()
+                cached_file.unlink()
+            else:
+                if cached_checksum == expected_checksum:
+                    # Cache hit - return cached file
+                    logger.debug(
+                        "File %s already exists in cache and checksum matches. Skipping download.",
+                        cached_file.name,
+                    )
+                    return cached_file
+                # Checksum mismatch - delete corrupted file and re-download
+                logger.warning(
+                    "Checksum mismatch for %s in cache. Deleting and re-downloading.",
+                    cached_file.name,
+                )
+                cached_file.unlink()
         else:
             logger.debug("Cache miss for version %s (file not found)", version)
 

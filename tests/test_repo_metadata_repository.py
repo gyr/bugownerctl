@@ -221,6 +221,46 @@ class TestDownloadPrimaryMetadata:
         assert mock_get.call_count == 1  # Only downloaded repomd, not primary
 
     @patch("requests.get")
+    def test_download_primary_metadata_uses_cached_file_with_sha512_checksum(
+        self, mock_get: Mock, tmp_path: Path
+    ) -> None:
+        """Should hash the cached file with the checksum type declared in repomd.xml."""
+        # Arrange
+        cache_dir = tmp_path / "cache"
+        version_cache_dir = cache_dir / "repodata" / "16.1"
+        version_cache_dir.mkdir(parents=True)
+
+        cached_file = version_cache_dir / "primary.xml.gz"
+        cached_content = b"cached content"
+        cached_file.write_bytes(cached_content)
+
+        cached_checksum = hashlib.sha512(cached_content).hexdigest()
+
+        repomd_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha512">{cached_checksum}</checksum>
+  </data>
+</repomd>"""
+
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        mock_get.return_value = mock_repomd_response
+
+        repo = RepoMetadataRepositoryImpl()
+
+        # Act
+        result = repo.download_primary_metadata("16.1", cache_dir)
+
+        # Assert
+        assert result == cached_file
+        assert result.read_bytes() == cached_content
+        assert mock_get.call_count == 1  # Only downloaded repomd, not primary
+
+    @patch("requests.get")
     def test_download_primary_metadata_redownloads_if_checksum_mismatch(
         self, mock_get: Mock, tmp_path: Path
     ) -> None:
@@ -265,6 +305,52 @@ class TestDownloadPrimaryMetadata:
         # Assert
         assert result.read_bytes() == new_content
         assert mock_get.call_count == 2  # Downloaded both repomd and primary
+
+    @patch("requests.get")
+    def test_download_primary_metadata_redownloads_if_checksum_type_unsupported(
+        self, mock_get: Mock, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Should warn naming the unsupported checksum type and re-download primary.xml."""
+        # Arrange
+        cache_dir = tmp_path / "cache"
+        version_cache_dir = cache_dir / "repodata" / "16.1"
+        version_cache_dir.mkdir(parents=True)
+
+        cached_file = version_cache_dir / "primary.xml.gz"
+        cached_file.write_bytes(b"old content")
+
+        new_content = b"new content"
+
+        repomd_content = """<?xml version="1.0" encoding="UTF-8"?>
+<repomd>
+  <data type="primary">
+    <location href="repodata/primary.xml.gz"/>
+    <checksum type="sha">abc123</checksum>
+  </data>
+</repomd>"""
+
+        mock_repomd_response = Mock()
+        mock_repomd_response.content = repomd_content.encode()
+        mock_repomd_response.raise_for_status = Mock()
+
+        mock_primary_response = Mock()
+        mock_primary_response.content = new_content
+        mock_primary_response.iter_content = Mock(return_value=[new_content])
+        mock_primary_response.raise_for_status = Mock()
+
+        mock_get.side_effect = [mock_repomd_response, mock_primary_response]
+
+        repo = RepoMetadataRepositoryImpl()
+
+        # Act
+        with caplog.at_level("WARNING"):
+            result = repo.download_primary_metadata("16.1", cache_dir)
+
+        # Assert
+        assert result.read_bytes() == new_content
+        assert mock_get.call_count == 2  # Downloaded both repomd and primary
+        assert "Unsupported checksum type 'sha'" in caplog.text
+        assert "Checksum mismatch" not in caplog.text
 
     @patch("requests.get")
     def test_download_primary_metadata_raises_on_network_error(

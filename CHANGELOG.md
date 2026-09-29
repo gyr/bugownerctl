@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A JSON `null` `users` or `groups` value in `_maintainership.json`, as written by branches such as
   `slfo-1.2`, crashed `check maintainership`, `check users`, `query package` and
   `query maintainer`. It is now treated as an empty list, the same as a missing key.
+- The cached `primary.xml.gz` was always verified with sha256, so on repositories whose
+  `repomd.xml` declares another type (SLES 16.1 declares sha512) the cache never matched:
+  `check maintainership` and `check whitelist` warned "Checksum mismatch" and downloaded the file
+  again on every run. The cache is now verified with the checksum type `repomd.xml` declares. An
+  unsupported type is logged as a warning and the file is downloaded again.
 
 ## [0.8.0] - 2026-09-29
 
