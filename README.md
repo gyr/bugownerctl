@@ -1112,6 +1112,11 @@ Add `obs_project` to the product's entry in the config (see [Config File Format]
 osc -A https://api.suse.de api '/source/SUSE:SLFO:Main?view=info&parse=1' | head
 ```
 
+**"osc api '/source/…' failed … Project not found: …"**
+
+The product's `obs_project` names no project on OBS. Check its spelling and case: OBS project names
+are case-sensitive, so `SUSE:SLFO:main` fails where `SUSE:SLFO:Main` works.
+
 **"Coverage below 90%"**
 ```bash
 # Run full test suite
