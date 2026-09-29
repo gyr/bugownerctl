@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- A JSON `null` `users` or `groups` value in `_maintainership.json`, as written by branches such as
+  `slfo-1.2`, crashed `check maintainership`, `check users`, `query package` and
+  `query maintainer`. It is now treated as an empty list, the same as a missing key.
+
 ## [0.8.0] - 2026-09-29
 
 ### Added
