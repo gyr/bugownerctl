@@ -3,6 +3,9 @@
 **Status:** Accepted (2026-09-11)
 **Amended:** 2026-09-21 — the `change` column vocabulary widened from three values to five. The
 decision itself is unchanged; only the set of words it uses.
+**Amended by:** [ADR 0005](0005-remote-archive-file-access.md) (2026-09-29) — `check` and `query` now
+read SLFO files the same way and the clone path is gone, so the Context below describes the code as it
+was when this ADR was written.
 **Scope:** the `bugownerctl diff maintainership` subcommand only. No existing command changes behaviour.
 
 ## Context
