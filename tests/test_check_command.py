@@ -60,7 +60,6 @@ def _empty_validation_result() -> ValidationResult:
 
 def _patch_maint_prep(
     monkeypatch: pytest.MonkeyPatch,
-    slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
     base_url: str | None = None,
     obs_project: str | None = _TEST_OBS_PROJECT,
@@ -70,8 +69,6 @@ def _patch_maint_prep(
     fake_slfo_context = SlfoRepoContext(
         config=cfg,
         cache_dir=Path.home() / ".cache" / "bugownerctl",
-        slfo_repo_path=slfo_repo_path,
-        git_repo=Mock(),
         slfo_git_url=cfg["slfo_git_url"],
         ref="main",
         base_url=base_url,
@@ -141,7 +138,6 @@ def _empty_whitelist_result() -> WhitelistCheckResult:
 
 def _patch_whitelist_prep(
     monkeypatch: pytest.MonkeyPatch,
-    slfo_repo_path: Path = Path("/cache/SLFO"),
     config: dict[str, Any] | None = None,
     base_url: str | None = None,
     obs_project: str | None = _TEST_OBS_PROJECT,
@@ -151,8 +147,6 @@ def _patch_whitelist_prep(
     fake_slfo_context = SlfoRepoContext(
         config=cfg,
         cache_dir=Path.home() / ".cache" / "bugownerctl",
-        slfo_repo_path=slfo_repo_path,
-        git_repo=Mock(),
         slfo_git_url=cfg["slfo_git_url"],
         ref="main",
         base_url=base_url,
@@ -167,8 +161,8 @@ def _patch_whitelist_prep(
 def _patch_whitelist_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
     """Patch the 4 repos check.py constructs for whitelist.
 
-    Returns a dict of mock classes. Note: whitelist path does NOT construct
-    GitRepositoryImpl directly after the refactor — git_repo comes from slfo_context.
+    Returns a dict of mock classes. The whitelist path uses no git repository;
+    the whitelist file is fetched via the archive repository.
     """
     mock_maint_cls = Mock()
     mock_meta_cls = Mock()

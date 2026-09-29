@@ -48,9 +48,6 @@ class TestValidateWorkflow:
         # Mock external calls
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
@@ -65,7 +62,6 @@ class TestValidateWorkflow:
             ) as mock_fetch,
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
-            mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"test-package", "another-package"}
             mock_source_info.return_value = ObsSourceInfo(
@@ -106,9 +102,6 @@ class TestValidateWorkflow:
 
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata"
             ) as mock_download,
             patch(
@@ -123,7 +116,6 @@ class TestValidateWorkflow:
             ),
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
-            mock_clone.return_value = tmp_path  # Return test dir as cloned repo
             mock_download.return_value = tmp_path / "primary.xml.gz"
             mock_parse.return_value = {"maintained-package", "orphan-package"}
             mock_source_info.return_value = ObsSourceInfo(
@@ -168,9 +160,6 @@ class TestQueryPackageWorkflow:
 
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
                 side_effect=_serve_files(
                     {
@@ -182,7 +171,6 @@ class TestQueryPackageWorkflow:
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "test-package", "-r", "16.1"]),
         ):
-            mock_clone.return_value = tmp_path
             exit_code = main()
             assert exit_code == 0, "Should succeed when package found"
 
@@ -200,9 +188,6 @@ class TestQueryPackageWorkflow:
 
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
                 side_effect=_serve_files(
                     {
@@ -219,7 +204,6 @@ class TestQueryPackageWorkflow:
                 ["bugownerctl", "query", "package", "whitelisted-package", "-r", "16.1"],
             ),
         ):
-            mock_clone.return_value = tmp_path
             exit_code = main()
             assert exit_code == 0, "Should succeed when package whitelisted"
 
@@ -237,9 +221,6 @@ class TestQueryPackageWorkflow:
 
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
                 side_effect=_serve_files(
                     {
@@ -251,7 +232,6 @@ class TestQueryPackageWorkflow:
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package", "-r", "16.1"]),
         ):
-            mock_clone.return_value = tmp_path
             exit_code = main()
             assert exit_code == 0, "Query always returns 0, but prints 'Not found'"
 
@@ -279,9 +259,6 @@ class TestQueryMaintainerWorkflow:
 
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
                 side_effect=_serve_files(
                     {
@@ -292,7 +269,6 @@ class TestQueryMaintainerWorkflow:
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1", "-r", "16.1"]),
         ):
-            mock_clone.return_value = tmp_path
             exit_code = main()
             assert exit_code == 0, "Should succeed when maintainer found"
 
@@ -315,9 +291,6 @@ class TestQueryMaintainerWorkflow:
 
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
                 side_effect=_serve_files(
                     {
@@ -328,7 +301,6 @@ class TestQueryMaintainerWorkflow:
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1", "-r", "16.1"]),
         ):
-            mock_clone.return_value = tmp_path
             exit_code = main()
             assert exit_code == 0, "Should succeed when group found"
 
@@ -345,9 +317,6 @@ class TestQueryMaintainerWorkflow:
 
         with (
             patch(
-                "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
-            ) as mock_clone,
-            patch(
                 "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
                 side_effect=_serve_files(
                     {
@@ -358,6 +327,5 @@ class TestQueryMaintainerWorkflow:
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user", "-r", "16.1"]),
         ):
-            mock_clone.return_value = tmp_path
             exit_code = main()
             assert exit_code == 0, "Should succeed but show empty list"

@@ -71,8 +71,6 @@ def _patch_prep(
     fake_slfo_context = SlfoRepoContext(
         config=cfg,
         cache_dir=Path.home() / ".cache" / "bugownerctl",
-        slfo_repo_path=Path("/cache/SLFO"),
-        git_repo=Mock(),
         slfo_git_url=cfg["slfo_git_url"],
         ref="main",
     )

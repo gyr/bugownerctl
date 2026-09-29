@@ -10,7 +10,6 @@ import pytest
 import yaml
 
 from bugownerctl.commands.repo_prep import prepare_slfo_repo
-from bugownerctl.domain.ref_type import RefType
 from bugownerctl.exceptions import ConfigError
 
 # ---------------------------------------------------------------------------
@@ -27,45 +26,13 @@ BASE_CONFIG: dict[str, Any] = {
 }
 
 
-def _make_mock_git_cls(return_path: Path = Path("/cache/SLFO")) -> tuple[Mock, Mock]:
-    """Build a (mock_cls, mock_instance) pair for GitRepositoryImpl."""
-    mock_instance = Mock()
-    mock_instance.clone_or_update.return_value = return_path
-    mock_cls = Mock(return_value=mock_instance)
-    return mock_cls, mock_instance
-
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 
-class TestPrepareSlfoRepoRefTypes:
-    """Tests that verify correct RefType and git_ref forwarded to clone_or_update."""
-
-    def test_branch_ref_uses_branch_ref_type(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Product with branch key → clone_or_update receives RefType.BRANCH and the branch name."""
-        loaded_config = dict(BASE_CONFIG)
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
-            Mock(return_value=loaded_config),
-        )
-        mock_git_cls, mock_git_instance = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
-
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
-
-        assert ctx.slfo_repo_path == Path("/cache/SLFO")
-        mock_git_instance.clone_or_update.assert_called_once_with(
-            repo_url="gitea@src.suse.de:products/SLFO.git",
-            git_ref="slfo-main",
-            cache_dir=Path.home() / ".cache" / "bugownerctl",
-            ref_type=RefType.BRANCH,
-        )
-
-
 class TestPrepareSlfoRepoCacheDir:
-    """Tests that verify cache_dir tilde expansion and forwarding."""
+    """Tests that verify cache_dir tilde expansion."""
 
     def test_cache_dir_tilde_is_expanded(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """cache_dir with leading tilde is expanded to absolute home-based path."""
@@ -74,49 +41,14 @@ class TestPrepareSlfoRepoCacheDir:
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        mock_git_cls, mock_git_instance = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
 
         ctx = prepare_slfo_repo(version="16.1", config_file=None)
 
-        expected_cache_dir = Path.home() / ".cache" / "bugownerctl"
-        assert ctx.cache_dir == expected_cache_dir
-        call_kwargs = mock_git_instance.clone_or_update.call_args.kwargs
-        assert call_kwargs["cache_dir"] == expected_cache_dir
+        assert ctx.cache_dir == Path.home() / ".cache" / "bugownerctl"
 
 
 class TestPrepareSlfoRepoContextFields:
     """Tests that verify the returned SlfoRepoContext fields."""
-
-    def test_ctx_git_repo_is_same_instance_as_constructed(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """ctx.git_repo is the exact instance returned by GitRepositoryImpl(), not a new one."""
-        loaded_config = dict(BASE_CONFIG)
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
-            Mock(return_value=loaded_config),
-        )
-        mock_git_cls, mock_git_instance = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
-
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
-
-        assert ctx.git_repo is mock_git_instance
-
-    def test_ctx_slfo_repo_path_equals_clone_return(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """ctx.slfo_repo_path equals the path returned by clone_or_update."""
-        loaded_config = dict(BASE_CONFIG)
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
-            Mock(return_value=loaded_config),
-        )
-        mock_git_cls, _ = _make_mock_git_cls(return_path=Path("/cache/SLFO"))
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
-
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
-
-        assert ctx.slfo_repo_path == Path("/cache/SLFO")
 
     def test_ctx_carries_slfo_git_url_and_ref(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """ctx.slfo_git_url and ctx.ref are the configured URL and the product's branch."""
@@ -125,8 +57,6 @@ class TestPrepareSlfoRepoContextFields:
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        mock_git_cls, _ = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
 
         ctx = prepare_slfo_repo(version="16.0", config_file=None)
 
@@ -140,8 +70,6 @@ class TestPrepareSlfoRepoContextFields:
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        mock_git_cls, _ = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
 
         ctx = prepare_slfo_repo(version="16.1", config_file=None)
 
@@ -164,15 +92,12 @@ class TestPrepareSlfoRepoBaseUrl:
         }
 
     @staticmethod
-    def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> Mock:
-        """Patch load_config and GitRepositoryImpl; return the GitRepositoryImpl mock class."""
+    def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> None:
+        """Patch load_config to return the given config."""
         monkeypatch.setattr(
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        mock_git_cls, _ = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
-        return mock_git_cls
 
     def test_base_url_absent_yields_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Product entry without base_url key → ctx.base_url is None."""
@@ -260,17 +185,6 @@ class TestPrepareSlfoRepoBaseUrl:
 
         with pytest.raises(ConfigError, match="absolute URL"):
             prepare_slfo_repo(version="16.1", config_file=None)
-
-    def test_base_url_rejection_happens_before_any_clone(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """An invalid base_url aborts before GitRepositoryImpl is ever constructed."""
-        mock_git_cls = self._patch(monkeypatch, self._config_with_base_url(42))
-
-        with pytest.raises(ConfigError):
-            prepare_slfo_repo(version="16.1", config_file=None)
-
-        mock_git_cls.assert_not_called()
 
     @pytest.mark.parametrize(
         "bad_url",
@@ -367,15 +281,12 @@ class TestPrepareSlfoRepoObsProject:
         }
 
     @staticmethod
-    def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> Mock:
-        """Patch load_config and GitRepositoryImpl; return the GitRepositoryImpl mock class."""
+    def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> None:
+        """Patch load_config to return the given config."""
         monkeypatch.setattr(
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        mock_git_cls, _ = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
-        return mock_git_cls
 
     def test_obs_project_absent_yields_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Product entry without obs_project key → ctx.obs_project is None."""
@@ -421,18 +332,6 @@ class TestPrepareSlfoRepoObsProject:
 
         with pytest.raises(ConfigError, match="'obs_project'.*empty or whitespace-only"):
             prepare_slfo_repo(version="16.1", config_file=None)
-
-    @pytest.mark.parametrize("bad_value", [42, "   "])
-    def test_obs_project_rejection_happens_before_any_clone(
-        self, bad_value: Any, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """An invalid obs_project aborts before GitRepositoryImpl is ever constructed."""
-        mock_git_cls = self._patch(monkeypatch, self._config_with_obs_project(bad_value))
-
-        with pytest.raises(ConfigError):
-            prepare_slfo_repo(version="16.1", config_file=None)
-
-        mock_git_cls.assert_not_called()
 
     def test_obs_project_on_other_product_is_not_applied(
         self, monkeypatch: pytest.MonkeyPatch
@@ -484,10 +383,6 @@ class TestPrepareSlfoRepoErrors:
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.GitRepositoryImpl",
-            Mock(),
-        )
 
         with pytest.raises(ValueError, match="Version 99.9 not found in config"):
             prepare_slfo_repo(version="99.9", config_file=None)
@@ -516,14 +411,10 @@ class TestPrepareSlfoRepoErrors:
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        mock_git_cls = Mock()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
 
         version = product["version"]
         with pytest.raises(ConfigError, match=f"version {version} has no 'branch' configured"):
             prepare_slfo_repo(version=version, config_file=None)
-
-        mock_git_cls.assert_not_called()
 
     @pytest.mark.parametrize("empty_ref", ["", None])
     def test_raises_empty_git_ref(
@@ -540,10 +431,6 @@ class TestPrepareSlfoRepoErrors:
         monkeypatch.setattr(
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
-        )
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.GitRepositoryImpl",
-            Mock(),
         )
 
         with pytest.raises(ValueError, match="Empty git ref for version 16.1"):
@@ -562,10 +449,6 @@ class TestPrepareSlfoRepoErrors:
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.GitRepositoryImpl",
-            Mock(),
-        )
 
         with pytest.raises(ValueError, match="slfo_git_url not found in config"):
             prepare_slfo_repo(version="16.1", config_file=None)
@@ -578,8 +461,6 @@ class TestPrepareSlfoRepoConfigFile:
         """An explicit config_file path is passed verbatim to load_config."""
         mock_load = Mock(return_value=dict(BASE_CONFIG))
         monkeypatch.setattr("bugownerctl.commands.repo_prep.load_config", mock_load)
-        mock_git_cls, _ = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
 
         prepare_slfo_repo(version="16.1", config_file=Path("/explicit/config.yaml"))
 
@@ -596,12 +477,167 @@ class TestPrepareSlfoRepoConfigFile:
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        mock_git_cls, _ = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
 
         ctx = prepare_slfo_repo(version="16.1", config_file=None)
 
         assert ctx.cache_dir == Path.home() / ".cache" / "bugownerctl"
+
+
+class TestPrepareSlfoRepoNoClone:
+    """Tests that context resolution touches neither git nor the filesystem."""
+
+    def test_context_resolution_never_clones_or_creates_cache_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No subprocess runs and cache_dir is not created; SLFO files come from git archive."""
+        cache_dir = tmp_path / "cache"
+        loaded_config = {**BASE_CONFIG, "cache_dir": str(cache_dir)}
+        monkeypatch.setattr(
+            "bugownerctl.commands.repo_prep.load_config",
+            Mock(return_value=loaded_config),
+        )
+        mock_run = Mock()
+        monkeypatch.setattr("subprocess.run", mock_run)
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.cache_dir == cache_dir
+        assert not cache_dir.exists()
+        mock_run.assert_not_called()
+
+
+class TestPrepareSlfoRepoUrlValidation:
+    """Tests for the slfo_git_url format and SSRF checks done during context resolution."""
+
+    @staticmethod
+    def _patch_url(monkeypatch: pytest.MonkeyPatch, slfo_git_url: str) -> None:
+        """Patch load_config to return BASE_CONFIG with the given slfo_git_url."""
+        monkeypatch.setattr(
+            "bugownerctl.commands.repo_prep.load_config",
+            Mock(return_value={**BASE_CONFIG, "slfo_git_url": slfo_git_url}),
+        )
+
+    @pytest.mark.parametrize(
+        "invalid_url",
+        [
+            "not-a-url",
+            "https://github.com/repo",  # Missing .git
+            "ftp://example.com/repo.git",  # Not HTTP/HTTPS
+            "https://example.com/repo.git; rm -rf /",  # Command injection attempt
+            "git@github.com",  # SSH missing path
+            "git@:repo.git",  # SSH missing host
+            "@github.com:repo.git",  # SSH missing user
+            "user@host:",  # SSH missing path
+        ],
+    )
+    def test_rejects_invalid_url_format(
+        self, invalid_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A slfo_git_url that is neither SSH nor HTTP(S) raises ValueError."""
+        self._patch_url(monkeypatch, invalid_url)
+
+        with pytest.raises(ValueError, match="Invalid repository URL format"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    @pytest.mark.parametrize(
+        "ssh_url",
+        [
+            "git@github.com:user/repo.git",
+            "git@src.suse.de:products/SLFO.git",
+            "user@host.com:path/to/repo.git",
+            "git@gitlab.com:group/subgroup/repo.git",
+        ],
+    )
+    def test_accepts_valid_ssh_urls(self, ssh_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A valid SCP-style SSH slfo_git_url is accepted and carried on the context."""
+        self._patch_url(monkeypatch, ssh_url)
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.slfo_git_url == ssh_url
+
+    @pytest.mark.parametrize(
+        "ssh_url_with_port",
+        [
+            "git@github.com:22:user/repo.git",
+            "git@gitlab.com:443:group/repo.git",
+            "user@host.com:8080:path/repo.git",
+        ],
+    )
+    def test_rejects_ssh_url_with_port_syntax(
+        self, ssh_url_with_port: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SCP-style SSH URLs have no port syntax; user@host:PORT:path is rejected."""
+        self._patch_url(monkeypatch, ssh_url_with_port)
+
+        with pytest.raises(ValueError, match="Invalid repository URL format"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    @pytest.mark.parametrize(
+        "internal_url",
+        [
+            "https://127.0.0.1/repo.git",
+            "https://localhost/repo.git",
+            "https://0.0.0.0/repo.git",
+        ],
+    )
+    def test_rejects_ssrf_to_localhost(
+        self, internal_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An HTTP(S) slfo_git_url pointing at localhost raises ValueError."""
+        self._patch_url(monkeypatch, internal_url)
+
+        with pytest.raises(ValueError, match="internal network or metadata service"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    @pytest.mark.parametrize(
+        "metadata_url",
+        [
+            "https://169.254.169.254/latest/meta-data.git",
+            "https://metadata.google.internal/computeMetadata/v1.git",
+        ],
+    )
+    def test_rejects_ssrf_to_metadata_service(
+        self, metadata_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An HTTP(S) slfo_git_url pointing at a cloud metadata service raises ValueError."""
+        self._patch_url(monkeypatch, metadata_url)
+
+        with pytest.raises(ValueError, match="internal network or metadata service"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    @pytest.mark.parametrize(
+        "private_url",
+        [
+            "https://10.0.0.1/repo.git",  # Private class A
+            "https://172.16.0.1/repo.git",  # Private class B
+            "https://192.168.1.1/repo.git",  # Private class C
+        ],
+    )
+    def test_rejects_ssrf_to_private_networks(
+        self, private_url: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An HTTP(S) slfo_git_url pointing at a private IP range raises ValueError."""
+        self._patch_url(monkeypatch, private_url)
+
+        with pytest.raises(ValueError, match="internal network or metadata service"):
+            prepare_slfo_repo(version="16.1", config_file=None)
+
+    def test_accepts_ssh_url_to_internal_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The SSRF check applies to HTTP(S) only; SSH to an internal git server is allowed."""
+        self._patch_url(monkeypatch, "git@10.0.0.1:products/SLFO.git")
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.slfo_git_url == "git@10.0.0.1:products/SLFO.git"
+
+    def test_accepts_public_https_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A well-formed HTTPS slfo_git_url on a public host is accepted."""
+        self._patch_url(monkeypatch, "https://src.example.test/products/SLFO.git")
+
+        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+
+        assert ctx.slfo_git_url == "https://src.example.test/products/SLFO.git"
 
 
 class TestPrepareSlfoRepoMissingConfig:
