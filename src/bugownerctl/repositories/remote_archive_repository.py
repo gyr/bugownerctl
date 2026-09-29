@@ -55,13 +55,6 @@ class FileNotFoundAtRefError(ValueError):
 def _validate_ref(ref: str) -> None:
     """Reject refs that git could misread as an option, a path escape or a shell token.
 
-    This deliberately duplicates the ref rules in ``GitRepositoryImpl`` rather
-    than importing them: the two call sites have independent lifecycles, and a
-    handful of lines is cheaper than coupling this module to a clone-based
-    repository it otherwise has nothing to do with. The copies are no longer
-    identical: this one uses ``re.fullmatch``, where ``git_repository.py``'s
-    ``re.match(...$)`` still accepts a trailing newline.
-
     Args:
         ref: Branch or tag name to validate.
 

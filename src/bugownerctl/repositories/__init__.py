@@ -1,6 +1,5 @@
 """Repository layer for data access operations."""
 
-from .git_repository import GitRepository, GitRepositoryImpl
 from .maintainership_repository import (
     MaintainershipRepository,
     MaintainershipRepositoryImpl,
@@ -16,8 +15,6 @@ from .obs_source_info_repository import (
 from .repo_metadata_repository import RepoMetadataRepository, RepoMetadataRepositoryImpl
 
 __all__ = [
-    "GitRepository",
-    "GitRepositoryImpl",
     "MaintainershipRepository",
     "MaintainershipRepositoryImpl",
     "NameOverridesRepository",
