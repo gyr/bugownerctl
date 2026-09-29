@@ -82,6 +82,8 @@ def _patch_prep(
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
+        slfo_git_url=cfg["slfo_git_url"],
+        ref="main",
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.query.prepare_slfo_repo", mock_prep)

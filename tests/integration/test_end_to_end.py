@@ -35,7 +35,6 @@ class TestValidateWorkflow:
                 "another-package": {"users": ["user2"], "groups": []},
             }
         }
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
         # Create minimal config file with new format
         config_data = {
@@ -59,6 +58,10 @@ class TestValidateWorkflow:
             patch(
                 "bugownerctl.repositories.obs_source_info_repository.ObsSourceInfoRepositoryImpl.load_source_info"
             ) as mock_source_info,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                return_value=json.dumps(maintainership_data).encode(),
+            ) as mock_fetch,
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo
@@ -78,6 +81,10 @@ class TestValidateWorkflow:
             assert exit_code == 0, "Validate should succeed with valid data"
             # The product's configured OBS project is the one queried.
             assert mock_source_info.call_args.args[0] == "TEST:Project:1.0"
+            # The maintainership file is read from the remote at the product branch.
+            mock_fetch.assert_called_once_with(
+                "git@example.com:test/repo.git", "main", "_maintainership.json"
+            )
 
     def test_validate_workflow_finds_orphan_packages(self, tmp_path, monkeypatch):
         """Should detect packages in repo without maintainers."""
@@ -88,7 +95,6 @@ class TestValidateWorkflow:
         maintainership_data = {
             "packages": {"maintained-package": {"users": ["user1"], "groups": []}}
         }
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -110,6 +116,10 @@ class TestValidateWorkflow:
             patch(
                 "bugownerctl.repositories.obs_source_info_repository.ObsSourceInfoRepositoryImpl.load_source_info"
             ) as mock_source_info,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                return_value=json.dumps(maintainership_data).encode(),
+            ),
             patch("sys.argv", ["bugownerctl", "check", "maintainership", "-r", "16.1"]),
         ):
             mock_clone.return_value = tmp_path  # Return test dir as cloned repo

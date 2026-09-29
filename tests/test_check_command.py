@@ -30,24 +30,20 @@ _MAINT_BASE_CONFIG: dict[str, Any] = {
 }
 
 
-# Stand-in payload for the maintainership file inside the fake SLFO clone.
+# Stand-in payload for the maintainership file served by the archive fetch.
 _MAINT_CONTENT = b'{"packages": {}}'
 
 
-def _stub_slfo_file_reads(monkeypatch: pytest.MonkeyPatch, slfo_repo_path: Path) -> None:
-    """Serve _MAINT_CONTENT for reads of <slfo_repo_path>/_maintainership.json.
+def _stub_archive_fetch(monkeypatch: pytest.MonkeyPatch, content: bytes) -> Mock:
+    """Replace the default RemoteArchiveRepositoryImpl so fetch_file returns `content`.
 
-    The fake clone does not exist on disk; any other path reads normally.
+    Handlers called without an injected archive_repo construct the default
+    implementation; this keeps them off the network. Returns the class mock.
     """
-    maintainership_path = slfo_repo_path.resolve() / "_maintainership.json"
-    real_read_bytes = Path.read_bytes
-
-    def fake_read_bytes(self: Path) -> bytes:
-        if self == maintainership_path:
-            return _MAINT_CONTENT
-        return real_read_bytes(self)
-
-    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
+    archive_cls = Mock()
+    archive_cls.return_value.fetch_file.return_value = content
+    monkeypatch.setattr("bugownerctl.commands.check.RemoteArchiveRepositoryImpl", archive_cls)
+    return archive_cls
 
 
 def _empty_validation_result() -> ValidationResult:
@@ -76,12 +72,14 @@ def _patch_maint_prep(
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
+        slfo_git_url=cfg["slfo_git_url"],
+        ref="main",
         base_url=base_url,
         obs_project=obs_project,
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
-    _stub_slfo_file_reads(monkeypatch, slfo_repo_path)
+    _stub_archive_fetch(monkeypatch, _MAINT_CONTENT)
     return mock_prep, fake_slfo_context
 
 
@@ -132,31 +130,8 @@ _WHITELIST_BASE_CONFIG: dict[str, Any] = {
 }
 
 
-# Stand-in payload for the whitelist file inside the fake SLFO clone.
+# Stand-in payload for the whitelist file served by the archive fetch.
 _WHITELIST_CONTENT = b'["whitelisted-pkg"]'
-
-
-def _stub_slfo_whitelist_file(monkeypatch: pytest.MonkeyPatch, slfo_repo_path: Path) -> None:
-    """Make <slfo_repo_path>/whitelist_maintainership.json exist and serve _WHITELIST_CONTENT.
-
-    The fake clone does not exist on disk; any other path behaves normally.
-    """
-    whitelist_path = slfo_repo_path.resolve() / "whitelist_maintainership.json"
-    real_exists = Path.exists
-    real_read_bytes = Path.read_bytes
-
-    def fake_exists(self: Path, *, follow_symlinks: bool = True) -> bool:
-        if self == whitelist_path:
-            return True
-        return real_exists(self, follow_symlinks=follow_symlinks)
-
-    def fake_read_bytes(self: Path) -> bytes:
-        if self == whitelist_path:
-            return _WHITELIST_CONTENT
-        return real_read_bytes(self)
-
-    monkeypatch.setattr(Path, "exists", fake_exists)
-    monkeypatch.setattr(Path, "read_bytes", fake_read_bytes)
 
 
 def _empty_whitelist_result() -> WhitelistCheckResult:
@@ -178,12 +153,14 @@ def _patch_whitelist_prep(
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_repo_path=slfo_repo_path,
         git_repo=Mock(),
+        slfo_git_url=cfg["slfo_git_url"],
+        ref="main",
         base_url=base_url,
         obs_project=obs_project,
     )
     mock_prep = Mock(return_value=fake_slfo_context)
     monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
-    _stub_slfo_whitelist_file(monkeypatch, slfo_repo_path)
+    _stub_archive_fetch(monkeypatch, _WHITELIST_CONTENT)
     return mock_prep, fake_slfo_context
 
 
@@ -613,21 +590,41 @@ class TestCheckMaintainershipCommand:
 
         mock_prep.assert_called_once_with("16.1", None)
 
-    def test_run_uses_maintainership_file_from_cloned_repo(
+    def test_run_uses_default_archive_repo_when_none_injected(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should use _maintainership.json from cloned SLFO repo, not cwd."""
-        slfo_repo_path = Path("/cache/bugownerctl/SLFO")
-        mock_prep, fake_slfo_context = _patch_maint_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
+        """Without archive_repo, a RemoteArchiveRepositoryImpl is built and its bytes used."""
+        _patch_maint_prep(monkeypatch)
+        archive_cls = _stub_archive_fetch(monkeypatch, _MAINT_CONTENT)
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(release="16.1", debug=False, config=None, strict=False)
         run_maintainership(args)
 
-        instance.validate_all.assert_called_once()
+        archive_cls.assert_called_once_with()
         call_kwargs = instance.validate_all.call_args[1]
         assert call_kwargs["maintainership_content"] == _MAINT_CONTENT
+
+    def test_run_fetches_maintainership_file_via_archive_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The configured maintainership file is fetched at the product ref; its bytes are used."""
+        config = {**_MAINT_BASE_CONFIG, "maintainership_file": "custom_maint.json"}
+        _patch_maint_prep(monkeypatch, config=config)
+        _patch_maint_other_repos(monkeypatch)
+        _, instance = _patch_validation_service(monkeypatch)
+        archive_repo = Mock()
+        archive_repo.fetch_file.return_value = b'{"packages": {"fetched": {}}}'
+
+        args = argparse.Namespace(release="16.1", debug=False, config=None, strict=False)
+        run_maintainership(args, archive_repo=archive_repo)
+
+        archive_repo.fetch_file.assert_called_once_with(
+            "https://github.com/test/repo", "main", "custom_maint.json"
+        )
+        call_kwargs = instance.validate_all.call_args.kwargs
+        assert call_kwargs["maintainership_content"] == b'{"packages": {"fetched": {}}}'
 
     def test_run_passes_verify_from_config_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch
@@ -844,10 +841,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call WhitelistService.check_whitelist() with correct parameters."""
-        slfo_repo_path = Path("/cache/SLFO")
-        mock_prep, fake_slfo_context = _patch_whitelist_prep(
-            monkeypatch, slfo_repo_path=slfo_repo_path
-        )
+        _, fake_slfo_context = _patch_whitelist_prep(monkeypatch)
 
         repos = _patch_whitelist_other_repos(monkeypatch)
         repos["metadata"].return_value.parse_source_packages.return_value = {
@@ -868,7 +862,7 @@ class TestCheckWhitelistCommand:
 
         services["whitelist_service"].check_whitelist.assert_called_once()
         call_args = services["whitelist_service"].check_whitelist.call_args[1]
-        # whitelist bytes must be read from slfo_repo_path
+        # whitelist bytes come from the archive fetch
         assert call_args["whitelist_content"] == _WHITELIST_CONTENT
         assert call_args["shipped_packages"] == {"pkg1", "pkg2", "pkg3"}
         assert "submodules" not in call_args
@@ -878,19 +872,42 @@ class TestCheckWhitelistCommand:
         assert isinstance(call_args["overrides_file"], Path)
         assert call_args["overrides_file"].name == "false_positives_overrides.json"
 
-    def test_run_missing_whitelist_file_raises_file_not_found(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    def test_run_fetches_whitelist_file_via_archive_repo(
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Raises FileNotFoundError naming the resolved path when the whitelist is absent."""
-        config = {**_WHITELIST_BASE_CONFIG, "whitelist_file": "absent.json"}
-        _patch_whitelist_prep(monkeypatch, slfo_repo_path=tmp_path, config=config)
+        """The configured whitelist file is fetched at the product ref; its bytes are used."""
+        config = {**_WHITELIST_BASE_CONFIG, "whitelist_file": "custom_whitelist.json"}
+        _patch_whitelist_prep(monkeypatch, config=config)
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
+        archive_repo = Mock()
+        archive_repo.fetch_file.return_value = b'["fetched-pkg"]'
 
         args = argparse.Namespace(release="16.1", config=None, strict=False)
-        missing = tmp_path.resolve() / "absent.json"
-        with pytest.raises(FileNotFoundError, match=rf"^Whitelist file {missing} does not exist$"):
-            run_whitelist(args)
+        run_whitelist(args, archive_repo=archive_repo)
+
+        archive_repo.fetch_file.assert_called_once_with(
+            "https://github.com/test/repo", "main", "custom_whitelist.json"
+        )
+        call_kwargs = services["whitelist_service"].check_whitelist.call_args.kwargs
+        assert call_kwargs["whitelist_content"] == b'["fetched-pkg"]'
+
+    def test_run_missing_whitelist_file_propagates_value_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A whitelist absent at the ref surfaces as fetch_file's ValueError (CLI exit 64)."""
+        config = {**_WHITELIST_BASE_CONFIG, "whitelist_file": "absent.json"}
+        _patch_whitelist_prep(monkeypatch, config=config)
+        _patch_whitelist_other_repos(monkeypatch)
+        services = _patch_services(monkeypatch)
+        archive_repo = Mock()
+        archive_repo.fetch_file.side_effect = ValueError(
+            "File 'absent.json' does not exist at ref 'main' in https://github.com/test/repo"
+        )
+
+        args = argparse.Namespace(release="16.1", config=None, strict=False)
+        with pytest.raises(ValueError, match="'absent.json' does not exist at ref 'main'"):
+            run_whitelist(args, archive_repo=archive_repo)
 
         services["whitelist_service"].check_whitelist.assert_not_called()
 
@@ -1442,25 +1459,12 @@ class TestCheckUsersCommand:
         assert "2 of 3 users are not confirmed OBS accounts." in captured.out
         assert "INFO:" not in captured.out
 
-    def test_run_missing_maintainership_file_raises_file_not_found(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        """Propagates FileNotFoundError when the maintainership file is absent."""
-        config = {**_MAINT_BASE_CONFIG, "maintainership_file": "absent.json"}
-        _patch_maint_prep(monkeypatch, slfo_repo_path=tmp_path, config=config)
-
-        args = argparse.Namespace(
-            release="16.1", config=None, api="https://api.suse.de", batch_size=50
-        )
-        with pytest.raises(FileNotFoundError):
-            run_users(args)
-
-    def test_run_resolves_maintainership_file_from_slfo_repo_path(
+    def test_run_uses_default_archive_repo_when_none_injected(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Resolves maintainership_file via config.get + validate_file_within_directory."""
-        slfo_repo_path = Path("/cache/bugownerctl/SLFO")
-        _patch_maint_prep(monkeypatch, slfo_repo_path=slfo_repo_path)
+        """Without archive_repo, a RemoteArchiveRepositoryImpl is built and its bytes used."""
+        _patch_maint_prep(monkeypatch)
+        archive_cls = _stub_archive_fetch(monkeypatch, _MAINT_CONTENT)
         _, service_instance = _patch_users_service(monkeypatch)
 
         args = argparse.Namespace(
@@ -1468,9 +1472,28 @@ class TestCheckUsersCommand:
         )
         run_users(args)
 
-        service_instance.validate.assert_called_once()
-        positional_args = service_instance.validate.call_args[0]
-        assert positional_args[0] == _MAINT_CONTENT
+        archive_cls.assert_called_once_with()
+        assert service_instance.validate.call_args[0][0] == _MAINT_CONTENT
+
+    def test_run_fetches_maintainership_file_via_archive_repo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The configured maintainership file is fetched at the product ref; its bytes are used."""
+        config = {**_MAINT_BASE_CONFIG, "maintainership_file": "custom_maint.json"}
+        _patch_maint_prep(monkeypatch, config=config)
+        _, service_instance = _patch_users_service(monkeypatch)
+        archive_repo = Mock()
+        archive_repo.fetch_file.return_value = b'{"packages": {"fetched": {}}}'
+
+        args = argparse.Namespace(
+            release="16.1", config=None, api="https://api.suse.de", batch_size=50
+        )
+        run_users(args, archive_repo=archive_repo)
+
+        archive_repo.fetch_file.assert_called_once_with(
+            "https://github.com/test/repo", "main", "custom_maint.json"
+        )
+        assert service_instance.validate.call_args[0][0] == b'{"packages": {"fetched": {}}}'
 
     def test_run_forwards_api_and_batch_size_to_service_validate(
         self, monkeypatch: pytest.MonkeyPatch

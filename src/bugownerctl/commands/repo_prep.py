@@ -27,6 +27,8 @@ class SlfoRepoContext:
         cache_dir: Resolved (tilde-expanded) path used as the git cache root.
         slfo_repo_path: Path to the local SLFO repository clone.
         git_repo: The GitRepository instance used for clone/update operations.
+        slfo_git_url: SLFO git remote URL from config.
+        ref: The product's configured branch name.
         base_url: Optional per-product package-metadata base URL from config;
             None means the repository default URL is used.
         obs_project: Optional per-product OBS project name from config (e.g.
@@ -37,6 +39,8 @@ class SlfoRepoContext:
     cache_dir: Path
     slfo_repo_path: Path
     git_repo: GitRepository
+    slfo_git_url: str
+    ref: str
     base_url: str | None = None
     obs_project: str | None = None
 
@@ -200,4 +204,6 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
         cache_dir=cache_dir,
         ref_type=RefType.BRANCH,
     )
-    return SlfoRepoContext(config, cache_dir, slfo_repo_path, git_repo, base_url, obs_project)
+    return SlfoRepoContext(
+        config, cache_dir, slfo_repo_path, git_repo, slfo_git_url, git_ref, base_url, obs_project
+    )

@@ -118,6 +118,21 @@ class TestPrepareSlfoRepoContextFields:
 
         assert ctx.slfo_repo_path == Path("/cache/SLFO")
 
+    def test_ctx_carries_slfo_git_url_and_ref(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """ctx.slfo_git_url and ctx.ref are the configured URL and the product's branch."""
+        loaded_config = dict(BASE_CONFIG)
+        monkeypatch.setattr(
+            "bugownerctl.commands.repo_prep.load_config",
+            Mock(return_value=loaded_config),
+        )
+        mock_git_cls, _ = _make_mock_git_cls()
+        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
+
+        ctx = prepare_slfo_repo(version="16.0", config_file=None)
+
+        assert ctx.slfo_git_url == "gitea@src.suse.de:products/SLFO.git"
+        assert ctx.ref == "slfo-1.2"
+
     def test_ctx_config_equals_loaded_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """ctx.config is the exact dict object returned by load_config (identity check)."""
         loaded_config = dict(BASE_CONFIG)

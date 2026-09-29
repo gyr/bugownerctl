@@ -17,11 +17,14 @@ from bugownerctl.repositories.obs_person_repository import ObsPersonRepositoryIm
 from bugownerctl.repositories.obs_source_info_repository import (
     ObsSourceInfoRepositoryImpl,
 )
+from bugownerctl.repositories.remote_archive_repository import (
+    RemoteArchiveRepository,
+    RemoteArchiveRepositoryImpl,
+)
 from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
 from bugownerctl.services.user_validation_service import UserValidationService
 from bugownerctl.services.validation_service import ValidationService
 from bugownerctl.services.whitelist_service import WhitelistService
-from bugownerctl.utils.file_utils import validate_file_within_directory
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +55,24 @@ def _resolve_verify(config: dict[str, Any]) -> bool | str:
     return verify
 
 
-def run_maintainership(args: argparse.Namespace) -> int:
+def run_maintainership(
+    args: argparse.Namespace, archive_repo: RemoteArchiveRepository | None = None
+) -> int:
     """Execute check maintainership subcommand.
 
     Args:
         args: Parsed command-line arguments (requires version attribute)
+        archive_repo: Injection seam for tests; a RemoteArchiveRepositoryImpl is
+            constructed when omitted, since argparse calls the handler with the
+            namespace alone.
 
     Returns:
         Exit code (0 = no issues, 2 = gating findings found)
 
     Raises:
         ConfigError: If the product has no `obs_project` configured.
+        ValueError: From the archive fetch, if the configured maintainership file
+            is absent at the product ref.
     """
     slfo_context = prepare_slfo_repo(args.release, args.config)
     if slfo_context.obs_project is None:
@@ -77,13 +87,14 @@ def run_maintainership(args: argparse.Namespace) -> int:
     metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
     source_info_repo = ObsSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
+    repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
 
     repo_metadata_file = metadata_repo.download_primary_metadata(
         args.release, slfo_context.cache_dir
     )
 
-    maintainership_file = validate_file_within_directory(
-        slfo_context.slfo_repo_path, maintainership_file_name, "Maintainership file"
+    maintainership_content = repo.fetch_file(
+        slfo_context.slfo_git_url, slfo_context.ref, maintainership_file_name
     )
 
     service = ValidationService(
@@ -96,7 +107,7 @@ def run_maintainership(args: argparse.Namespace) -> int:
     overrides_resource = files("bugownerctl.data").joinpath("false_positives_overrides.json")
     with as_file(overrides_resource) as overrides_file:
         result = service.validate_all(
-            maintainership_content=maintainership_file.read_bytes(),
+            maintainership_content=maintainership_content,
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
             obs_project=slfo_context.obs_project,
@@ -157,18 +168,24 @@ def run_maintainership(args: argparse.Namespace) -> int:
     return ExitCode.ISSUES if gate else ExitCode.OK
 
 
-def run_whitelist(args: argparse.Namespace) -> int:
+def run_whitelist(
+    args: argparse.Namespace, archive_repo: RemoteArchiveRepository | None = None
+) -> int:
     """Execute check whitelist subcommand.
 
     Args:
         args: Parsed command-line arguments (requires version attribute)
+        archive_repo: Injection seam for tests; a RemoteArchiveRepositoryImpl is
+            constructed when omitted, since argparse calls the handler with the
+            namespace alone.
 
     Returns:
         Exit code (0 = no issues, 2 = gating findings found)
 
     Raises:
         ConfigError: If the product has no `obs_project` configured.
-        FileNotFoundError: If the configured whitelist file is absent from the SLFO clone.
+        ValueError: From the archive fetch, if the configured whitelist file is
+            absent at the product ref.
     """
     slfo_context = prepare_slfo_repo(args.release, args.config)
     if slfo_context.obs_project is None:
@@ -181,6 +198,7 @@ def run_whitelist(args: argparse.Namespace) -> int:
     metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
     source_info_repo = ObsSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
+    repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
 
     validation_service = ValidationService(
         maintainership_repo,
@@ -196,20 +214,16 @@ def run_whitelist(args: argparse.Namespace) -> int:
 
     shipped_packages = metadata_repo.parse_source_packages(repo_metadata_file)
 
-    # Use paths from cloned SLFO repository (whitelist) and cache_dir (XDG)
-    # Validate to prevent path traversal via config
-    whitelist_file = validate_file_within_directory(
-        slfo_context.slfo_repo_path, whitelist_file_name, "Whitelist file"
+    whitelist_content = repo.fetch_file(
+        slfo_context.slfo_git_url, slfo_context.ref, whitelist_file_name
     )
-    if not whitelist_file.exists():
-        raise FileNotFoundError(f"Whitelist file {whitelist_file} does not exist")
 
     # Resolve the shipped overrides JSON via importlib.resources so it
     # works whether the package is installed as a wheel or run from source.
     overrides_resource = files("bugownerctl.data").joinpath("false_positives_overrides.json")
     with as_file(overrides_resource) as overrides_file:
         result = whitelist_service.check_whitelist(
-            whitelist_content=whitelist_file.read_bytes(),
+            whitelist_content=whitelist_content,
             shipped_packages=shipped_packages,
             overrides_file=overrides_file,
             obs_project=slfo_context.obs_project,
@@ -245,28 +259,36 @@ def run_whitelist(args: argparse.Namespace) -> int:
     return ExitCode.ISSUES if gate else ExitCode.OK
 
 
-def run_users(args: argparse.Namespace) -> int:
+def run_users(args: argparse.Namespace, archive_repo: RemoteArchiveRepository | None = None) -> int:
     """Execute check users subcommand.
 
     Args:
         args: Parsed command-line arguments (requires version, config, api, batch_size).
+        archive_repo: Injection seam for tests; a RemoteArchiveRepositoryImpl is
+            constructed when omitted, since argparse calls the handler with the
+            namespace alone.
 
     Returns:
         Exit code (0 = all confirmed, 2 = any invalid or not found).
+
+    Raises:
+        ValueError: From the archive fetch, if the configured maintainership file
+            is absent at the product ref.
     """
     slfo_context = prepare_slfo_repo(args.release, args.config)
     maintainership_file_name = slfo_context.config.get(
         "maintainership_file", "_maintainership.json"
     )
-    maintainership_file = validate_file_within_directory(
-        slfo_context.slfo_repo_path, maintainership_file_name, "Maintainership file"
+    repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
+    maintainership_content = repo.fetch_file(
+        slfo_context.slfo_git_url, slfo_context.ref, maintainership_file_name
     )
 
     maintainership_repo = MaintainershipRepositoryImpl()
     person_repo = ObsPersonRepositoryImpl()
     service = UserValidationService(maintainership_repo, person_repo)
 
-    result = service.validate(maintainership_file.read_bytes(), args.api, args.batch_size)
+    result = service.validate(maintainership_content, args.api, args.batch_size)
 
     if result.confirmed:
         print(f"Found {len(result.confirmed)} confirmed OBS accounts.")
