@@ -29,7 +29,7 @@ slfo_git_url: gitea@src.suse.de:products/SLFO.git
 # REQUIRED: Update with versions you need to test
 products:
   - version: "16.0"
-    commit: 9d679ed  # Specific commit for reproducibility
+    branch: slfo-1.2  # Track the 1.2 release branch (commit pins are not supported)
     # OBS project that builds this product's sources
     # REQUIRED by `check maintainership` and `check whitelist` (ConfigError if absent)
     obs_project: SUSE:SLFO:1.2

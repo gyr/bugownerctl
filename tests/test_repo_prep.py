@@ -22,7 +22,7 @@ BASE_CONFIG: dict[str, Any] = {
     "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
     "products": [
         {"version": "16.1", "branch": "slfo-main"},
-        {"version": "16.0", "commit": "9d679ed"},
+        {"version": "16.0", "branch": "slfo-1.2"},
     ],
 }
 
@@ -61,25 +61,6 @@ class TestPrepareSlfoRepoRefTypes:
             git_ref="slfo-main",
             cache_dir=Path.home() / ".cache" / "bugownerctl",
             ref_type=RefType.BRANCH,
-        )
-
-    def test_commit_ref_uses_commit_ref_type(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Product with commit key → clone_or_update receives RefType.COMMIT and the commit hash."""
-        loaded_config = dict(BASE_CONFIG)
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
-            Mock(return_value=loaded_config),
-        )
-        mock_git_cls, mock_git_instance = _make_mock_git_cls()
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
-
-        prepare_slfo_repo(version="16.0", config_file=None)
-
-        mock_git_instance.clone_or_update.assert_called_once_with(
-            repo_url="gitea@src.suse.de:products/SLFO.git",
-            git_ref="9d679ed",
-            cache_dir=Path.home() / ".cache" / "bugownerctl",
-            ref_type=RefType.COMMIT,
         )
 
 
@@ -344,7 +325,7 @@ class TestPrepareSlfoRepoBaseUrl:
             "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "products": [
-                {"version": "16.0", "commit": "9d679ed", "base_url": "https://example.test/a/"},
+                {"version": "16.0", "branch": "slfo-1.2", "base_url": "https://example.test/a/"},
                 {"version": "16.1", "branch": "slfo-main"},
             ],
         }
@@ -446,7 +427,7 @@ class TestPrepareSlfoRepoObsProject:
             "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
             "products": [
-                {"version": "16.0", "commit": "9d679ed", "obs_project": "EXAMPLE:Other"},
+                {"version": "16.0", "branch": "slfo-1.2", "obs_project": "EXAMPLE:Other"},
                 {"version": "16.1", "branch": "slfo-main"},
             ],
         }
@@ -496,26 +477,38 @@ class TestPrepareSlfoRepoErrors:
         with pytest.raises(ValueError, match="Version 99.9 not found in config"):
             prepare_slfo_repo(version="99.9", config_file=None)
 
-    def test_raises_neither_branch_nor_commit(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Product config missing both branch and commit keys raises ValueError."""
+    @pytest.mark.parametrize(
+        "product",
+        [
+            {"version": "16.1"},
+            {"version": "16.0", "commit": "9d679ed"},
+        ],
+    )
+    def test_missing_branch_raises_config_error(
+        self, product: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A product without a branch key raises ConfigError, commit pin or not.
+
+        git archive serves only branch or tag names, so a commit pin can never
+        be honoured.
+        """
         loaded_config = {
             "cache_dir": "~/.cache/bugownerctl",
             "slfo_git_url": "gitea@src.suse.de:products/SLFO.git",
-            "products": [
-                {"version": "16.1"},  # neither branch nor commit
-            ],
+            "products": [product],
         }
         monkeypatch.setattr(
             "bugownerctl.commands.repo_prep.load_config",
             Mock(return_value=loaded_config),
         )
-        monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.GitRepositoryImpl",
-            Mock(),
-        )
+        mock_git_cls = Mock()
+        monkeypatch.setattr("bugownerctl.commands.repo_prep.GitRepositoryImpl", mock_git_cls)
 
-        with pytest.raises(ValueError, match="has neither branch nor commit"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+        version = product["version"]
+        with pytest.raises(ConfigError, match=f"version {version} has no 'branch' configured"):
+            prepare_slfo_repo(version=version, config_file=None)
+
+        mock_git_cls.assert_not_called()
 
     @pytest.mark.parametrize("empty_ref", ["", None])
     def test_raises_empty_git_ref(

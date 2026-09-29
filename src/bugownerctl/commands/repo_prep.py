@@ -151,10 +151,11 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
         SlfoRepoContext with all resolved values.
 
     Raises:
-        ValueError: If version not found, ref is missing/empty, or
+        ValueError: If version not found, the branch is empty, or
                     slfo_git_url is absent from config.
-        ConfigError: If config file cannot be found, or the product's
-                     optional base_url or obs_project is invalid.
+        ConfigError: If config file cannot be found, the product has no
+                     branch configured, or the product's optional base_url
+                     or obs_project is invalid.
         RuntimeError: If git operations fail.
     """
     logger.info("preparing SLFO repo for version %s", version)
@@ -176,14 +177,13 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
     base_url = _resolve_base_url(product_config, version)
     obs_project = _resolve_obs_project(product_config, version)
 
-    if "branch" in product_config:
-        git_ref = product_config["branch"]
-        ref_type = RefType.BRANCH
-    elif "commit" in product_config:
-        git_ref = product_config["commit"]
-        ref_type = RefType.COMMIT
-    else:
-        raise ValueError(f"Product config for version {version} has neither branch nor commit")
+    if "branch" not in product_config:
+        raise ConfigError(
+            f"Product config for version {version} has no 'branch' configured. "
+            "Commit pins are not supported: git archive serves only branch or tag "
+            "names, never a commit SHA; use 'branch:'."
+        )
+    git_ref = product_config["branch"]
     if not git_ref:
         raise ValueError(f"Empty git ref for version {version}")
 
@@ -198,6 +198,6 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
         repo_url=slfo_git_url,
         git_ref=git_ref,
         cache_dir=cache_dir,
-        ref_type=ref_type,
+        ref_type=RefType.BRANCH,
     )
     return SlfoRepoContext(config, cache_dir, slfo_repo_path, git_repo, base_url, obs_project)
