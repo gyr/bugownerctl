@@ -31,6 +31,7 @@ import pytest
 from bugownerctl.exceptions import MissingBinaryError, NetworkTimeoutError
 from bugownerctl.repositories import remote_archive_repository
 from bugownerctl.repositories.remote_archive_repository import (
+    FileNotFoundAtRefError,
     RemoteArchiveRepository,
     RemoteArchiveRepositoryImpl,
     _extract_single_regular_file,
@@ -509,6 +510,63 @@ class TestFetchFile:
             RemoteArchiveRepositoryImpl().fetch_file(
                 "https://src.suse.de/pool/vim", "slfo-1.3", "_maintainership.json"
             )
+
+    def test_absent_file_raises_file_not_found_at_ref_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Should raise the FileNotFoundAtRefError subclass, so callers can tell it apart.
+
+        It stays a ValueError, so callers that do not care keep exit 64.
+        """
+        monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
+        _patch_run(
+            monkeypatch,
+            _completed(
+                returncode=1,
+                stderr=b"fatal: pathspec '_maintainership.json' did not match any files",
+            ),
+        )
+
+        with pytest.raises(FileNotFoundAtRefError) as excinfo:
+            RemoteArchiveRepositoryImpl().fetch_file(
+                "https://src.suse.de/pool/vim", "slfo-1.3", "_maintainership.json"
+            )
+
+        assert isinstance(excinfo.value, ValueError)
+
+    def test_unknown_ref_does_not_raise_file_not_found_at_ref_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An unserved ref is a plain ValueError, not the missing-file subclass."""
+        monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
+        _patch_run(
+            monkeypatch,
+            _completed(
+                returncode=1,
+                stderr=b"remote: fatal: no such ref: slfo-9.9\nfatal: sent error to the client",
+            ),
+        )
+
+        with pytest.raises(ValueError) as excinfo:
+            RemoteArchiveRepositoryImpl().fetch_file(
+                "https://src.suse.de/pool/vim", "slfo-9.9", "_maintainership.json"
+            )
+
+        assert not isinstance(excinfo.value, FileNotFoundAtRefError)
+
+    def test_file_path_with_a_directory_component_does_not_raise_file_not_found_at_ref_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A '/' in file_path is a plain ValueError, not the missing-file subclass."""
+        monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/git")
+        _patch_run(monkeypatch, _completed())
+
+        with pytest.raises(ValueError) as excinfo:
+            RemoteArchiveRepositoryImpl().fetch_file(
+                "https://src.suse.de/pool/vim", "slfo-1.3", "sub/_maintainership.json"
+            )
+
+        assert not isinstance(excinfo.value, FileNotFoundAtRefError)
 
     def test_oversized_archive_raises_runtime_error_before_parsing(
         self, monkeypatch: pytest.MonkeyPatch

@@ -5,6 +5,7 @@ using real fixtures and minimal mocking.
 """
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from unittest.mock import patch
 
@@ -139,17 +140,23 @@ class TestValidateWorkflow:
             assert exit_code == 2, "Should return 2 when orphan packages found"
 
 
+def _serve_files(files: dict[str, bytes]) -> Callable[[str, str, str], bytes]:
+    """Build a fetch_file side effect serving `files` by name, as if at the product ref."""
+
+    def fetch_file(repo_url: str, ref: str, file_path: str) -> bytes:
+        return files[file_path]
+
+    return fetch_file
+
+
 class TestQueryPackageWorkflow:
     """Integration tests for 'bugownerctl query package' workflow."""
 
     def test_query_package_finds_maintained_package(self, tmp_path, monkeypatch):
         """Should find and display package maintainers."""
-        # Setup fixture files in tmp_path (used as cloned slfo_repo_path)
         maintainership_data = {
             "packages": {"test-package": {"users": ["user1", "user2"], "groups": ["team1"]}}
         }
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
-        (tmp_path / "whitelist_maintainership.json").write_text(json.dumps([]))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -163,6 +170,15 @@ class TestQueryPackageWorkflow:
             patch(
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                side_effect=_serve_files(
+                    {
+                        "_maintainership.json": json.dumps(maintainership_data).encode(),
+                        "whitelist_maintainership.json": json.dumps([]).encode(),
+                    }
+                ),
+            ),
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "test-package", "-r", "16.1"]),
         ):
@@ -173,8 +189,6 @@ class TestQueryPackageWorkflow:
     def test_query_package_finds_whitelisted_package(self, tmp_path, monkeypatch):
         """Should indicate when package is whitelisted (no maintainer)."""
         maintainership_data = {"packages": {}}
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
-        (tmp_path / "whitelist_maintainership.json").write_text(json.dumps(["whitelisted-package"]))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -188,6 +202,17 @@ class TestQueryPackageWorkflow:
             patch(
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                side_effect=_serve_files(
+                    {
+                        "_maintainership.json": json.dumps(maintainership_data).encode(),
+                        "whitelist_maintainership.json": json.dumps(
+                            ["whitelisted-package"]
+                        ).encode(),
+                    }
+                ),
+            ),
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch(
                 "sys.argv",
@@ -201,8 +226,6 @@ class TestQueryPackageWorkflow:
     def test_query_package_not_found(self, tmp_path, monkeypatch):
         """Should report when package not found in maintainership or whitelist."""
         maintainership_data = {"packages": {}}
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
-        (tmp_path / "whitelist_maintainership.json").write_text(json.dumps([]))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -216,6 +239,15 @@ class TestQueryPackageWorkflow:
             patch(
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                side_effect=_serve_files(
+                    {
+                        "_maintainership.json": json.dumps(maintainership_data).encode(),
+                        "whitelist_maintainership.json": json.dumps([]).encode(),
+                    }
+                ),
+            ),
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package", "-r", "16.1"]),
         ):
@@ -237,7 +269,6 @@ class TestQueryMaintainerWorkflow:
                 "package4": {"users": [], "groups": ["team1"]},
             }
         }
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -250,6 +281,14 @@ class TestQueryMaintainerWorkflow:
             patch(
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                side_effect=_serve_files(
+                    {
+                        "_maintainership.json": json.dumps(maintainership_data).encode(),
+                    }
+                ),
+            ),
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1", "-r", "16.1"]),
         ):
@@ -266,7 +305,6 @@ class TestQueryMaintainerWorkflow:
                 "package3": {"users": ["user1"], "groups": []},
             }
         }
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -279,6 +317,14 @@ class TestQueryMaintainerWorkflow:
             patch(
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                side_effect=_serve_files(
+                    {
+                        "_maintainership.json": json.dumps(maintainership_data).encode(),
+                    }
+                ),
+            ),
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1", "-r", "16.1"]),
         ):
@@ -289,7 +335,6 @@ class TestQueryMaintainerWorkflow:
     def test_query_maintainer_not_found(self, tmp_path, monkeypatch):
         """Should report when maintainer has no packages."""
         maintainership_data = {"packages": {"package1": {"users": ["user1"], "groups": []}}}
-        (tmp_path / "_maintainership.json").write_text(json.dumps(maintainership_data))
 
         config_data = {
             "cache_dir": str(tmp_path / "cache"),
@@ -302,6 +347,14 @@ class TestQueryMaintainerWorkflow:
             patch(
                 "bugownerctl.repositories.git_repository.GitRepositoryImpl.clone_or_update"
             ) as mock_clone,
+            patch(
+                "bugownerctl.repositories.remote_archive_repository.RemoteArchiveRepositoryImpl.fetch_file",
+                side_effect=_serve_files(
+                    {
+                        "_maintainership.json": json.dumps(maintainership_data).encode(),
+                    }
+                ),
+            ),
             patch("bugownerctl.utils.config.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user", "-r", "16.1"]),
         ):
