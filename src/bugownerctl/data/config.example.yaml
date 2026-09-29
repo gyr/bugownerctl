@@ -12,7 +12,7 @@
 # REQUIRED: Update for your environment
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
 
-# Cache directory for downloads, clones, persistent data
+# Cache directory for downloaded package metadata
 # Optional: defaults to ~/.cache/bugownerctl
 # cache_dir: ~/.cache/bugownerctl
 
