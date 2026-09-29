@@ -81,8 +81,8 @@ class TestParseSourcePackages:
         # Assert
         assert result == {"source-pkg1"}
 
-    def test_parse_source_packages_handles_empty_metadata(self, tmp_path: Path) -> None:
-        """Should return empty set when no packages found."""
+    def test_parse_source_packages_raises_on_empty_metadata(self, tmp_path: Path) -> None:
+        """Should raise RuntimeError when no packages found."""
         # Arrange
         primary_xml_content = """<?xml version="1.0" encoding="UTF-8"?>
 <metadata xmlns="http://linux.duke.edu/metadata/common">
@@ -94,11 +94,58 @@ class TestParseSourcePackages:
 
         repo = RepoMetadataRepositoryImpl()
 
-        # Act
-        result = repo.parse_source_packages(xml_file)
+        # Act & Assert
+        with pytest.raises(RuntimeError, match="No source packages found"):
+            repo.parse_source_packages(xml_file)
 
-        # Assert
-        assert result == set()
+    def test_parse_source_packages_raises_when_only_binary_packages(self, tmp_path: Path) -> None:
+        """Should raise RuntimeError naming the file when no src package is present."""
+        # Arrange
+        primary_xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<metadata xmlns="http://linux.duke.edu/metadata/common">
+  <package type="rpm">
+    <name>binary-pkg1</name>
+    <arch>x86_64</arch>
+  </package>
+  <package type="rpm">
+    <name>binary-pkg2</name>
+    <arch>noarch</arch>
+  </package>
+</metadata>"""
+
+        xml_file = tmp_path / "primary.xml.gz"
+        with gzip.open(xml_file, "wt", encoding="utf-8") as f:
+            f.write(primary_xml_content)
+
+        repo = RepoMetadataRepositoryImpl()
+
+        # Act & Assert
+        with pytest.raises(RuntimeError) as exc_info:
+            repo.parse_source_packages(xml_file)
+
+        assert "No source packages found" in str(exc_info.value)
+        assert str(xml_file) in str(exc_info.value)
+
+    def test_parse_source_packages_raises_on_unknown_namespace(self, tmp_path: Path) -> None:
+        """Should raise RuntimeError when src packages use an unrecognised namespace."""
+        # Arrange
+        primary_xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<metadata xmlns="http://example.invalid/metadata/common">
+  <package type="rpm">
+    <name>apache2</name>
+    <arch>src</arch>
+  </package>
+</metadata>"""
+
+        xml_file = tmp_path / "primary.xml.gz"
+        with gzip.open(xml_file, "wt", encoding="utf-8") as f:
+            f.write(primary_xml_content)
+
+        repo = RepoMetadataRepositoryImpl()
+
+        # Act & Assert
+        with pytest.raises(RuntimeError, match="No source packages found"):
+            repo.parse_source_packages(xml_file)
 
     def test_parse_source_packages_handles_missing_arch_element(self, tmp_path: Path) -> None:
         """Should skip packages without arch element."""

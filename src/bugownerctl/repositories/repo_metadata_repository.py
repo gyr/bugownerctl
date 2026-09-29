@@ -52,6 +52,7 @@ class RepoMetadataRepository(Protocol):
 
         Raises:
             FileNotFoundError: If primary_xml_path doesn't exist
+            RuntimeError: If no source packages are found
         """
         ...
 
@@ -238,6 +239,7 @@ class RepoMetadataRepositoryImpl:
 
         Raises:
             FileNotFoundError: If primary_xml_path doesn't exist
+            RuntimeError: If no source packages are found
         """
         if not primary_xml_path.exists():
             raise FileNotFoundError(f"Primary XML file not found: {primary_xml_path}")
@@ -277,5 +279,11 @@ class RepoMetadataRepositoryImpl:
                     "Primary XML contains a DOCTYPE declaration; refusing to parse "
                     "(prevents entity-expansion attacks)."
                 ) from exc
+
+        if not source_packages:
+            raise RuntimeError(
+                f"No source packages found in {primary_xml_path}; check 'base_url' in your "
+                "config, or the repository metadata format may have changed"
+            )
 
         return source_packages
