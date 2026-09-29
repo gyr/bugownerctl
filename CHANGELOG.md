@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.2] - 2026-09-29
+
+### Fixed
+
+- `check maintainership` and `check whitelist` ran on an empty shipped-package list, and printed
+  misleading results with no error, when `primary.xml.gz` listed no source packages (for example
+  a wrong `base_url`, or a metadata namespace the parser does not recognise). They now stop with
+  exit 1 and an error naming the file and pointing at `base_url`.
+
 ## [0.8.1] - 2026-09-29
 
 ### Fixed
