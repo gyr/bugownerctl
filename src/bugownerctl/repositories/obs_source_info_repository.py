@@ -22,7 +22,10 @@ import re
 import subprocess
 from datetime import UTC, datetime
 from typing import Protocol
-from xml.etree.ElementTree import Element  # type annotation only; parsing uses defusedxml
+
+# Type annotation only; all parsing goes through defusedxml, so bandit's B405
+# (stdlib XML parser import) does not apply.
+from xml.etree.ElementTree import Element  # nosec B405
 
 from defusedxml import ElementTree as ET
 from defusedxml.common import DefusedXmlException
