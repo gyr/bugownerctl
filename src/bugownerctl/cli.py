@@ -107,19 +107,10 @@ def create_parser() -> argparse.ArgumentParser:
         help="Validate maintainership data for inconsistencies and orphan packages",
     )
     maintainership_parser.add_argument(
-        "--refresh-bulk-map",
-        action="store_true",
-        default=False,
-        help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
-    )
-    maintainership_parser.add_argument(
         "--strict",
         action="store_true",
         default=False,
-        help=(
-            "Also gate on shipped-not-in-submodule, unresolved-names,"
-            " and maintained-without-submodule"
-        ),
+        help="Also gate on shipped-not-in-OBS, unresolved-names, and maintained-not-in-OBS",
     )
     maintainership_parser.set_defaults(func=check.run_maintainership)
 
@@ -129,12 +120,6 @@ def create_parser() -> argparse.ArgumentParser:
         parents=[context],
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="Validate that whitelisted packages are NOT shipped",
-    )
-    whitelist_parser.add_argument(
-        "--refresh-bulk-map",
-        action="store_true",
-        default=False,
-        help="Force re-fetch of the OBS bulk source-info map, ignoring cached data",
     )
     whitelist_parser.add_argument(
         "--strict",

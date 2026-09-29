@@ -1,7 +1,6 @@
 """MaintainershipRepository for loading and querying maintainership data."""
 
 import json
-from pathlib import Path
 from typing import Protocol
 
 from ..domain.maintainer import MaintainershipData
@@ -10,20 +9,19 @@ from ..domain.maintainer import MaintainershipData
 class MaintainershipRepository(Protocol):
     """Interface for maintainership data access."""
 
-    def load(self, file_path: Path) -> MaintainershipData:
-        """Load and parse maintainership JSON file.
+    def load(self, content: bytes) -> MaintainershipData:
+        """Parse maintainership JSON content.
 
         Expects new format with "packages" key containing package objects.
         Returns normalized format: {"package": ["maintainer1", "maintainer2"]}
 
         Args:
-            file_path: Path to _maintainership.json
+            content: Raw bytes of a _maintainership.json document
 
         Returns:
             MaintainershipData with normalized package->maintainers mapping
 
         Raises:
-            FileNotFoundError: If file doesn't exist
             json.JSONDecodeError: If invalid JSON
             KeyError: If missing required 'packages' key
         """
@@ -64,19 +62,18 @@ class MaintainershipRepository(Protocol):
         """
         ...
 
-    def load_users_by_package(self, file_path: Path) -> dict[str, list[str]]:
-        """Load users per package from a maintainership JSON file.
+    def load_users_by_package(self, content: bytes) -> dict[str, list[str]]:
+        """Parse users per package from maintainership JSON content.
 
         Returns only the "users" list per package, excluding groups.
 
         Args:
-            file_path: Path to _maintainership.json
+            content: Raw bytes of a _maintainership.json document
 
         Returns:
             Mapping of package name to list of user login strings.
 
         Raises:
-            FileNotFoundError: If file doesn't exist
             json.JSONDecodeError: If invalid JSON
             KeyError: If missing required 'packages' key
         """
@@ -86,25 +83,23 @@ class MaintainershipRepository(Protocol):
 class MaintainershipRepositoryImpl:
     """Repository for maintainership data access."""
 
-    def load(self, file_path: Path) -> MaintainershipData:
-        """Load and parse maintainership JSON file.
+    def load(self, content: bytes) -> MaintainershipData:
+        """Parse maintainership JSON content.
 
         Expects new format with "packages" key containing package objects.
         Returns normalized format: {"package": ["maintainer1", "maintainer2"]}
 
         Args:
-            file_path: Path to _maintainership.json
+            content: Raw bytes of a _maintainership.json document
 
         Returns:
             MaintainershipData with normalized package->maintainers mapping
 
         Raises:
-            FileNotFoundError: If file doesn't exist
             json.JSONDecodeError: If invalid JSON
             KeyError: If missing required 'packages' key
         """
-        with open(file_path) as f:
-            data = json.load(f)
+        data = json.loads(content)
 
         packages_raw = data["packages"]
         packages_normalized = {}
@@ -155,22 +150,20 @@ class MaintainershipRepositoryImpl:
                 result.append(package_name)
         return result
 
-    def load_users_by_package(self, file_path: Path) -> dict[str, list[str]]:
-        """Load users per package from a maintainership JSON file.
+    def load_users_by_package(self, content: bytes) -> dict[str, list[str]]:
+        """Parse users per package from maintainership JSON content.
 
         Returns only the "users" list per package, excluding groups.
 
         Args:
-            file_path: Path to _maintainership.json
+            content: Raw bytes of a _maintainership.json document
 
         Returns:
             Mapping of package name to list of user login strings.
 
         Raises:
-            FileNotFoundError: If file doesn't exist
             json.JSONDecodeError: If invalid JSON
             KeyError: If missing required 'packages' key
         """
-        with open(file_path) as f:
-            data = json.load(f)
+        data = json.loads(content)
         return {pkg: pkg_obj.get("users", []) for pkg, pkg_obj in data["packages"].items()}

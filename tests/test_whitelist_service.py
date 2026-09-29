@@ -7,6 +7,48 @@ import pytest
 
 from bugownerctl.services.whitelist_service import WhitelistCheckResult, WhitelistService
 
+# Synthetic OBS project name passed to every check_whitelist call.
+_OBS_PROJECT = "TEST:Project:1.0"
+
+
+class TestLoadWhitelist:
+    """Tests for WhitelistService.load_whitelist() method."""
+
+    def test_load_whitelist_parses_bytes_payload(self) -> None:
+        """Should return the package names from a JSON-array bytes payload."""
+        service = WhitelistService(Mock())
+
+        assert service.load_whitelist(b'["pkg1", "pkg2"]') == {"pkg1", "pkg2"}
+
+    def test_load_whitelist_rejects_oversized_payload(self) -> None:
+        """Should raise ValueError when the payload exceeds MAX_WHITELIST_SIZE."""
+        service = WhitelistService(Mock())
+        # Valid JSON array one byte over the limit, so only the size check can reject it.
+        oversized = b"[" + b" " * (WhitelistService.MAX_WHITELIST_SIZE - 1) + b"]"
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                rf"^Whitelist is too large: {len(oversized)} bytes "
+                rf"\(max {WhitelistService.MAX_WHITELIST_SIZE}\)$"
+            ),
+        ):
+            service.load_whitelist(oversized)
+
+    def test_load_whitelist_rejects_non_array(self) -> None:
+        """Should raise ValueError when the payload is not a JSON array."""
+        service = WhitelistService(Mock())
+
+        with pytest.raises(ValueError, match=r"^Whitelist must contain a JSON array, got dict$"):
+            service.load_whitelist(b'{"pkg1": 1}')
+
+    def test_load_whitelist_rejects_non_string_elements(self) -> None:
+        """Should raise ValueError when an array element is not a string."""
+        service = WhitelistService(Mock())
+
+        with pytest.raises(ValueError, match=r"^Whitelist must contain only strings$"):
+            service.load_whitelist(b'["pkg1", 1]')
+
 
 class TestCheckWhitelist:
     """Tests for WhitelistService.check_whitelist() method."""
@@ -15,28 +57,24 @@ class TestCheckWhitelist:
         """Should return empty list when validated packages don't overlap with whitelist."""
         # Setup mock validation service (3-tuple return: valid, residue, unresolved)
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1", "pkg2"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist file with different packages
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg3", "pkg4"]')
+        whitelist_content = b'["pkg3", "pkg4"]'
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "pkg2", "pkg5"},
-            submodules=["pkg1", "pkg2"],
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify
@@ -48,28 +86,24 @@ class TestCheckWhitelist:
     ) -> None:
         """Should find packages that are BOTH shipped AND whitelisted."""
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1", "pkg2", "pkg3"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist with pkg1 and pkg2 (overlap with validated shipped)
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg1", "pkg2", "pkg4"]')
+        whitelist_content = b'["pkg1", "pkg2", "pkg4"]'
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "pkg2", "pkg3", "pkg5"},
-            submodules=["pkg1", "pkg2", "pkg3"],
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify - pkg1 and pkg2 are in BOTH validated shipped and whitelist
@@ -78,229 +112,135 @@ class TestCheckWhitelist:
     def test_check_whitelist_handles_empty_whitelist(self, tmp_path: Path) -> None:
         """Should return no inconsistencies when whitelist is empty."""
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1", "pkg2"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
         service = WhitelistService(mock_validation_service)
 
-        # Create empty whitelist
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text("[]")
+        whitelist_content = b"[]"
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "pkg2"},
-            submodules=["pkg1", "pkg2"],
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify
         assert result.inconsistent_packages == []
 
-    def test_check_whitelist_raises_error_when_whitelist_file_missing(self, tmp_path: Path) -> None:
-        """Should raise FileNotFoundError when whitelist file doesn't exist."""
-        mock_validation_service = Mock()
-        service = WhitelistService(mock_validation_service)
-
-        whitelist_file = tmp_path / "nonexistent.json"
-        overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
-
-        # Execute and verify
-        with pytest.raises(FileNotFoundError, match="Whitelist file .* does not exist"):
-            service.check_whitelist(
-                whitelist_file=whitelist_file,
-                shipped_packages={"pkg1"},
-                submodules=["pkg1"],
-                overrides_file=overrides_file,
-                cache_dir=cache_dir,
-            )
-
     def test_check_whitelist_calls_validation_service_with_correct_parameters(
         self, tmp_path: Path
     ) -> None:
-        """Should pre-load bulk_map then call find_shipped_without_submodule with bulk_map=.
+        """Should pre-load source_info then call resolve_shipped_packages with source_info=.
 
-        After Fix 1, check_whitelist pre-loads bulk_map (via bulk_map_repo.load_bulk_map)
-        and passes it as bulk_map= to find_shipped_without_submodule.  force_refresh
-        lives at load_bulk_map, not at find_shipped_without_submodule.
+        After Fix 1, check_whitelist pre-loads source_info (via source_info_repo.load_source_info)
+        and passes it as source_info= to resolve_shipped_packages.
         """
-        mock_bulk_map = Mock(name="bulk_map")
+        mock_source_info = Mock(name="source_info")
         mock_validation_service = Mock()
-        mock_validation_service.bulk_map_repo.load_bulk_map.return_value = mock_bulk_map
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.source_info_repo.load_source_info.return_value = mock_source_info
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1"},  # valid_packages
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg1"]')
+        whitelist_content = b'["pkg1"]'
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
         shipped_packages = {"pkg1", "pkg2"}
-        submodules = ["pkg1"]
         obs_project = "TEST:PROJECT"
 
         # Execute
         service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages=shipped_packages,
-            submodules=submodules,
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
             obs_project=obs_project,
         )
 
-        # bulk_map loaded at orchestration layer with default force_refresh=False
-        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            obs_project, cache_dir, force_refresh=False
+        # source_info loaded at orchestration layer
+        mock_validation_service.source_info_repo.load_source_info.assert_called_once_with(
+            obs_project
         )
-        # find_shipped_without_submodule receives bulk_map=, never force_refresh=
-        mock_validation_service.find_shipped_without_submodule.assert_called_once_with(
+        # resolve_shipped_packages receives the preloaded source_info=
+        mock_validation_service.resolve_shipped_packages.assert_called_once_with(
             shipped_packages,
-            submodules,
             overrides_file,
-            cache_dir,
             obs_project,
-            bulk_map=mock_bulk_map,
+            source_info=mock_source_info,
         )
 
     def test_check_whitelist_propagates_unresolved_names(self, tmp_path: Path) -> None:
         """Should propagate validation pipeline's unresolved_names into the result.
 
         Mirrors ValidationResult.unresolved_names semantics: names that
-        fell through the bulk_map/overrides pipeline and aren't submodules.
+        fell through the source_info/overrides pipeline and aren't in the OBS package set.
         """
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"pkg1"},  # valid_packages
-            ["mystery-pkg"],  # shipped_not_in_submodule (residue)
+            ["mystery-pkg"],  # shipped_not_in_obs (residue)
             ["mystery-pkg"],  # unresolved_names (strict subset of residue)
         )
 
         service = WhitelistService(mock_validation_service)
 
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg1"]')
+        whitelist_content = b'["pkg1"]'
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"pkg1", "mystery-pkg"},
-            submodules=["pkg1"],
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         assert result.unresolved_names == ["mystery-pkg"]
 
-    def test_check_whitelist_force_refresh_defaults_to_false(self, tmp_path: Path) -> None:
-        """check_whitelist should pass force_refresh=False to bulk_map_repo.load_bulk_map
-        by default when the flag is not provided.
+    def test_check_whitelist_requires_obs_project(self, tmp_path: Path) -> None:
+        """Omitting obs_project is a TypeError — there is no silent default project."""
+        service = WhitelistService(Mock())
+        whitelist_content = b"[]"
 
-        After Fix 1, force_refresh is honoured at the load_bulk_map call in
-        check_whitelist, NOT forwarded to find_shipped_without_submodule.
-        """
-        mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
-            {"pkg1"},
-            [],
-            [],
-        )
-        service = WhitelistService(mock_validation_service)
-
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg2"]')
-
-        overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
-
-        service.check_whitelist(
-            whitelist_file=whitelist_file,
-            shipped_packages={"pkg1"},
-            submodules=["pkg1"],
-            overrides_file=overrides_file,
-            cache_dir=cache_dir,
-        )
-
-        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            "SUSE:SLFO:Main", cache_dir, force_refresh=False
-        )
-
-    def test_check_whitelist_passes_force_refresh_true_when_requested(self, tmp_path: Path) -> None:
-        """check_whitelist should pass force_refresh=True to bulk_map_repo.load_bulk_map
-        when the caller sets force_refresh=True.
-
-        After Fix 1, force_refresh is honoured at the load_bulk_map call in
-        check_whitelist, NOT forwarded to find_shipped_without_submodule.
-        """
-        mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
-            {"pkg1"},
-            [],
-            [],
-        )
-        service = WhitelistService(mock_validation_service)
-
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["pkg2"]')
-
-        overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
-
-        service.check_whitelist(
-            whitelist_file=whitelist_file,
-            shipped_packages={"pkg1"},
-            submodules=["pkg1"],
-            overrides_file=overrides_file,
-            cache_dir=cache_dir,
-            force_refresh=True,
-        )
-
-        mock_validation_service.bulk_map_repo.load_bulk_map.assert_called_once_with(
-            "SUSE:SLFO:Main", cache_dir, force_refresh=True
-        )
+        with pytest.raises(TypeError, match="obs_project"):
+            service.check_whitelist(  # type: ignore[call-arg]  # omission under test
+                whitelist_content=whitelist_content,
+                shipped_packages={"pkg1"},
+                overrides_file=tmp_path / "overrides.json",
+            )
 
     def test_check_whitelist_returns_sorted_inconsistent_packages(self, tmp_path: Path) -> None:
         """Should return inconsistent packages in sorted order."""
         mock_validation_service = Mock()
-        mock_validation_service.find_shipped_without_submodule.return_value = (
+        mock_validation_service.resolve_shipped_packages.return_value = (
             {"zebra", "apple", "banana"},  # valid_packages (unsorted)
-            [],  # shipped_not_in_submodule
+            [],  # shipped_not_in_obs
             [],  # unresolved_names
         )
 
         service = WhitelistService(mock_validation_service)
 
-        # Create whitelist with same packages (unsorted)
-        whitelist_file = tmp_path / "whitelist.json"
-        whitelist_file.write_text('["banana", "zebra", "apple"]')
+        whitelist_content = b'["banana", "zebra", "apple"]'
 
         overrides_file = tmp_path / "overrides.json"
-        cache_dir = tmp_path / "cache"
 
         # Execute
         result = service.check_whitelist(
-            whitelist_file=whitelist_file,
+            whitelist_content=whitelist_content,
             shipped_packages={"zebra", "apple", "banana"},
-            submodules=["zebra", "apple", "banana"],
             overrides_file=overrides_file,
-            cache_dir=cache_dir,
+            obs_project=_OBS_PROJECT,
         )
 
         # Verify sorted output

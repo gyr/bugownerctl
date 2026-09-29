@@ -1,6 +1,5 @@
 """Tests for UserValidationService."""
 
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -15,10 +14,10 @@ class TestUserValidationService:
     """Tests for UserValidationService.validate() method."""
 
     def test_validate_calls_load_users_by_package_and_queries_only_users(
-        self, tmp_path: Path
+        self,
     ) -> None:
         """Service calls load_users_by_package and passes only user logins to query_persons."""
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
         mock_maintainership_repo = Mock()
         mock_maintainership_repo.load_users_by_package.return_value = {
@@ -34,9 +33,11 @@ class TestUserValidationService:
         }
 
         service = UserValidationService(mock_maintainership_repo, mock_person_repo)
-        result = service.validate(maintainership_file, api="https://api.suse.de", batch_size=50)
+        result = service.validate(maintainership_content, api="https://api.suse.de", batch_size=50)
 
-        mock_maintainership_repo.load_users_by_package.assert_called_once_with(maintainership_file)
+        mock_maintainership_repo.load_users_by_package.assert_called_once_with(
+            maintainership_content
+        )
 
         # query_persons must be called with exactly the user logins — sorted, deduped
         call_args = mock_person_repo.query_persons.call_args
@@ -49,9 +50,9 @@ class TestUserValidationService:
         # load_users_by_package are ever forwarded.
         assert isinstance(result, UserValidationResult)
 
-    def test_validate_deduplicates_and_sorts_logins_across_packages(self, tmp_path: Path) -> None:
+    def test_validate_deduplicates_and_sorts_logins_across_packages(self) -> None:
         """Logins appearing in multiple packages are queried only once; result lists are sorted."""
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
         mock_maintainership_repo = Mock()
         # "alice" appears in both packages
@@ -68,7 +69,7 @@ class TestUserValidationService:
         }
 
         service = UserValidationService(mock_maintainership_repo, mock_person_repo)
-        result = service.validate(maintainership_file, api="https://api.suse.de", batch_size=50)
+        result = service.validate(maintainership_content, api="https://api.suse.de", batch_size=50)
 
         # query_persons called exactly once (not once per package)
         mock_person_repo.query_persons.assert_called_once()
@@ -84,9 +85,9 @@ class TestUserValidationService:
         assert result.invalid == sorted(result.invalid)
         assert result.not_found == sorted(result.not_found)
 
-    def test_validate_classifies_confirmed_invalid_not_found(self, tmp_path: Path) -> None:
+    def test_validate_classifies_confirmed_invalid_not_found(self) -> None:
         """confirmed→confirmed, non-"confirmed" state→invalid, absent login→not_found."""
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
         mock_maintainership_repo = Mock()
         mock_maintainership_repo.load_users_by_package.return_value = {
@@ -103,15 +104,15 @@ class TestUserValidationService:
         }
 
         service = UserValidationService(mock_maintainership_repo, mock_person_repo)
-        result = service.validate(maintainership_file, api="https://api.suse.de", batch_size=50)
+        result = service.validate(maintainership_content, api="https://api.suse.de", batch_size=50)
 
         assert result.confirmed == ["u1"]
         assert result.invalid == ["u2", "u4"]
         assert result.not_found == ["u3"]
 
-    def test_validate_treats_none_state_as_invalid(self, tmp_path: Path) -> None:
+    def test_validate_treats_none_state_as_invalid(self) -> None:
         """A person record with no <state> element (state=None) is classified as invalid."""
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
         mock_maintainership_repo = Mock()
         mock_maintainership_repo.load_users_by_package.return_value = {
@@ -123,17 +124,17 @@ class TestUserValidationService:
         mock_person_repo.query_persons.return_value = {"stateless_user": None}
 
         service = UserValidationService(mock_maintainership_repo, mock_person_repo)
-        result = service.validate(maintainership_file, api="https://api.suse.de", batch_size=50)
+        result = service.validate(maintainership_content, api="https://api.suse.de", batch_size=50)
 
         assert result.invalid == ["stateless_user"]
         assert result.confirmed == []
         assert result.not_found == []
 
     def test_validate_empty_users_returns_empty_result_with_zero_calls(
-        self, tmp_path: Path
+        self,
     ) -> None:
         """When load_users_by_package returns no users, query_persons is never called."""
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
         mock_maintainership_repo = Mock()
         mock_maintainership_repo.load_users_by_package.return_value = {}
@@ -141,16 +142,16 @@ class TestUserValidationService:
         mock_person_repo = Mock()
 
         service = UserValidationService(mock_maintainership_repo, mock_person_repo)
-        result = service.validate(maintainership_file, api="https://api.suse.de", batch_size=50)
+        result = service.validate(maintainership_content, api="https://api.suse.de", batch_size=50)
 
         mock_person_repo.query_persons.assert_not_called()
         assert result.confirmed == []
         assert result.invalid == []
         assert result.not_found == []
 
-    def test_validate_propagates_value_error_from_query_persons(self, tmp_path: Path) -> None:
+    def test_validate_propagates_value_error_from_query_persons(self) -> None:
         """ValueError raised by query_persons (invalid login char) propagates to the caller."""
-        maintainership_file = tmp_path / "maintainership.json"
+        maintainership_content = b"{}"
 
         mock_maintainership_repo = Mock()
         mock_maintainership_repo.load_users_by_package.return_value = {
@@ -165,4 +166,4 @@ class TestUserValidationService:
         service = UserValidationService(mock_maintainership_repo, mock_person_repo)
 
         with pytest.raises(ValueError, match="Invalid OBS login"):
-            service.validate(maintainership_file, api="https://api.suse.de", batch_size=50)
+            service.validate(maintainership_content, api="https://api.suse.de", batch_size=50)

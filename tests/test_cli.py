@@ -187,18 +187,6 @@ class TestCreateParser:
         args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
         assert args.config is None
 
-    def test_check_maintainership_refresh_bulk_map_defaults_to_false(self) -> None:
-        """check maintainership --refresh-bulk-map should default to False."""
-        parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-r", "16.1"])
-        assert args.refresh_bulk_map is False
-
-    def test_check_maintainership_accepts_refresh_bulk_map_flag(self) -> None:
-        """check maintainership should accept --refresh-bulk-map flag."""
-        parser = create_parser()
-        args = parser.parse_args(["check", "maintainership", "-r", "16.1", "--refresh-bulk-map"])
-        assert args.refresh_bulk_map is True
-
     def test_check_whitelist_accepts_config_flag(self) -> None:
         """check whitelist should accept --config flag."""
         parser = create_parser()
@@ -212,18 +200,6 @@ class TestCreateParser:
         parser = create_parser()
         args = parser.parse_args(["check", "whitelist", "-r", "16.1"])
         assert args.config is None
-
-    def test_check_whitelist_refresh_bulk_map_defaults_to_false(self) -> None:
-        """check whitelist --refresh-bulk-map should default to False."""
-        parser = create_parser()
-        args = parser.parse_args(["check", "whitelist", "-r", "16.1"])
-        assert args.refresh_bulk_map is False
-
-    def test_check_whitelist_accepts_refresh_bulk_map_flag(self) -> None:
-        """check whitelist should accept --refresh-bulk-map flag."""
-        parser = create_parser()
-        args = parser.parse_args(["check", "whitelist", "-r", "16.1", "--refresh-bulk-map"])
-        assert args.refresh_bulk_map is True
 
     def test_check_requires_subcommand(self) -> None:
         """check should require a subcommand (maintainership or whitelist)."""
@@ -862,12 +838,12 @@ class TestC13SharedContextParser:
         captured = capsys.readouterr()
         assert "(default: 50)" in captured.out
 
-    def test_check_maintainership_help_shows_refresh_bulk_map_default(
+    def test_check_maintainership_help_shows_strict_default(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """check maintainership --help shows '(default: False)' for --refresh-bulk-map.
+        """check maintainership --help shows '(default: False)' for --strict.
 
-        --refresh-bulk-map help text does NOT manually embed a default, so this only
+        --strict help text does NOT manually embed a default, so this only
         passes when ArgumentDefaultsHelpFormatter is active on that subparser.
         """
         parser = create_parser()

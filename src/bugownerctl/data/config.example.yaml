@@ -12,7 +12,7 @@
 # REQUIRED: Update for your environment
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
 
-# Cache directory for downloads, clones, persistent data
+# Cache directory for downloaded package metadata
 # Optional: defaults to ~/.cache/bugownerctl
 # cache_dir: ~/.cache/bugownerctl
 
@@ -29,10 +29,14 @@ slfo_git_url: gitea@src.suse.de:products/SLFO.git
 # REQUIRED: Update with versions you need to test
 products:
   - version: "16.0"
-    commit: 9d679ed  # Specific commit for reproducibility
+    branch: slfo-1.2  # Track the 1.2 release branch (commit pins are not supported)
+    # OBS project that builds this product's sources
+    # REQUIRED by `check maintainership` and `check whitelist` (ConfigError if absent)
+    obs_project: SUSE:SLFO:1.2
 
   - version: "16.1"
     branch: slfo-main  # Track latest main branch
+    obs_project: SUSE:SLFO:Main
     # Package-metadata base URL, for this product only
     # Optional: defaults to the PUBLISH channel of the product,
     #   https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{version}:/PUBLISH/product/

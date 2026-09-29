@@ -1,6 +1,6 @@
 # ADR 0001 — Source-name resolution: bulk OBS fetch + committed overrides
 
-**Status:** Accepted (2026-06-08)
+**Status:** Accepted (2026-06-08); partially superseded by [ADR 0004](0004-per-release-obs-package-universe.md) (2026-09-29) — the source info is fetched every run with no on-disk cache, from the product's configured OBS project, and the OBS package set replaces the SLFO submodules. The overrides file and the pipeline order stand.
 **Supersedes:** the per-package `osc bse` fan-out + auto-mutating `false_positives.json` cache.
 
 ## Context

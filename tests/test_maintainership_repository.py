@@ -1,8 +1,6 @@
 """Tests for MaintainershipRepository."""
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -22,20 +20,13 @@ class TestMaintainershipRepositoryLoad:
             },
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load(json.dumps(data).encode())
 
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load(tmp_path)
-
-            assert result.packages == {
-                "apache2": ["user1", "user2"],
-                "nginx": ["user3"],
-            }
-        finally:
-            tmp_path.unlink()
+        assert result.packages == {
+            "apache2": ["user1", "user2"],
+            "nginx": ["user3"],
+        }
 
     def test_load_parses_new_format_groups_only(self):
         """Should parse new format with groups only."""
@@ -47,20 +38,13 @@ class TestMaintainershipRepositoryLoad:
             },
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load(json.dumps(data).encode())
 
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load(tmp_path)
-
-            assert result.packages == {
-                "apache2": ["web-maintainers"],
-                "kernel": ["kernel-team", "drivers-team"],
-            }
-        finally:
-            tmp_path.unlink()
+        assert result.packages == {
+            "apache2": ["web-maintainers"],
+            "kernel": ["kernel-team", "drivers-team"],
+        }
 
     def test_load_parses_new_format_users_and_groups(self):
         """Should parse new format with both users and groups, users first."""
@@ -72,20 +56,13 @@ class TestMaintainershipRepositoryLoad:
             },
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load(json.dumps(data).encode())
 
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load(tmp_path)
-
-            assert result.packages == {
-                "apache2": ["user1", "web-maintainers"],
-                "kernel": ["user2", "user3", "kernel-team"],
-            }
-        finally:
-            tmp_path.unlink()
+        assert result.packages == {
+            "apache2": ["user1", "web-maintainers"],
+            "kernel": ["user2", "user3", "kernel-team"],
+        }
 
     def test_load_parses_empty_maintainers(self):
         """Should handle packages with no maintainers."""
@@ -97,54 +74,27 @@ class TestMaintainershipRepositoryLoad:
             },
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
-
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load(tmp_path)
-
-            assert result.packages == {
-                "orphan": [],
-                "maintained": ["user1"],
-            }
-        finally:
-            tmp_path.unlink()
-
-    def test_load_raises_file_not_found(self):
-        """Should raise FileNotFoundError for non-existent file."""
         repo = MaintainershipRepositoryImpl()
-        with pytest.raises(FileNotFoundError):
-            repo.load(Path("/nonexistent/path/file.json"))
+        result = repo.load(json.dumps(data).encode())
+
+        assert result.packages == {
+            "orphan": [],
+            "maintained": ["user1"],
+        }
 
     def test_load_raises_json_decode_error(self):
         """Should raise JSONDecodeError for invalid JSON."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            tmp.write("{ invalid json }")
-            tmp_path = Path(tmp.name)
-
-        try:
-            repo = MaintainershipRepositoryImpl()
-            with pytest.raises(json.JSONDecodeError):
-                repo.load(tmp_path)
-        finally:
-            tmp_path.unlink()
+        repo = MaintainershipRepositoryImpl()
+        with pytest.raises(json.JSONDecodeError):
+            repo.load(b"{ invalid json }")
 
     def test_load_raises_key_error_missing_packages(self):
         """Should raise KeyError if 'packages' key is missing."""
         data = {"header": {"document": "obs-maintainers", "version": "1.0"}}
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
-
-        try:
-            repo = MaintainershipRepositoryImpl()
-            with pytest.raises(KeyError):
-                repo.load(tmp_path)
-        finally:
-            tmp_path.unlink()
+        repo = MaintainershipRepositoryImpl()
+        with pytest.raises(KeyError):
+            repo.load(json.dumps(data).encode())
 
 
 class TestMaintainershipRepositoryGetPackages:
@@ -283,20 +233,13 @@ class TestLoadUsersByPackage:
             }
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load_users_by_package(json.dumps(data).encode())
 
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load_users_by_package(tmp_path)
-
-            assert result == {
-                "apache2": ["user1", "user2"],
-                "nginx": ["user3"],
-            }
-        finally:
-            tmp_path.unlink()
+        assert result == {
+            "apache2": ["user1", "user2"],
+            "nginx": ["user3"],
+        }
 
     def test_load_users_by_package_empty_users_returns_empty_list(self):
         """Should map package with empty users list to empty list."""
@@ -306,17 +249,10 @@ class TestLoadUsersByPackage:
             }
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load_users_by_package(json.dumps(data).encode())
 
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load_users_by_package(tmp_path)
-
-            assert result == {"apache2": []}
-        finally:
-            tmp_path.unlink()
+        assert result == {"apache2": []}
 
     def test_load_users_by_package_missing_users_key_returns_empty_list(self):
         """Should map package with no users key to empty list."""
@@ -326,17 +262,10 @@ class TestLoadUsersByPackage:
             }
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load_users_by_package(json.dumps(data).encode())
 
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load_users_by_package(tmp_path)
-
-            assert result == {"kernel": []}
-        finally:
-            tmp_path.unlink()
+        assert result == {"kernel": []}
 
     def test_load_users_by_package_multiple_packages(self):
         """Should return all three packages with correct user lists."""
@@ -348,52 +277,25 @@ class TestLoadUsersByPackage:
             }
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load_users_by_package(json.dumps(data).encode())
 
-        try:
-            repo = MaintainershipRepositoryImpl()
-            result = repo.load_users_by_package(tmp_path)
-
-            assert result == {
-                "apache2": ["alice", "bob"],
-                "nginx": ["carol"],
-                "kernel": ["dave", "eve", "frank"],
-            }
-        finally:
-            tmp_path.unlink()
+        assert result == {
+            "apache2": ["alice", "bob"],
+            "nginx": ["carol"],
+            "kernel": ["dave", "eve", "frank"],
+        }
 
     def test_load_users_by_package_missing_packages_key_raises_key_error(self):
         """Should raise KeyError when JSON has no 'packages' key."""
         data = {"header": {"document": "obs-maintainers", "version": "1.0"}}
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            json.dump(data, tmp)
-            tmp_path = Path(tmp.name)
-
-        try:
-            repo = MaintainershipRepositoryImpl()
-            with pytest.raises(KeyError):
-                repo.load_users_by_package(tmp_path)
-        finally:
-            tmp_path.unlink()
-
-    def test_load_users_by_package_raises_file_not_found(self):
-        """Should raise FileNotFoundError for non-existent file."""
         repo = MaintainershipRepositoryImpl()
-        with pytest.raises(FileNotFoundError):
-            repo.load_users_by_package(Path("/nonexistent/path/file.json"))
+        with pytest.raises(KeyError):
+            repo.load_users_by_package(json.dumps(data).encode())
 
     def test_load_users_by_package_raises_json_decode_error(self):
         """Should raise JSONDecodeError for invalid JSON."""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-            tmp.write("{ invalid json }")
-            tmp_path = Path(tmp.name)
-
-        try:
-            repo = MaintainershipRepositoryImpl()
-            with pytest.raises(json.JSONDecodeError):
-                repo.load_users_by_package(tmp_path)
-        finally:
-            tmp_path.unlink()
+        repo = MaintainershipRepositoryImpl()
+        with pytest.raises(json.JSONDecodeError):
+            repo.load_users_by_package(b"{ invalid json }")

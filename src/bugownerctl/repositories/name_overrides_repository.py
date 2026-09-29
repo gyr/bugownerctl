@@ -6,7 +6,7 @@ A `null` value explicitly suppresses a binary (e.g. a known false-positive).
 
 This repository is intentionally minimal: pure file I/O plus validation, no
 network, no subprocess, no caching. The Phase 4 service consults it BEFORE
-the OBS bulk map so curated overrides short-circuit incorrect bulk-map
+the OBS source info so curated overrides short-circuit incorrect source-info
 entries (e.g. kernel-azure cycles).
 """
 

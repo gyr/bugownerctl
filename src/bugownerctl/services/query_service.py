@@ -9,7 +9,6 @@ Design Notes:
 import json
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepository
 
@@ -40,8 +39,8 @@ class QueryService:
     def check_package_maintainership(
         self,
         package_name: str,
-        maintainership_file: Path,
-        whitelist_file: Path,
+        maintainership_content: bytes,
+        whitelist_content: bytes | None,
     ) -> PackageMaintainershipResult:
         """Check if package is maintained or whitelisted.
 
@@ -49,14 +48,15 @@ class QueryService:
 
         Args:
             package_name: Package to check
-            maintainership_file: Path to _maintainership.json
-            whitelist_file: Path to whitelist_maintainership.json
+            maintainership_content: Raw bytes of _maintainership.json
+            whitelist_content: Raw bytes of whitelist_maintainership.json, or
+                None when there is no whitelist (treated as empty)
 
         Returns:
             Result indicating if maintained, whitelisted, or neither
         """
         # Load maintainership data
-        maintainership_data = self.maintainership_repo.load(maintainership_file)
+        maintainership_data = self.maintainership_repo.load(maintainership_content)
 
         # Check if package in maintainership
         if package_name in maintainership_data.packages:
@@ -67,7 +67,7 @@ class QueryService:
             )
 
         # Load whitelist
-        whitelist = self._load_whitelist(whitelist_file)
+        whitelist = set() if whitelist_content is None else self._load_whitelist(whitelist_content)
 
         # Check if package in whitelist
         if package_name in whitelist:
@@ -87,18 +87,18 @@ class QueryService:
     def get_packages_by_maintainer(
         self,
         maintainer_name: str,
-        maintainership_file: Path,
+        maintainership_content: bytes,
     ) -> list[str]:
         """Get all packages maintained by a user/group.
 
         Args:
             maintainer_name: User or group name
-            maintainership_file: Path to _maintainership.json
+            maintainership_content: Raw bytes of _maintainership.json
 
         Returns:
             Sorted list of package names
         """
-        maintainership_data = self.maintainership_repo.load(maintainership_file)
+        maintainership_data = self.maintainership_repo.load(maintainership_content)
 
         packages = [
             pkg_name
@@ -108,46 +108,34 @@ class QueryService:
 
         return sorted(packages)
 
-    def _load_whitelist(self, whitelist_file: Path) -> set[str]:
-        """Load whitelist file.
-
-        Returns empty set if file doesn't exist.
+    def _load_whitelist(self, whitelist_content: bytes) -> set[str]:
+        """Parse the whitelist document.
 
         Args:
-            whitelist_file: Path to whitelist JSON file
+            whitelist_content: Raw bytes of the whitelist JSON document
 
         Returns:
             Set of package names from whitelist
 
         Raises:
-            json.JSONDecodeError: If whitelist file contains invalid JSON
-            ValueError: If whitelist file structure is invalid or too large
-            OSError: If file cannot be read (permissions, etc.)
+            json.JSONDecodeError: If content is not valid JSON
+            ValueError: If the whitelist structure is invalid or too large
         """
-        if not whitelist_file.exists():
-            return set()
-
-        # Check file size to prevent memory exhaustion
+        # Check payload size to prevent memory exhaustion
         max_whitelist_size = 10 * 1024 * 1024  # 10 MB
-        file_size = whitelist_file.stat().st_size
-        if file_size > max_whitelist_size:
+        if len(whitelist_content) > max_whitelist_size:
             raise ValueError(
-                f"Whitelist file {whitelist_file} is too large: "
-                f"{file_size} bytes (max {max_whitelist_size})"
+                f"Whitelist is too large: {len(whitelist_content)} bytes (max {max_whitelist_size})"
             )
 
-        with open(whitelist_file, encoding="utf-8") as f:
-            packages = json.load(f)
+        packages = json.loads(whitelist_content)
 
         # Validate data type
         if not isinstance(packages, list):
-            raise ValueError(
-                f"Whitelist file {whitelist_file} must contain a JSON array, "
-                f"got {type(packages).__name__}"
-            )
+            raise ValueError(f"Whitelist must contain a JSON array, got {type(packages).__name__}")
 
         # Validate all elements are strings
         if not all(isinstance(pkg, str) for pkg in packages):
-            raise ValueError(f"Whitelist file {whitelist_file} must contain only strings")
+            raise ValueError("Whitelist must contain only strings")
 
         return set(packages)

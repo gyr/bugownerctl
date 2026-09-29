@@ -43,15 +43,17 @@ _ALLOWED_GIT_PROTOCOLS = "ssh:https:http:git:file"
 _DEFAULT_TIMEOUT = 60  # seconds
 
 
+class FileNotFoundAtRefError(ValueError):
+    """The requested file does not exist at the ref in the remote repository.
+
+    A ValueError subclass, so it keeps exit 64 like every other operator-input
+    error from ``fetch_file``, while letting a caller for whom the file is
+    optional tell this case apart from a malformed or unserved ref.
+    """
+
+
 def _validate_ref(ref: str) -> None:
     """Reject refs that git could misread as an option, a path escape or a shell token.
-
-    This deliberately duplicates the ref rules in ``GitRepositoryImpl`` rather
-    than importing them: the two call sites have independent lifecycles, and a
-    handful of lines is cheaper than coupling this module to a clone-based
-    repository it otherwise has nothing to do with. The copies are no longer
-    identical: this one uses ``re.fullmatch``, where ``git_repository.py``'s
-    ``re.match(...$)`` still accepts a trailing newline.
 
     Args:
         ref: Branch or tag name to validate.
@@ -155,6 +157,8 @@ class RemoteArchiveRepository(Protocol):
             ValueError: If ``ref`` or ``file_path`` is malformed, if the remote
                 does not serve ``ref``, or if ``file_path`` does not exist at
                 ``ref``. All four are operator input, so they share exit 64.
+                The last case raises the ``FileNotFoundAtRefError`` subclass,
+                so a caller can treat a missing file as optional.
             MissingBinaryError: If ``git`` is not in PATH.
             NetworkTimeoutError: If the ``git archive`` subprocess exceeds the
                 timeout.
@@ -218,7 +222,9 @@ class RemoteArchiveRepositoryImpl:
                     "names, never a commit SHA."
                 )
             if "did not match any files" in stderr:
-                raise ValueError(f"File {file_path!r} does not exist at ref {ref!r} in {repo_url}")
+                raise FileNotFoundAtRefError(
+                    f"File {file_path!r} does not exist at ref {ref!r} in {repo_url}"
+                )
             raise RuntimeError(
                 f"git archive --remote={repo_url} {ref} failed (exit {proc.returncode}):\n{stderr}"
             )

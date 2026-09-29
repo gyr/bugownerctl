@@ -4,6 +4,66 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] - 2026-09-29
+
+### Added
+
+- Per-product `obs_project` config key naming the OBS project that builds the product's SLFO
+  branch (for example `SUSE:SLFO:1.3` for `slfo-1.3`). `check maintainership` and `check whitelist`
+  fail with a `ConfigError` (exit 64) when it is missing; a non-string or blank value is rejected
+  by every command that resolves a product. See
+  [ADR 0004](docs/adr/0004-per-release-obs-package-universe.md).
+- `check maintainership` prints three totals before its findings: shipped source packages,
+  packages in the OBS project, and maintained packages, so an unexpected OBS reply or config shows
+  up in the output.
+- A warning on stderr for each OBS package whose source info carries a build `<error>`; the package
+  stays in the package set.
+
+### Changed
+
+- **BREAKING:** `check maintainership` and `check whitelist` compare against the package set of the
+  product's OBS project instead of the git submodules of a local SLFO clone. Gate contents change
+  for 16.0 and 16.1, and for `--strict`; exit-code values are unchanged.
+- **BREAKING:** `check maintainership` output and result fields are renamed from submodule terms to
+  OBS terms: "Found N maintained packages not in OBS project `<X>`." and "Found N shipped packages
+  not in OBS project `<X>`." (`maintained_packages_not_in_obs`, `shipped_not_in_obs`). Scripts
+  matching the old lines must be updated. The unresolved-names line now reads "neither in overrides
+  nor OBS source info".
+- **BREAKING:** the OBS source info (`osc api /source/<project>?view=info&parse=1`) is fetched on
+  every run and never cached, because OBS documents no project-level change marker to validate a
+  cache cheaply. Every `check maintainership` / `check whitelist` run needs OBS access.
+- **BREAKING:** the SLFO repository is no longer cloned. `check` and `query` read
+  `maintainership_file` and `whitelist_file` from the product's branch with `git archive --remote`,
+  in memory, like `diff` already did. Every run needs network access and credentials for
+  `slfo_git_url`. See [ADR 0005](docs/adr/0005-remote-archive-file-access.md).
+- **BREAKING:** `maintainership_file` and `whitelist_file` must name a file in the repository root;
+  a value containing `/` (previously allowed for subdirectories) is rejected with exit 64.
+- **BREAKING:** a product must configure `branch:`. A `commit:` pin is rejected with a
+  `ConfigError` (exit 64): `git archive --remote` serves only branch and tag names, never a commit
+  SHA. The bundled example config now pins 16.0 to `branch: slfo-1.2`.
+- A branch not served by the remote, or a maintainership or whitelist file absent at the branch,
+  exits 64 (previously 1 for a missing file). `query package` treats a whitelist absent at the
+  branch as empty, since `slfo-1.2` has none; `check whitelist` still fails.
+- An OBS reply whose root is not `<sourceinfolist>`, or that lists no packages, stops the run with
+  one of two distinct errors (exit 1).
+- Surrounding whitespace is stripped from every package name read from the OBS source info.
+- The `slfo_git_url` format and SSRF checks run during product resolution, with the same rules and
+  messages as before.
+
+### Removed
+
+- **BREAKING:** the `--refresh-bulk-map` flag of `check maintainership` and `check whitelist`;
+  passing it is now a usage error (exit 64).
+- The on-disk OBS cache `{cache_dir}/obs_bulk_map.xml` / `obs_bulk_map.meta.json` and the SLFO clone
+  `{cache_dir}/SLFO/`. Leftovers from earlier versions are unused and can be removed by hand:
+  `rm -rf ~/.cache/bugownerctl/SLFO ~/.cache/bugownerctl/obs_bulk_map.*`.
+
+### Fixed
+
+- `check maintainership` and `check whitelist` resolved every release against the hardcoded OBS
+  project `SUSE:SLFO:Main`, so 16.0 and 16.1 were compared with the wrong package universe. Each
+  product now uses its own `obs_project`.
+
 ## [0.7.1] - 2026-09-21
 
 ### Added

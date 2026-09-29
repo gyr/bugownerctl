@@ -124,14 +124,13 @@ Validates package maintainership data for consistency.
 
 **Usage:**
 ```bash
-bugownerctl check maintainership -r <version> [--config <path>] [--strict] [--refresh-bulk-map]
+bugownerctl check maintainership -r <version> [--config <path>] [--strict]
 ```
 
 **Options:**
 - `-r, --release` - SLES version (required, e.g., "16.1")
 - `-c, --config` - Path to config file (optional, uses search hierarchy)
 - `--strict` - Also gate on secondary findings (see table below)
-- `--refresh-bulk-map` - Force re-fetch of OBS bulk source-info map, ignoring cache
 - `-v, --verbose` - Enable verbose (INFO) logging (global flag, must precede subcommand)
 - `-d, --debug` - Enable debug logging (global flag, must precede subcommand)
 
@@ -140,15 +139,43 @@ bugownerctl check maintainership -r <version> [--config <path>] [--strict] [--re
 | Finding | Default gate | With `--strict` |
 |---------|-------------|-----------------|
 | Orphan packages | exit 2 | exit 2 |
-| Shipped-not-in-submodule | — (informational) | exit 2 |
+| Shipped packages not in OBS project | — (informational) | exit 2 |
 | Unresolved names | — (informational) | exit 2 |
-| Maintained-without-submodule | — (informational) | exit 2 |
+| Maintained packages not in OBS project | — (informational) | exit 2 |
 
 **What it checks:**
-- Orphan packages (in repo, no maintainer)
-- Unmaintained submodules (not in maintainership file)
-- Shipped packages missing submodules
-- Binary→source package mappings (cached for performance)
+
+The package universe is the product's OBS project (`obs_project` in the product's config
+entry, e.g. `SUSE:SLFO:1.3`), fetched fresh on every run with
+`osc api /source/<obs_project>?view=info&parse=1`. Its package set is every listed package
+except multibuild flavors (`pkg:flavor`).
+
+- Orphan packages (shipped, in the OBS project, no maintainer)
+- Maintained packages not in the OBS project (in the maintainership file, not in the package set)
+- Shipped packages not in the OBS project (a shipped name that does not resolve into the package set)
+- Binary→source package mappings (see [How source names are resolved](#how-bugownerctl-check-maintainership-resolves-source-names))
+
+The maintainership file is read from the product's branch with `git archive --remote` (see
+[SLFO file access](#slfo-file-access)).
+
+**Output:**
+
+Three totals come first, so an unexpected OBS reply or config shows up at a glance. Finding
+counts follow on stdout; the package lists of the informational findings go to stderr with
+`-v/--verbose`. Orphan packages are always listed on stdout.
+
+```
+Shipped source packages: 3000
+Packages in OBS project SUSE:SLFO:1.3: 4200
+Maintained packages: 2950
+Found 12 maintained packages not in OBS project SUSE:SLFO:1.3.
+Found 3 shipped packages not in OBS project SUSE:SLFO:1.3.
+Found 2 names with no source mapping (neither in overrides nor OBS source info).
+No orphan packages found.
+```
+
+A package that OBS reports with a build `<error>` stays in the package set; a warning on stderr
+names the package and the error text.
 
 **Performance features:**
 - Version-specific cache isolation (no data corruption across versions)
@@ -177,9 +204,13 @@ bugownerctl check maintainership -r 16.1 --strict
 
 **Exit codes:**
 - `0` - No gating findings
+- `1` - `osc api` failure (e.g. not logged in); OBS reply that is invalid XML, oversized, not a
+  package list, or lists no packages; `git archive` failure other than those below
 - `2` - Gating findings present (orphan packages; or secondary findings with `--strict`)
-- `64` - Usage/config error (missing `-r`, missing config file)
-- `127` - `git` binary not found
+- `64` - Usage/config error (missing `-r`, missing config file, product without `obs_project` or
+  `branch`, branch not served by the remote, maintainership file absent at the branch)
+- `124` - `osc` or `git archive` call timed out
+- `127` - `git` or `osc` binary not found
 
 ---
 
@@ -191,14 +222,13 @@ Validates that whitelisted packages are NOT shipped in the distribution.
 
 **Usage:**
 ```bash
-bugownerctl check whitelist -r <version> [--config <path>] [--strict] [--refresh-bulk-map]
+bugownerctl check whitelist -r <version> [--config <path>] [--strict]
 ```
 
 **Options:**
 - `-r, --release` - SLES version (required)
 - `-c, --config` - Path to config file (optional, uses search hierarchy)
 - `--strict` - Also gate on unresolved names (see table below)
-- `--refresh-bulk-map` - Force re-fetch of OBS bulk source-info map, ignoring cache
 
 **Gate / `--strict` table:**
 
@@ -209,9 +239,10 @@ bugownerctl check whitelist -r <version> [--config <path>] [--strict] [--refresh
 
 **What it does:**
 - Downloads repository metadata (primary.xml.gz)
-- Clones/updates git repository
+- Fetches the product's OBS package set (`obs_project`, same as `check maintainership`)
 - Extracts validated shipped packages (same pipeline as `check maintainership`)
-- Loads whitelist file (`whitelist_maintainership.json`)
+- Fetches the whitelist file (`whitelist_maintainership.json`) from the product's branch with
+  `git archive --remote`
 - Finds intersection: packages that are BOTH shipped AND whitelisted
 - Reports inconsistencies
 
@@ -229,9 +260,13 @@ bugownerctl check whitelist -r 16.1 --strict
 
 **Exit codes:**
 - `0` - No inconsistencies found (all whitelisted packages are NOT shipped)
+- `1` - `osc api` failure (e.g. not logged in); OBS reply that is invalid XML, oversized, not a
+  package list, or lists no packages; `git archive` failure other than those below
 - `2` - Inconsistencies found (some whitelisted packages ARE shipped); or unresolved names with `--strict`
-- `64` - Usage/config error (missing `-r`, missing config file)
-- `127` - `git` binary not found
+- `64` - Usage/config error (missing `-r`, missing config file, product without `obs_project` or
+  `branch`, branch not served by the remote, whitelist file absent at the branch)
+- `124` - `osc` or `git archive` call timed out
+- `127` - `git` or `osc` binary not found
 
 **Output (clean):**
 ```
@@ -249,13 +284,13 @@ Inconsistent packages (should NOT be shipped if whitelisted):
 
 **Whitelist File Location:**
 
-The whitelist file is read from the **cloned SLFO git repository**, not the current working directory.
-
-Example path: `~/.cache/bugownerctl/SLFO/whitelist_maintainership.json`
+The whitelist file is read from the **repository root of the product's SLFO branch** on the
+remote (see [SLFO file access](#slfo-file-access)), not from the current working directory. A
+branch without the file fails with exit `64`.
 
 **Whitelist File Format:**
 
-Create `whitelist_maintainership.json` in the SLFO git repository with package names expected to be NOT shipped:
+Create `whitelist_maintainership.json` in the root of the SLFO git repository with package names expected to be NOT shipped:
 
 ```json
 [
@@ -267,7 +302,8 @@ Create `whitelist_maintainership.json` in the SLFO git repository with package n
 
 **Security:**
 
-Config file names are validated to prevent path traversal attacks. Invalid file names (e.g., `../../../etc/passwd`) are rejected with a clear error message.
+`whitelist_file` must name a file in the repository root: a value containing `/` (e.g.
+`config/whitelist.json` or `../../../etc/passwd`) is rejected with exit `64`.
 
 **Migration Note:**
 
@@ -295,8 +331,8 @@ bugownerctl check users -r <version> [--config <path>] [--api <url>] [--batch-si
 - `--batch-size` - Max logins per OBS API call (default: `50`, must be ≥ 1)
 
 **What it does:**
-1. Clones/updates the SLFO git repository
-2. Loads `_maintainership.json` from the repo
+1. Fetches `_maintainership.json` from the product's SLFO branch with `git archive --remote`
+2. Parses it in memory (`obs_project` is not needed)
 3. Extracts all unique user logins across all packages
 4. Queries OBS `/search/person` in batches (requires a logged-in `osc` session)
 5. Classifies each login: confirmed, invalid (locked / non-confirmed), or not found
@@ -318,10 +354,12 @@ bugownerctl check users -r 16.1 --config /path/to/config.yaml
 
 **Exit codes:**
 - `0` - All user logins are confirmed OBS accounts
+- `1` - `git archive` failure other than those below
 - `2` - One or more logins are invalid or not found in OBS
-- `64` - Usage/config error
-- `124` - `osc` API call timed out
-- `127` - `osc` binary not found
+- `64` - Usage/config error (including a product without `branch`, a branch not served by the
+  remote, or the maintainership file absent at the branch)
+- `124` - `osc` API or `git archive` call timed out
+- `127` - `osc` or `git` binary not found
 
 **Output (when issues found):**
 ```
@@ -373,13 +411,18 @@ bugownerctl query package apache2 -r 16.1 --config /path/to/config.yaml
 
 **Exit codes:**
 - `0` - Query completed successfully
-- `1` - Bad version (no matching product in config) or maintainership file not found
+- `1` - `git archive` failure other than those below
+- `64` - Bad version (no matching product in config), branch not served by the remote, or
+  maintainership file absent at the branch
+- `124` - `git archive` call timed out
+- `127` - `git` binary not found
 
 **Maintainership File Location:**
 
-The maintainership and whitelist files are read from the **cloned SLFO git repository**, not the current working directory.
-
-Example path: `~/.cache/bugownerctl/SLFO/_maintainership.json`
+The maintainership and whitelist files are read from the **repository root of the product's SLFO
+branch** on the remote (see [SLFO file access](#slfo-file-access)), not from the current working
+directory. A branch without a whitelist file (e.g. `slfo-1.2`) is queried as if the whitelist were
+empty.
 
 **Output:**
 ```
@@ -421,13 +464,16 @@ bugownerctl query maintainer user1 -r 16.1 --config /path/to/config.yaml
 
 **Exit codes:**
 - `0` - Query completed successfully
-- `1` - Bad version (no matching product in config) or maintainership file not found
+- `1` - `git archive` failure other than those below
+- `64` - Bad version (no matching product in config), branch not served by the remote, or
+  maintainership file absent at the branch
+- `124` - `git archive` call timed out
+- `127` - `git` binary not found
 
 **Maintainership File Location:**
 
-The maintainership file is read from the **cloned SLFO git repository**, not the current working directory.
-
-Example path: `~/.cache/bugownerctl/SLFO/_maintainership.json`
+The maintainership file is read from the **repository root of the product's SLFO branch** on the
+remote (see [SLFO file access](#slfo-file-access)), not from the current working directory.
 
 **Output:**
 ```
@@ -559,10 +605,10 @@ way.
 | Code | Meaning |
 |------|---------|
 | 0 | Clean — no gating findings |
-| 1 | Internal/unexpected error; missing data file |
+| 1 | Internal/unexpected error; failed `osc api` call; malformed OBS or `git archive` reply |
 | 2 | Gating findings present (see `--strict`) |
-| 64 | Usage/config error: bad arguments, missing or invalid config file |
-| 124 | Network/subprocess timeout (`osc`, HTTP) |
+| 64 | Usage/config error: bad arguments, missing or invalid config file, unknown branch, data file absent at the branch |
+| 124 | Network/subprocess timeout (`osc`, `git archive`, HTTP) |
 | 127 | Required binary missing (`git`, `osc`) |
 | 130 | SIGINT (Ctrl+C) |
 
@@ -625,13 +671,13 @@ Create config file manually or use `bugownerctl init` to generate from template:
 # Structure: {cache_dir}/repodata/{version}/
 cache_dir: ~/.cache/bugownerctl
 
-# Git repository URL
+# Git repository URL (SSH user@host:path.git or http(s)://host/path.git)
 slfo_git_url: gitea@src.suse.de:products/SLFO.git
 
-# Maintainership file name
+# Maintainership file name (repository root only; "/" is rejected)
 maintainership_file: _maintainership.json
 
-# Whitelist file name
+# Whitelist file name (repository root only; "/" is rejected)
 whitelist_file: whitelist_maintainership.json
 
 # TLS certificate verification for repo-metadata downloads (optional)
@@ -644,17 +690,41 @@ whitelist_file: whitelist_maintainership.json
 # Product version mappings
 products:
   - version: "16.0"
-    commit: 9d679ed
+    branch: slfo-1.2  # required; commit pins are not supported
+    # OBS project that builds this product's sources
+    # Required by `check maintainership` and `check whitelist` (config error if absent)
+    obs_project: SUSE:SLFO:1.2
   - version: "16.1"
     branch: slfo-main
+    obs_project: SUSE:SLFO:Main
     # Package-metadata base URL, for this product only (optional)
     #   default -> https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/{version}:/PUBLISH/product/
     # The trailing "/" is mandatory: the metadata path is concatenated onto this value,
     # not urljoin'd. "{version}" is optional -- the version is normally written literally.
     # Credentials belong in ~/.netrc, not in the URL.
-    # An invalid value is rejected with a config error, before any clone.
+    # An invalid value is rejected with a config error, before any download.
     # base_url: https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/16.1:/TEST/product/
 ```
+
+**`branch`** is required for every product. It names the SLFO branch the product's files are read
+from; a product with a `commit:` pin instead is rejected with exit `64`, because `git archive
+--remote` serves only branch and tag names, never a commit SHA. Tag names pass the same validation,
+but reading from a tag has not been verified against `src.suse.de`.
+
+**`obs_project`** names the OBS project that builds the product's branch — each SLFO branch has its
+own (`slfo-1.2` → `SUSE:SLFO:1.2`, `slfo-1.3` → `SUSE:SLFO:1.3`, `slfo-main` → `SUSE:SLFO:Main`).
+`check maintainership` and `check whitelist` fail with exit `64` when it is missing. `check users`
+and `query` do not use it, but still reject a non-string or blank value.
+
+### SLFO file access
+
+`check` and `query` read `maintainership_file` and `whitelist_file` (and `diff` reads
+`maintainership_file`) straight from
+`slfo_git_url` with `git archive --remote`, in memory: nothing is cloned and nothing SLFO-related is
+written under `cache_dir`, so every run sees the current state of the branch. Each fetch takes about
+a second and needs network access plus working credentials for the remote — an SSH key for the
+default `gitea@src.suse.de` remote. Both file names must name a file in the repository root; a
+value containing `/` is rejected. See [ADR 0005](docs/adr/0005-remote-archive-file-access.md).
 
 ## Data Files
 
@@ -692,7 +762,7 @@ Manually maintained whitelist for packages expected to be NOT shipped:
 
 ### `false_positives_overrides.json`
 
-Hand-curated mapping of binary/subpackage names to canonical source package names. Used to correct cases the OBS bulk map gets wrong:
+Hand-curated mapping of binary/subpackage names to canonical source package names. Used to correct cases the OBS source info gets wrong:
 
 ```json
 {
@@ -711,9 +781,11 @@ Hand-curated mapping of binary/subpackage names to canonical source package name
 For every shipped binary name `n` found in the SLES repo, the resolver picks the first hit from this pipeline:
 
 1. **Overrides file** — `false_positives_overrides.json` lookup. Wins outright; `null` means "skip this name".
-2. **OBS bulk map** — single `osc api /source/SUSE:SLFO:Main?view=info&parse=1` fetched once per run and cached on disk for 7 days (`{cache_dir}/obs_bulk_map.xml`). Maps subpackage → source. Pass `--refresh-bulk-map` to force an immediate re-fetch without waiting for the TTL to expire.
+2. **OBS source info** — a single `osc api /source/<obs_project>?view=info&parse=1` for the product's configured OBS project, fetched on every run and never cached (OBS offers no cheap way to tell whether a project changed). Maps subpackage → source. The same reply supplies the project's package set.
 3. **Identity fallthrough** — assume `n` is itself the source name.
-4. **Residue** — if the resolved name is not present in SLFO submodules, the name lands in `shipped_not_in_submodule`. Names that fell through step 3 AND aren't a submodule are additionally surfaced under "Names with no source mapping" so reviewers can decide whether to add an override.
+4. **Residue** — if the resolved name is not in the OBS project's package set, the name lands in `shipped_not_in_obs`. Names that fell through step 3 AND aren't in the package set are additionally surfaced under "Names with no source mapping" so reviewers can decide whether to add an override.
+
+See [ADR 0004](docs/adr/0004-per-release-obs-package-universe.md) for why the OBS project, not the SLFO git submodules, defines the package universe.
 
 ## Cache System
 
@@ -780,7 +852,7 @@ bugownerctl check maintainership -r 16.1
 - `requests` - HTTP downloads
 
 **External tools:**
-- `git` - Repository operations
+- `git` - Reads SLFO files with `git archive --remote`
 - `osc` - OBS queries (requires logged-in session to `https://api.suse.de`)
 
 **Development:**
@@ -1013,11 +1085,37 @@ uv pip install -e .
 osc api https://api.suse.de
 ```
 
-**"Git clone failed"**
+**"git archive --remote=… failed"**
 ```bash
 # Verify SSH keys configured for Gitea
 ssh -T gitea@src.suse.de
 ```
+
+**"Remote … does not serve ref …"**
+
+The product's `branch` is misspelled or does not exist on `slfo_git_url`. Commit SHAs never work
+here: `git archive --remote` serves only branch and tag names.
+
+**"File … does not exist at ref …"**
+
+`maintainership_file` or `whitelist_file` is absent from the root of that branch. A missing
+maintainership file fails every command that reads it; a missing whitelist fails `check whitelist`,
+while `query package` treats it as empty.
+
+**"No 'obs_project' configured for version …"**
+
+Add `obs_project` to the product's entry in the config (see [Config File Format](#config-file-format)).
+
+**"OBS project … lists no packages" / "OBS reply for project … is not a package list"**
+```bash
+# Check the configured obs_project; reproduce the fetch by hand
+osc -A https://api.suse.de api '/source/SUSE:SLFO:Main?view=info&parse=1' | head
+```
+
+**"osc api '/source/…' failed … Project not found: …"**
+
+The product's `obs_project` names no project on OBS. Check its spelling and case: OBS project names
+are case-sensitive, so `SUSE:SLFO:main` fails where `SUSE:SLFO:Main` works.
 
 **"Coverage below 90%"**
 ```bash
@@ -1052,15 +1150,6 @@ rm -rf ~/.cache/bugownerctl/repodata/16.0/
 # Cache rebuilds automatically on next run
 ```
 
-**"OBS bulk map is stale or corrupt"**
-```bash
-# Force re-fetch without touching repodata cache
-bugownerctl check maintainership -r 16.1 --refresh-bulk-map
-
-# Or delete the cache files manually (re-fetched on next run)
-rm -f ~/.cache/bugownerctl/obs_bulk_map.xml ~/.cache/bugownerctl/obs_bulk_map.meta.json
-```
-
 **"Disk space issues"**
 ```bash
 # Check cache size (each version ~20-50MB)
@@ -1072,36 +1161,38 @@ rm -rf ~/.cache/bugownerctl/repodata/15.*/
 
 ## Security
 
-### Path Traversal Protection
+### SLFO File Names and Remote Access
 
-Config file names (e.g., `whitelist_file`, `maintainership_file`) are validated to prevent path traversal attacks.
+`maintainership_file` and `whitelist_file` must name a file in the repository root.
 
-**Validated:**
+**Accepted:**
 - ✅ Simple filenames: `whitelist.json`
-- ✅ Subdirectories: `config/whitelist.json`
 
-**Rejected:**
+**Rejected (exit 64):**
+- ❌ Subdirectories: `config/whitelist.json`
 - ❌ Parent directory traversal: `../etc/passwd`
 - ❌ Absolute paths: `/etc/passwd`
-- ❌ Hidden traversal: `subdir/../../etc/passwd`
 
 **Implementation:**
 
-Uses `Path.resolve() + relative_to()` pattern to ensure config file names stay within their intended directories. Symlinks are followed and validated to prevent symlink attacks.
+Nothing is read from the local filesystem: the file is fetched with `git archive --remote` and
+extracted in memory. Any `/` in the name is rejected before `git` runs, because the extraction
+accepts exactly one tar member, and it must be a regular file with exactly the requested name
+(`extractall` is never called). The archive is capped at 32 MiB and the member at 16 MiB. The `git`
+subprocess runs with a pinned `GIT_ALLOW_PROTOCOL` (`ssh:https:http:git:file`), no terminal prompt
+and a 60 s timeout. Branch names are checked against `[\w./-]`, may not start with `-` and may not
+contain `..`.
 
-**Error Example:**
-```
-ValueError: Whitelist file escapes base directory: 
-'../../../etc/passwd' resolves to /home/user/etc/passwd 
-(outside /home/user/.cache/bugownerctl/SLFO)
-```
+`slfo_git_url` must be an SSH (`user@host:path.git`) or HTTP(S) (`http(s)://host/path.git`) URL. An
+HTTP(S) URL pointing to localhost, a private, loopback or link-local address, or a cloud metadata
+service is rejected (exit 64).
 
 ### File Location Security
 
-- **Whitelist file:** Read from cloned SLFO repository (validated)
-- **Maintainership file:** Read from cloned SLFO repository (validated)
+- **Whitelist file:** Fetched from the product's SLFO branch with `git archive --remote` (repository root only; 10 MiB cap)
+- **Maintainership file:** Fetched from the product's SLFO branch with `git archive --remote` (repository root only)
 - **Source-name overrides:** Read-only from `bugownerctl/data/false_positives_overrides.json` (wheel-resident). Loader caps body at 1 MiB, treats missing or non-regular paths as `{}` (no overrides), requires a JSON object root with `str | None` values, tolerates a UTF-8 BOM.
-- **OBS bulk source-info cache:** Read/write at `{cache_dir}/obs_bulk_map.xml` plus a `obs_bulk_map.meta.json` sidecar (`{project, fetched_at, sha256}`). Symlinks rejected; atomic temp+rename on write; SHA-256 integrity check on read; 7-day TTL; cache files chmod 0o600 (parent dir 0o700). Filenames are constant — switching projects triggers a re-fetch via the meta `project` cross-check, not a per-project filename.
+- **OBS source info:** Fetched with `osc api` on every run and parsed in memory; nothing is written to disk. The project name must match `[A-Za-z0-9:_.+-]{1,200}`; the reply is capped at 50 MB, a DOCTYPE is refused, and a reply that is not a non-empty `<sourceinfolist>` stops the run (exit 1).
 
 ## Contributing
 
