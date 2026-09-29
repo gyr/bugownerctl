@@ -82,6 +82,26 @@ class TestMaintainershipRepositoryLoad:
             "maintained": ["user1"],
         }
 
+    @pytest.mark.parametrize(
+        ("content", "expected"),
+        [
+            (b'{"packages": {"vim": {"users": null, "groups": ["editors"]}}}', ["editors"]),
+            (b'{"packages": {"vim": {"users": ["alice"], "groups": null}}}', ["alice"]),
+            (b'{"packages": {"vim": {"users": null, "groups": null}}}', []),
+        ],
+        ids=["users_null", "groups_null", "both_null"],
+    )
+    def test_load_null_name_list_normalizes_to_empty(self, content: bytes, expected: list[str]):
+        """Should treat a null 'users'/'groups' value as an empty list.
+
+        Real SLFO branches such as slfo-1.2 write JSON null where an empty
+        list is meant.
+        """
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load(content)
+
+        assert result.packages == {"vim": expected}
+
     def test_load_raises_json_decode_error(self):
         """Should raise JSONDecodeError for invalid JSON."""
         repo = MaintainershipRepositoryImpl()
@@ -266,6 +286,22 @@ class TestLoadUsersByPackage:
         result = repo.load_users_by_package(json.dumps(data).encode())
 
         assert result == {"kernel": []}
+
+    @pytest.mark.parametrize(
+        "content",
+        [b'{"packages": {"vim": {"users": null, "groups": ["editors"]}}}'],
+        ids=["users_null"],
+    )
+    def test_load_users_by_package_null_users_returns_empty_list(self, content: bytes):
+        """Should map a package whose users value is JSON null to an empty list.
+
+        Real SLFO branches such as slfo-1.2 write JSON null where an empty
+        list is meant.
+        """
+        repo = MaintainershipRepositoryImpl()
+        result = repo.load_users_by_package(content)
+
+        assert result == {"vim": []}
 
     def test_load_users_by_package_multiple_packages(self):
         """Should return all three packages with correct user lists."""
