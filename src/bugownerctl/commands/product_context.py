@@ -1,4 +1,4 @@
-"""SLFO repository preparation helper.
+"""Product context resolution from config.
 
 Loads configuration, resolves a product git reference, validates the SLFO
 repository URL, and returns a context object bundling all resolved values.
@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class SlfoRepoContext:
-    """Immutable context produced by prepare_slfo_repo.
+class ProductContext:
+    """Immutable context produced by resolve_product_context.
 
     Attributes:
         config: Raw configuration dictionary loaded from the config file.
@@ -217,7 +217,7 @@ def _resolve_base_url(product_config: dict[str, Any], version: str) -> str | Non
     return base_url
 
 
-def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext:
+def resolve_product_context(version: str, config_file: Path | None) -> ProductContext:
     """Load config, resolve product ref, validate the SLFO URL, return context.
 
     Performs no git operation and creates nothing on disk; SLFO files are
@@ -229,7 +229,7 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
                      the standard config search hierarchy.
 
     Returns:
-        SlfoRepoContext with all resolved values.
+        ProductContext with all resolved values.
 
     Raises:
         ValueError: If version not found, the branch is empty, slfo_git_url
@@ -240,7 +240,7 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
                      branch configured, or the product's optional base_url
                      or obs_project is invalid.
     """
-    logger.info("preparing SLFO repo for version %s", version)
+    logger.info("resolving product context for version %s", version)
     try:
         config = load_config(config_file) or {}
     except FileNotFoundError as exc:
@@ -286,4 +286,4 @@ def prepare_slfo_repo(version: str, config_file: Path | None) -> SlfoRepoContext
             f"Repository URL points to internal network or metadata service: {slfo_git_url}"
         )
 
-    return SlfoRepoContext(config, cache_dir, slfo_git_url, git_ref, base_url, obs_project)
+    return ProductContext(config, cache_dir, slfo_git_url, git_ref, base_url, obs_project)

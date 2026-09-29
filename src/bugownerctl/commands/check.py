@@ -8,7 +8,7 @@ import logging
 from importlib.resources import as_file, files
 from typing import Any
 
-from bugownerctl.commands.repo_prep import prepare_slfo_repo
+from bugownerctl.commands.product_context import resolve_product_context
 from bugownerctl.exceptions import ConfigError
 from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
@@ -74,27 +74,27 @@ def run_maintainership(
         ValueError: From the archive fetch, if the configured maintainership file
             is absent at the product ref.
     """
-    slfo_context = prepare_slfo_repo(args.release, args.config)
-    if slfo_context.obs_project is None:
+    product_context = resolve_product_context(args.release, args.config)
+    if product_context.obs_project is None:
         raise ConfigError(f"No 'obs_project' configured for version {args.release}")
 
-    maintainership_file_name = slfo_context.config.get(
+    maintainership_file_name = product_context.config.get(
         "maintainership_file", "_maintainership.json"
     )
 
-    verify = _resolve_verify(slfo_context.config)
+    verify = _resolve_verify(product_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
-    metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
+    metadata_repo = RepoMetadataRepositoryImpl(base_url=product_context.base_url, verify=verify)
     source_info_repo = ObsSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
     repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
 
     repo_metadata_file = metadata_repo.download_primary_metadata(
-        args.release, slfo_context.cache_dir
+        args.release, product_context.cache_dir
     )
 
     maintainership_content = repo.fetch_file(
-        slfo_context.slfo_git_url, slfo_context.ref, maintainership_file_name
+        product_context.slfo_git_url, product_context.ref, maintainership_file_name
     )
 
     service = ValidationService(
@@ -110,21 +110,21 @@ def run_maintainership(
             maintainership_content=maintainership_content,
             repo_metadata_file=repo_metadata_file,
             overrides_file=overrides_file,
-            obs_project=slfo_context.obs_project,
+            obs_project=product_context.obs_project,
         )
 
     # Package totals (always on stdout, before any finding)
     print(f"Shipped source packages: {result.shipped_package_count}")
-    print(f"Packages in OBS project {slfo_context.obs_project}: {result.obs_package_count}")
+    print(f"Packages in OBS project {product_context.obs_project}: {result.obs_package_count}")
     print(f"Maintained packages: {result.maintained_package_count}")
 
     # SET 1: Maintained packages not in the OBS package set (count → stdout; list → stderr)
     if result.maintained_packages_not_in_obs:
         print(
             f"Found {len(result.maintained_packages_not_in_obs)} "
-            f"maintained packages not in OBS project {slfo_context.obs_project}."
+            f"maintained packages not in OBS project {product_context.obs_project}."
         )
-        logger.info("Maintained packages not in OBS project %s:", slfo_context.obs_project)
+        logger.info("Maintained packages not in OBS project %s:", product_context.obs_project)
         for pkg in result.maintained_packages_not_in_obs:
             logger.info("- %s", pkg)
 
@@ -132,9 +132,9 @@ def run_maintainership(
     if result.shipped_not_in_obs:
         print(
             f"Found {len(result.shipped_not_in_obs)} "
-            f"shipped packages not in OBS project {slfo_context.obs_project}."
+            f"shipped packages not in OBS project {product_context.obs_project}."
         )
-        logger.info("Shipped packages not in OBS project %s:", slfo_context.obs_project)
+        logger.info("Shipped packages not in OBS project %s:", product_context.obs_project)
         for pkg in result.shipped_not_in_obs:
             logger.info("- %s", pkg)
 
@@ -187,15 +187,17 @@ def run_whitelist(
         ValueError: From the archive fetch, if the configured whitelist file is
             absent at the product ref.
     """
-    slfo_context = prepare_slfo_repo(args.release, args.config)
-    if slfo_context.obs_project is None:
+    product_context = resolve_product_context(args.release, args.config)
+    if product_context.obs_project is None:
         raise ConfigError(f"No 'obs_project' configured for version {args.release}")
 
-    whitelist_file_name = slfo_context.config.get("whitelist_file", "whitelist_maintainership.json")
+    whitelist_file_name = product_context.config.get(
+        "whitelist_file", "whitelist_maintainership.json"
+    )
 
-    verify = _resolve_verify(slfo_context.config)
+    verify = _resolve_verify(product_context.config)
     maintainership_repo = MaintainershipRepositoryImpl()
-    metadata_repo = RepoMetadataRepositoryImpl(base_url=slfo_context.base_url, verify=verify)
+    metadata_repo = RepoMetadataRepositoryImpl(base_url=product_context.base_url, verify=verify)
     source_info_repo = ObsSourceInfoRepositoryImpl()
     overrides_repo = NameOverridesRepositoryImpl()
     repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
@@ -209,13 +211,13 @@ def run_whitelist(
     whitelist_service = WhitelistService(validation_service)
 
     repo_metadata_file = metadata_repo.download_primary_metadata(
-        args.release, slfo_context.cache_dir
+        args.release, product_context.cache_dir
     )
 
     shipped_packages = metadata_repo.parse_source_packages(repo_metadata_file)
 
     whitelist_content = repo.fetch_file(
-        slfo_context.slfo_git_url, slfo_context.ref, whitelist_file_name
+        product_context.slfo_git_url, product_context.ref, whitelist_file_name
     )
 
     # Resolve the shipped overrides JSON via importlib.resources so it
@@ -226,7 +228,7 @@ def run_whitelist(
             whitelist_content=whitelist_content,
             shipped_packages=shipped_packages,
             overrides_file=overrides_file,
-            obs_project=slfo_context.obs_project,
+            obs_project=product_context.obs_project,
         )
 
     # Names with no source mapping (mirrors validate command's SET 3b).
@@ -275,13 +277,13 @@ def run_users(args: argparse.Namespace, archive_repo: RemoteArchiveRepository | 
         ValueError: From the archive fetch, if the configured maintainership file
             is absent at the product ref.
     """
-    slfo_context = prepare_slfo_repo(args.release, args.config)
-    maintainership_file_name = slfo_context.config.get(
+    product_context = resolve_product_context(args.release, args.config)
+    maintainership_file_name = product_context.config.get(
         "maintainership_file", "_maintainership.json"
     )
     repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
     maintainership_content = repo.fetch_file(
-        slfo_context.slfo_git_url, slfo_context.ref, maintainership_file_name
+        product_context.slfo_git_url, product_context.ref, maintainership_file_name
     )
 
     maintainership_repo = MaintainershipRepositoryImpl()

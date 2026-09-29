@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from bugownerctl.commands.check import run_maintainership, run_users, run_whitelist
-from bugownerctl.commands.repo_prep import SlfoRepoContext
+from bugownerctl.commands.product_context import ProductContext
 from bugownerctl.exceptions import ConfigError
 from bugownerctl.services.user_validation_service import UserValidationResult
 from bugownerctl.services.validation_service import ValidationResult
@@ -58,15 +58,15 @@ def _empty_validation_result() -> ValidationResult:
     )
 
 
-def _patch_maint_prep(
+def _patch_maint_context(
     monkeypatch: pytest.MonkeyPatch,
     config: dict[str, Any] | None = None,
     base_url: str | None = None,
     obs_project: str | None = _TEST_OBS_PROJECT,
-) -> tuple[Mock, SlfoRepoContext]:
-    """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
+) -> tuple[Mock, ProductContext]:
+    """Patch resolve_product_context and return (mock_func, fake_product_context)."""
     cfg = config if config is not None else _MAINT_BASE_CONFIG
-    fake_slfo_context = SlfoRepoContext(
+    fake_product_context = ProductContext(
         config=cfg,
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_git_url=cfg["slfo_git_url"],
@@ -74,10 +74,10 @@ def _patch_maint_prep(
         base_url=base_url,
         obs_project=obs_project,
     )
-    mock_prep = Mock(return_value=fake_slfo_context)
-    monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
+    mock_resolve = Mock(return_value=fake_product_context)
+    monkeypatch.setattr("bugownerctl.commands.check.resolve_product_context", mock_resolve)
     _stub_archive_fetch(monkeypatch, _MAINT_CONTENT)
-    return mock_prep, fake_slfo_context
+    return mock_resolve, fake_product_context
 
 
 def _patch_maint_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
@@ -136,15 +136,15 @@ def _empty_whitelist_result() -> WhitelistCheckResult:
     return WhitelistCheckResult(inconsistent_packages=[])
 
 
-def _patch_whitelist_prep(
+def _patch_whitelist_context(
     monkeypatch: pytest.MonkeyPatch,
     config: dict[str, Any] | None = None,
     base_url: str | None = None,
     obs_project: str | None = _TEST_OBS_PROJECT,
-) -> tuple[Mock, SlfoRepoContext]:
-    """Patch prepare_slfo_repo and return (mock_func, fake_slfo_context)."""
+) -> tuple[Mock, ProductContext]:
+    """Patch resolve_product_context and return (mock_func, fake_product_context)."""
     cfg = config if config is not None else _WHITELIST_BASE_CONFIG
-    fake_slfo_context = SlfoRepoContext(
+    fake_product_context = ProductContext(
         config=cfg,
         cache_dir=Path.home() / ".cache" / "bugownerctl",
         slfo_git_url=cfg["slfo_git_url"],
@@ -152,10 +152,10 @@ def _patch_whitelist_prep(
         base_url=base_url,
         obs_project=obs_project,
     )
-    mock_prep = Mock(return_value=fake_slfo_context)
-    monkeypatch.setattr("bugownerctl.commands.check.prepare_slfo_repo", mock_prep)
+    mock_resolve = Mock(return_value=fake_product_context)
+    monkeypatch.setattr("bugownerctl.commands.check.resolve_product_context", mock_resolve)
     _stub_archive_fetch(monkeypatch, _WHITELIST_CONTENT)
-    return mock_prep, fake_slfo_context
+    return mock_resolve, fake_product_context
 
 
 def _patch_whitelist_other_repos(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
@@ -221,7 +221,7 @@ class TestCheckMaintainershipCommand:
 
     def test_run_creates_repository_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create all repository implementation instances."""
-        mock_prep, _ = _patch_maint_prep(monkeypatch)
+        mock_resolve, _ = _patch_maint_context(monkeypatch)
         repos = _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -237,7 +237,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should create ValidationService with new source_info+overrides repos."""
-        mock_prep, fake_slfo_context = _patch_maint_prep(monkeypatch)
+        mock_resolve, fake_product_context = _patch_maint_context(monkeypatch)
 
         mock_maint_inst = Mock()
         mock_meta_inst = Mock()
@@ -277,7 +277,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call ValidationService.validate_all() with correct parameters."""
-        mock_prep, fake_slfo_context = _patch_maint_prep(monkeypatch)
+        mock_resolve, fake_product_context = _patch_maint_context(monkeypatch)
         repos = _patch_maint_other_repos(monkeypatch)
         repos["metadata"].return_value.download_primary_metadata.return_value = Path(
             "/test/cache/primary.xml.gz"
@@ -290,7 +290,7 @@ class TestCheckMaintainershipCommand:
 
         # primary.xml.gz must land in the context's cache_dir, NOT in CWD
         repos["metadata"].return_value.download_primary_metadata.assert_called_once_with(
-            "16.1", fake_slfo_context.cache_dir
+            "16.1", fake_product_context.cache_dir
         )
 
         # Verify validate_all called with correct parameters
@@ -309,7 +309,7 @@ class TestCheckMaintainershipCommand:
 
     def test_run_returns_zero_when_no_issues_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should return 0 exit code when validation finds no issues."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -322,7 +322,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should return 2 exit code when orphan packages found."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
@@ -345,7 +345,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """shipped_not_in_obs alone does NOT gate without --strict."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
@@ -366,7 +366,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """shipped_not_in_obs gates when --strict is set."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
@@ -387,7 +387,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should print orphan packages to stdout."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
@@ -419,7 +419,7 @@ class TestCheckMaintainershipCommand:
 
         The OBS project named in the output comes from the release's config.
         """
-        _patch_maint_prep(monkeypatch, obs_project="TEST:Other:2.0")
+        _patch_maint_context(monkeypatch, obs_project="TEST:Other:2.0")
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
@@ -462,7 +462,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """The three package totals print in order, before the first finding line."""
-        _patch_maint_prep(monkeypatch, obs_project="TEST:Other:2.0")
+        _patch_maint_context(monkeypatch, obs_project="TEST:Other:2.0")
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
@@ -491,7 +491,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Gating clean-run confirmation on stdout; SET1 empty-case removed entirely."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -517,7 +517,7 @@ class TestCheckMaintainershipCommand:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Count line on stdout (lowercase); header + bullet on stderr via logger.info."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(
             monkeypatch,
@@ -547,7 +547,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should NOT print the unresolved-names section when unresolved_names is empty."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)  # default: empty result, unresolved=[]
 
@@ -557,11 +557,11 @@ class TestCheckMaintainershipCommand:
         captured = capsys.readouterr()
         assert "Names with no source mapping" not in captured.out
 
-    def test_run_forwards_version_and_config_to_prepare_slfo_repo(
+    def test_run_forwards_version_and_config_to_resolve_product_context(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward args.release and args.config to prepare_slfo_repo."""
-        mock_prep, _ = _patch_maint_prep(monkeypatch)
+        """Should forward args.release and args.config to resolve_product_context."""
+        mock_resolve, _ = _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -569,26 +569,26 @@ class TestCheckMaintainershipCommand:
         args = argparse.Namespace(release="16.1", debug=False, config=config_path, strict=False)
         run_maintainership(args)
 
-        mock_prep.assert_called_once_with("16.1", config_path)
+        mock_resolve.assert_called_once_with("16.1", config_path)
 
-    def test_run_forwards_none_config_to_prepare_slfo_repo(
+    def test_run_forwards_none_config_to_resolve_product_context(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should pass None to prepare_slfo_repo() when args.config is None."""
-        mock_prep, _ = _patch_maint_prep(monkeypatch)
+        """Should pass None to resolve_product_context() when args.config is None."""
+        mock_resolve, _ = _patch_maint_context(monkeypatch)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
         args = argparse.Namespace(release="16.1", debug=False, config=None, strict=False)
         run_maintainership(args)
 
-        mock_prep.assert_called_once_with("16.1", None)
+        mock_resolve.assert_called_once_with("16.1", None)
 
     def test_run_uses_default_archive_repo_when_none_injected(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Without archive_repo, a RemoteArchiveRepositoryImpl is built and its bytes used."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         archive_cls = _stub_archive_fetch(monkeypatch, _MAINT_CONTENT)
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
@@ -605,7 +605,7 @@ class TestCheckMaintainershipCommand:
     ) -> None:
         """The configured maintainership file is fetched at the product ref; its bytes are used."""
         config = {**_MAINT_BASE_CONFIG, "maintainership_file": "custom_maint.json"}
-        _patch_maint_prep(monkeypatch, config=config)
+        _patch_maint_context(monkeypatch, config=config)
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
         archive_repo = Mock()
@@ -626,7 +626,7 @@ class TestCheckMaintainershipCommand:
         """Should read verify from config and pass to RepoMetadataRepositoryImpl."""
         config_with_verify = _MAINT_BASE_CONFIG.copy()
         config_with_verify["verify"] = "/etc/ssl/ca-bundle.pem"
-        _patch_maint_prep(monkeypatch, config=config_with_verify)
+        _patch_maint_context(monkeypatch, config=config_with_verify)
         repos = _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -640,7 +640,7 @@ class TestCheckMaintainershipCommand:
     ) -> None:
         """Should default verify=True when config has no verify key."""
         # _MAINT_BASE_CONFIG already has no verify key
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         repos = _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -652,9 +652,9 @@ class TestCheckMaintainershipCommand:
     def test_run_passes_base_url_from_context_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward slfo_context.base_url to RepoMetadataRepositoryImpl."""
+        """Should forward product_context.base_url to RepoMetadataRepositoryImpl."""
         url = "https://example.test/SLES:/16.1:/TEST/product/"
-        _patch_maint_prep(monkeypatch, base_url=url)
+        _patch_maint_context(monkeypatch, base_url=url)
         repos = _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -667,7 +667,7 @@ class TestCheckMaintainershipCommand:
         """Should raise ConfigError when config verify is int 0."""
         config_with_int = _MAINT_BASE_CONFIG.copy()
         config_with_int["verify"] = 0
-        _patch_maint_prep(monkeypatch, config=config_with_int)
+        _patch_maint_context(monkeypatch, config=config_with_int)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -679,7 +679,7 @@ class TestCheckMaintainershipCommand:
         """Should raise ConfigError when config verify is a list."""
         config_with_list = _MAINT_BASE_CONFIG.copy()
         config_with_list["verify"] = []
-        _patch_maint_prep(monkeypatch, config=config_with_list)
+        _patch_maint_context(monkeypatch, config=config_with_list)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -691,7 +691,7 @@ class TestCheckMaintainershipCommand:
         """Should raise ConfigError when config verify is an empty string."""
         config_with_empty = _MAINT_BASE_CONFIG.copy()
         config_with_empty["verify"] = ""
-        _patch_maint_prep(monkeypatch, config=config_with_empty)
+        _patch_maint_context(monkeypatch, config=config_with_empty)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -705,7 +705,7 @@ class TestCheckMaintainershipCommand:
         """Should raise ConfigError when config verify is whitespace-only."""
         config_with_whitespace = _MAINT_BASE_CONFIG.copy()
         config_with_whitespace["verify"] = "   "
-        _patch_maint_prep(monkeypatch, config=config_with_whitespace)
+        _patch_maint_context(monkeypatch, config=config_with_whitespace)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -717,7 +717,7 @@ class TestCheckMaintainershipCommand:
         """Should raise ConfigError when config verify is explicitly None."""
         config_with_none = _MAINT_BASE_CONFIG.copy()
         config_with_none["verify"] = None
-        _patch_maint_prep(monkeypatch, config=config_with_none)
+        _patch_maint_context(monkeypatch, config=config_with_none)
         _patch_maint_other_repos(monkeypatch)
         _patch_validation_service(monkeypatch)
 
@@ -729,7 +729,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The product's configured obs_project reaches validate_all verbatim."""
-        _patch_maint_prep(monkeypatch, obs_project="TEST:Other:2.0")
+        _patch_maint_context(monkeypatch, obs_project="TEST:Other:2.0")
         _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
@@ -742,7 +742,7 @@ class TestCheckMaintainershipCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """No obs_project for the product → ConfigError; nothing is downloaded or validated."""
-        _patch_maint_prep(monkeypatch, obs_project=None)
+        _patch_maint_context(monkeypatch, obs_project=None)
         repos = _patch_maint_other_repos(monkeypatch)
         _, instance = _patch_validation_service(monkeypatch)
 
@@ -764,7 +764,7 @@ class TestCheckWhitelistCommand:
 
     def test_run_creates_all_repository_instances(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Should create all repository implementation instances (no git_cls after refactor)."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         repos = _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -780,7 +780,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should create ValidationService with the new repos and no git repository."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
 
         mock_maint_inst = Mock()
         mock_meta_inst = Mock()
@@ -822,7 +822,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should create WhitelistService with ValidationService dependency."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
@@ -835,7 +835,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should call WhitelistService.check_whitelist() with correct parameters."""
-        _, fake_slfo_context = _patch_whitelist_prep(monkeypatch)
+        _, fake_product_context = _patch_whitelist_context(monkeypatch)
 
         repos = _patch_whitelist_other_repos(monkeypatch)
         repos["metadata"].return_value.parse_source_packages.return_value = {
@@ -851,7 +851,7 @@ class TestCheckWhitelistCommand:
 
         # primary.xml.gz must land in the context's cache_dir, NOT in CWD
         repos["metadata"].return_value.download_primary_metadata.assert_called_once_with(
-            "16.1", fake_slfo_context.cache_dir
+            "16.1", fake_product_context.cache_dir
         )
 
         services["whitelist_service"].check_whitelist.assert_called_once()
@@ -871,7 +871,7 @@ class TestCheckWhitelistCommand:
     ) -> None:
         """The configured whitelist file is fetched at the product ref; its bytes are used."""
         config = {**_WHITELIST_BASE_CONFIG, "whitelist_file": "custom_whitelist.json"}
-        _patch_whitelist_prep(monkeypatch, config=config)
+        _patch_whitelist_context(monkeypatch, config=config)
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
         archive_repo = Mock()
@@ -891,7 +891,7 @@ class TestCheckWhitelistCommand:
     ) -> None:
         """A whitelist absent at the ref surfaces as fetch_file's ValueError (CLI exit 64)."""
         config = {**_WHITELIST_BASE_CONFIG, "whitelist_file": "absent.json"}
-        _patch_whitelist_prep(monkeypatch, config=config)
+        _patch_whitelist_context(monkeypatch, config=config)
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
         archive_repo = Mock()
@@ -909,7 +909,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should return 0 exit code when no inconsistencies found."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -922,7 +922,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Should return 2 exit code when inconsistencies found."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
@@ -938,7 +938,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """unresolved_names alone does NOT gate without --strict."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
@@ -952,7 +952,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """unresolved_names gates when --strict is set."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
@@ -966,7 +966,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Inconsistent packages (gating) print on stdout without INFO prefix."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
@@ -987,7 +987,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Clean-run confirmation on stdout without INFO prefix."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1005,7 +1005,7 @@ class TestCheckWhitelistCommand:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Count line on stdout (lowercase); header + bullet on stderr via logger.info."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
@@ -1031,7 +1031,7 @@ class TestCheckWhitelistCommand:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Count line (stdout) must appear before verdict (stdout); header in caplog."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
@@ -1060,7 +1060,7 @@ class TestCheckWhitelistCommand:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Inconsistency verdict block must come after unresolved-names count on stdout."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(
             monkeypatch,
@@ -1086,7 +1086,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Should NOT print the unresolved-names section when unresolved_names is empty."""
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)  # default: empty result, unresolved=[]
 
@@ -1096,11 +1096,11 @@ class TestCheckWhitelistCommand:
         captured = capsys.readouterr()
         assert "Names with no source mapping" not in captured.out
 
-    def test_run_forwards_version_and_config_to_prepare_slfo_repo(
+    def test_run_forwards_version_and_config_to_resolve_product_context(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward args.release and args.config to prepare_slfo_repo."""
-        mock_prep, _ = _patch_whitelist_prep(monkeypatch)
+        """Should forward args.release and args.config to resolve_product_context."""
+        mock_resolve, _ = _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1108,20 +1108,20 @@ class TestCheckWhitelistCommand:
         args = argparse.Namespace(release="16.1", config=config_path, strict=False)
         run_whitelist(args)
 
-        mock_prep.assert_called_once_with("16.1", config_path)
+        mock_resolve.assert_called_once_with("16.1", config_path)
 
-    def test_run_forwards_none_config_to_prepare_slfo_repo(
+    def test_run_forwards_none_config_to_resolve_product_context(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should pass None to prepare_slfo_repo() when args.config is None."""
-        mock_prep, _ = _patch_whitelist_prep(monkeypatch)
+        """Should pass None to resolve_product_context() when args.config is None."""
+        mock_resolve, _ = _patch_whitelist_context(monkeypatch)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
         args = argparse.Namespace(release="16.1", config=None, strict=False)
         run_whitelist(args)
 
-        mock_prep.assert_called_once_with("16.1", None)
+        mock_resolve.assert_called_once_with("16.1", None)
 
     def test_run_passes_verify_from_config_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1129,7 +1129,7 @@ class TestCheckWhitelistCommand:
         """Should read verify from config and pass to RepoMetadataRepositoryImpl."""
         config_with_verify = _WHITELIST_BASE_CONFIG.copy()
         config_with_verify["verify"] = "/etc/ssl/ca-bundle.pem"
-        _patch_whitelist_prep(monkeypatch, config=config_with_verify)
+        _patch_whitelist_context(monkeypatch, config=config_with_verify)
         repos = _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1143,7 +1143,7 @@ class TestCheckWhitelistCommand:
     ) -> None:
         """Should default verify=True when config has no verify key."""
         # _WHITELIST_BASE_CONFIG already has no verify key
-        _patch_whitelist_prep(monkeypatch)
+        _patch_whitelist_context(monkeypatch)
         repos = _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1155,9 +1155,9 @@ class TestCheckWhitelistCommand:
     def test_run_passes_base_url_from_context_to_metadata_repo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Should forward slfo_context.base_url to RepoMetadataRepositoryImpl."""
+        """Should forward product_context.base_url to RepoMetadataRepositoryImpl."""
         url = "https://example.test/SLES:/16.1:/TEST/product/"
-        _patch_whitelist_prep(monkeypatch, base_url=url)
+        _patch_whitelist_context(monkeypatch, base_url=url)
         repos = _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1170,7 +1170,7 @@ class TestCheckWhitelistCommand:
         """Should raise ConfigError when config verify is int 0."""
         config_with_int = _WHITELIST_BASE_CONFIG.copy()
         config_with_int["verify"] = 0
-        _patch_whitelist_prep(monkeypatch, config=config_with_int)
+        _patch_whitelist_context(monkeypatch, config=config_with_int)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1182,7 +1182,7 @@ class TestCheckWhitelistCommand:
         """Should raise ConfigError when config verify is a list."""
         config_with_list = _WHITELIST_BASE_CONFIG.copy()
         config_with_list["verify"] = []
-        _patch_whitelist_prep(monkeypatch, config=config_with_list)
+        _patch_whitelist_context(monkeypatch, config=config_with_list)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1194,7 +1194,7 @@ class TestCheckWhitelistCommand:
         """Should raise ConfigError when config verify is an empty string."""
         config_with_empty = _WHITELIST_BASE_CONFIG.copy()
         config_with_empty["verify"] = ""
-        _patch_whitelist_prep(monkeypatch, config=config_with_empty)
+        _patch_whitelist_context(monkeypatch, config=config_with_empty)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1208,7 +1208,7 @@ class TestCheckWhitelistCommand:
         """Should raise ConfigError when config verify is whitespace-only."""
         config_with_whitespace = _WHITELIST_BASE_CONFIG.copy()
         config_with_whitespace["verify"] = "   "
-        _patch_whitelist_prep(monkeypatch, config=config_with_whitespace)
+        _patch_whitelist_context(monkeypatch, config=config_with_whitespace)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1220,7 +1220,7 @@ class TestCheckWhitelistCommand:
         """Should raise ConfigError when config verify is explicitly None."""
         config_with_none = _WHITELIST_BASE_CONFIG.copy()
         config_with_none["verify"] = None
-        _patch_whitelist_prep(monkeypatch, config=config_with_none)
+        _patch_whitelist_context(monkeypatch, config=config_with_none)
         _patch_whitelist_other_repos(monkeypatch)
         _patch_services(monkeypatch)
 
@@ -1232,7 +1232,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The product's configured obs_project reaches check_whitelist verbatim."""
-        _patch_whitelist_prep(monkeypatch, obs_project="TEST:Other:2.0")
+        _patch_whitelist_context(monkeypatch, obs_project="TEST:Other:2.0")
         _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
@@ -1246,7 +1246,7 @@ class TestCheckWhitelistCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """No obs_project for the product → ConfigError; nothing is downloaded or checked."""
-        _patch_whitelist_prep(monkeypatch, obs_project=None)
+        _patch_whitelist_context(monkeypatch, obs_project=None)
         repos = _patch_whitelist_other_repos(monkeypatch)
         services = _patch_services(monkeypatch)
 
@@ -1300,7 +1300,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Returns 0 when result.invalid and result.not_found are both empty."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=["gyr"], invalid=[], not_found=[]),
@@ -1317,7 +1317,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Returns 2 when result.invalid is non-empty."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=[], invalid=["baduser"], not_found=[]),
@@ -1334,7 +1334,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Returns 2 when result.not_found is non-empty."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=[], invalid=[], not_found=["ghost"]),
@@ -1354,7 +1354,7 @@ class TestCheckUsersCommand:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Confirmed count on stdout; Confirmed accounts header + bullets on stderr."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=["gyr"], invalid=[], not_found=[]),
@@ -1376,7 +1376,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Invalid section (gating) prints on stdout without INFO prefix."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=[], invalid=["locked-user"], not_found=[]),
@@ -1397,7 +1397,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Not-found section (gating) prints on stdout without INFO prefix."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=[], invalid=[], not_found=["ghost"]),
@@ -1418,7 +1418,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Clean-run summary on stdout without INFO prefix."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=["gyr", "other"], invalid=[], not_found=[]),
@@ -1437,7 +1437,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Failure summary on stdout without INFO prefix."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _patch_users_service(
             monkeypatch,
             UserValidationResult(confirmed=["ok-user"], invalid=["bad-user"], not_found=["ghost"]),
@@ -1457,7 +1457,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Without archive_repo, a RemoteArchiveRepositoryImpl is built and its bytes used."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         archive_cls = _stub_archive_fetch(monkeypatch, _MAINT_CONTENT)
         _, service_instance = _patch_users_service(monkeypatch)
 
@@ -1474,7 +1474,7 @@ class TestCheckUsersCommand:
     ) -> None:
         """The configured maintainership file is fetched at the product ref; its bytes are used."""
         config = {**_MAINT_BASE_CONFIG, "maintainership_file": "custom_maint.json"}
-        _patch_maint_prep(monkeypatch, config=config)
+        _patch_maint_context(monkeypatch, config=config)
         _, service_instance = _patch_users_service(monkeypatch)
         archive_repo = Mock()
         archive_repo.fetch_file.return_value = b'{"packages": {"fetched": {}}}'
@@ -1493,7 +1493,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Forwards args.api and args.batch_size to service.validate() as positional args."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
         _, service_instance = _patch_users_service(monkeypatch)
 
         args = argparse.Namespace(
@@ -1513,7 +1513,7 @@ class TestCheckUsersCommand:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """UserValidationService must be constructed with (maintainership_repo, person_repo)."""
-        _patch_maint_prep(monkeypatch)
+        _patch_maint_context(monkeypatch)
 
         mock_maint_inst = Mock()
         mock_person_inst = Mock()
@@ -1539,7 +1539,7 @@ class TestCheckUsersCommand:
 
     def test_run_does_not_require_obs_project(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """check users never queries OBS source info, so a missing obs_project is fine."""
-        _patch_maint_prep(monkeypatch, obs_project=None)
+        _patch_maint_context(monkeypatch, obs_project=None)
         _, service_instance = _patch_users_service(monkeypatch)
 
         args = argparse.Namespace(

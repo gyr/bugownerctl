@@ -1,4 +1,4 @@
-"""Tests for prepare_slfo_repo helper (repo_prep module)."""
+"""Tests for resolve_product_context helper (product_context module)."""
 
 import logging
 from importlib.resources import files
@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
-from bugownerctl.commands.repo_prep import prepare_slfo_repo
+from bugownerctl.commands.product_context import resolve_product_context
 from bugownerctl.exceptions import ConfigError
 
 # ---------------------------------------------------------------------------
@@ -31,34 +31,34 @@ BASE_CONFIG: dict[str, Any] = {
 # ---------------------------------------------------------------------------
 
 
-class TestPrepareSlfoRepoCacheDir:
+class TestResolveProductContextCacheDir:
     """Tests that verify cache_dir tilde expansion."""
 
     def test_cache_dir_tilde_is_expanded(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """cache_dir with leading tilde is expanded to absolute home-based path."""
         loaded_config = dict(BASE_CONFIG)
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.cache_dir == Path.home() / ".cache" / "bugownerctl"
 
 
-class TestPrepareSlfoRepoContextFields:
-    """Tests that verify the returned SlfoRepoContext fields."""
+class TestResolveProductContextFields:
+    """Tests that verify the returned ProductContext fields."""
 
     def test_ctx_carries_slfo_git_url_and_ref(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """ctx.slfo_git_url and ctx.ref are the configured URL and the product's branch."""
         loaded_config = dict(BASE_CONFIG)
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
-        ctx = prepare_slfo_repo(version="16.0", config_file=None)
+        ctx = resolve_product_context(version="16.0", config_file=None)
 
         assert ctx.slfo_git_url == "gitea@src.suse.de:products/SLFO.git"
         assert ctx.ref == "slfo-1.2"
@@ -67,16 +67,16 @@ class TestPrepareSlfoRepoContextFields:
         """ctx.config is the exact dict object returned by load_config (identity check)."""
         loaded_config = dict(BASE_CONFIG)
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.config is loaded_config
 
 
-class TestPrepareSlfoRepoBaseUrl:
+class TestResolveProductContextBaseUrl:
     """Tests for the optional per-product base_url key."""
 
     @staticmethod
@@ -95,7 +95,7 @@ class TestPrepareSlfoRepoBaseUrl:
     def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> None:
         """Patch load_config to return the given config."""
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
@@ -103,7 +103,7 @@ class TestPrepareSlfoRepoBaseUrl:
         """Product entry without base_url key → ctx.base_url is None."""
         self._patch(monkeypatch, self._config_with_base_url(None, include_key=False))
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.base_url is None
 
@@ -112,7 +112,7 @@ class TestPrepareSlfoRepoBaseUrl:
         url = "https://download.suse.de/ibs/SUSE:/SLFO:/Products:/SLES:/16.1:/TEST/product/"
         self._patch(monkeypatch, self._config_with_base_url(url))
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.base_url == url
 
@@ -123,7 +123,7 @@ class TestPrepareSlfoRepoBaseUrl:
         url = "https://example.test/SLES:/{version}:/TEST/product/"
         self._patch(monkeypatch, self._config_with_base_url(url))
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.base_url == url
 
@@ -143,7 +143,7 @@ class TestPrepareSlfoRepoBaseUrl:
         self._patch(monkeypatch, self._config_with_base_url(bad_value))
 
         with pytest.raises(ConfigError, match=f"'base_url'.*{type_name}"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
     def test_base_url_rejects_blank_string(
@@ -153,7 +153,7 @@ class TestPrepareSlfoRepoBaseUrl:
         self._patch(monkeypatch, self._config_with_base_url(blank))
 
         with pytest.raises(ConfigError, match="'base_url'.*empty or whitespace-only"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     def test_base_url_rejects_missing_trailing_slash(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A base_url not ending in '/' raises ConfigError explaining concatenation."""
@@ -161,7 +161,7 @@ class TestPrepareSlfoRepoBaseUrl:
         self._patch(monkeypatch, self._config_with_base_url(url))
 
         with pytest.raises(ConfigError) as exc_info:
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
         message = str(exc_info.value)
         assert "base_url" in message
@@ -184,7 +184,7 @@ class TestPrepareSlfoRepoBaseUrl:
         self._patch(monkeypatch, self._config_with_base_url(bad_url))
 
         with pytest.raises(ConfigError, match="absolute URL"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     @pytest.mark.parametrize(
         "bad_url",
@@ -203,19 +203,20 @@ class TestPrepareSlfoRepoBaseUrl:
         self._patch(monkeypatch, self._config_with_base_url(bad_url))
 
         with pytest.raises(ConfigError) as exc_info:
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
         message = str(exc_info.value)
         assert "base_url" in message
         assert bad_url in message
 
     @staticmethod
-    def _repo_prep_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
-        """Warning messages emitted by the repo_prep logger only."""
+    def _product_context_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+        """Warning messages emitted by the product_context logger only."""
         return [
             record.getMessage()
             for record in caplog.records
-            if record.levelno == logging.WARNING and record.name == "bugownerctl.commands.repo_prep"
+            if record.levelno == logging.WARNING
+            and record.name == "bugownerctl.commands.product_context"
         ]
 
     @pytest.mark.parametrize("url", ["http://mirror.test/product/", "HTTP://mirror.test/product/"])
@@ -229,11 +230,11 @@ class TestPrepareSlfoRepoBaseUrl:
         """
         self._patch(monkeypatch, self._config_with_base_url(url))
 
-        with caplog.at_level(logging.WARNING, logger="bugownerctl.commands.repo_prep"):
-            ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        with caplog.at_level(logging.WARNING, logger="bugownerctl.commands.product_context"):
+            ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.base_url == url
-        assert any("netrc" in msg for msg in self._repo_prep_warnings(caplog))
+        assert any("netrc" in msg for msg in self._product_context_warnings(caplog))
 
     def test_base_url_over_https_does_not_warn(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
@@ -241,10 +242,10 @@ class TestPrepareSlfoRepoBaseUrl:
         """An https base_url is silent — the warning is specific to cleartext transport."""
         self._patch(monkeypatch, self._config_with_base_url("https://mirror.test/product/"))
 
-        with caplog.at_level(logging.WARNING, logger="bugownerctl.commands.repo_prep"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+        with caplog.at_level(logging.WARNING, logger="bugownerctl.commands.product_context"):
+            resolve_product_context(version="16.1", config_file=None)
 
-        assert not self._repo_prep_warnings(caplog)
+        assert not self._product_context_warnings(caplog)
 
     def test_base_url_on_other_product_is_not_applied(
         self, monkeypatch: pytest.MonkeyPatch
@@ -260,12 +261,12 @@ class TestPrepareSlfoRepoBaseUrl:
         }
         self._patch(monkeypatch, loaded_config)
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.base_url is None
 
 
-class TestPrepareSlfoRepoObsProject:
+class TestResolveProductContextObsProject:
     """Tests for the per-product obs_project key."""
 
     @staticmethod
@@ -284,7 +285,7 @@ class TestPrepareSlfoRepoObsProject:
     def _patch(monkeypatch: pytest.MonkeyPatch, loaded_config: dict[str, Any]) -> None:
         """Patch load_config to return the given config."""
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
@@ -292,7 +293,7 @@ class TestPrepareSlfoRepoObsProject:
         """Product entry without obs_project key → ctx.obs_project is None."""
         self._patch(monkeypatch, self._config_with_obs_project(None, include_key=False))
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.obs_project is None
 
@@ -300,7 +301,7 @@ class TestPrepareSlfoRepoObsProject:
         """A configured obs_project reaches the context unmodified."""
         self._patch(monkeypatch, self._config_with_obs_project("EXAMPLE:Project:1.0"))
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.obs_project == "EXAMPLE:Project:1.0"
 
@@ -321,7 +322,7 @@ class TestPrepareSlfoRepoObsProject:
         self._patch(monkeypatch, self._config_with_obs_project(bad_value))
 
         with pytest.raises(ConfigError, match=f"'obs_project'.*{type_name}"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     @pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
     def test_obs_project_rejects_blank_string(
@@ -331,7 +332,7 @@ class TestPrepareSlfoRepoObsProject:
         self._patch(monkeypatch, self._config_with_obs_project(blank))
 
         with pytest.raises(ConfigError, match="'obs_project'.*empty or whitespace-only"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     def test_obs_project_on_other_product_is_not_applied(
         self, monkeypatch: pytest.MonkeyPatch
@@ -347,7 +348,7 @@ class TestPrepareSlfoRepoObsProject:
         }
         self._patch(monkeypatch, loaded_config)
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.obs_project is None
 
@@ -365,7 +366,7 @@ class TestPrepareSlfoRepoObsProject:
         self._patch(monkeypatch, example_config)
 
         resolved = {
-            product["version"]: prepare_slfo_repo(
+            product["version"]: resolve_product_context(
                 version=product["version"], config_file=None
             ).obs_project
             for product in example_config["products"]
@@ -373,19 +374,19 @@ class TestPrepareSlfoRepoObsProject:
         assert resolved == {"16.0": "SUSE:SLFO:1.2", "16.1": "SUSE:SLFO:Main"}
 
 
-class TestPrepareSlfoRepoErrors:
+class TestResolveProductContextErrors:
     """Tests that verify ValueError is raised for invalid inputs."""
 
     def test_raises_version_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Requesting a version absent from products list raises ValueError."""
         loaded_config = dict(BASE_CONFIG)
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
         with pytest.raises(ValueError, match="Version 99.9 not found in config"):
-            prepare_slfo_repo(version="99.9", config_file=None)
+            resolve_product_context(version="99.9", config_file=None)
 
     @pytest.mark.parametrize(
         "product",
@@ -408,13 +409,13 @@ class TestPrepareSlfoRepoErrors:
             "products": [product],
         }
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
         version = product["version"]
         with pytest.raises(ConfigError, match=f"version {version} has no 'branch' configured"):
-            prepare_slfo_repo(version=version, config_file=None)
+            resolve_product_context(version=version, config_file=None)
 
     @pytest.mark.parametrize("empty_ref", ["", None])
     def test_raises_empty_git_ref(
@@ -429,12 +430,12 @@ class TestPrepareSlfoRepoErrors:
             ],
         }
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
         with pytest.raises(ValueError, match="Empty git ref for version 16.1"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     def test_raises_missing_slfo_git_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Config without slfo_git_url raises ValueError."""
@@ -446,23 +447,23 @@ class TestPrepareSlfoRepoErrors:
             ],
         }
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
         with pytest.raises(ValueError, match="slfo_git_url not found in config"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
 
-class TestPrepareSlfoRepoConfigFile:
+class TestResolveProductContextConfigFile:
     """Tests for config_file forwarding and cache_dir default."""
 
     def test_config_file_forwarded_to_load_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """An explicit config_file path is passed verbatim to load_config."""
         mock_load = Mock(return_value=dict(BASE_CONFIG))
-        monkeypatch.setattr("bugownerctl.commands.repo_prep.load_config", mock_load)
+        monkeypatch.setattr("bugownerctl.commands.product_context.load_config", mock_load)
 
-        prepare_slfo_repo(version="16.1", config_file=Path("/explicit/config.yaml"))
+        resolve_product_context(version="16.1", config_file=Path("/explicit/config.yaml"))
 
         mock_load.assert_called_once_with(Path("/explicit/config.yaml"))
 
@@ -474,16 +475,16 @@ class TestPrepareSlfoRepoConfigFile:
             # cache_dir key intentionally absent
         }
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.cache_dir == Path.home() / ".cache" / "bugownerctl"
 
 
-class TestPrepareSlfoRepoNoClone:
+class TestResolveProductContextNoClone:
     """Tests that context resolution touches neither git nor the filesystem."""
 
     def test_context_resolution_never_clones_or_creates_cache_dir(
@@ -493,27 +494,27 @@ class TestPrepareSlfoRepoNoClone:
         cache_dir = tmp_path / "cache"
         loaded_config = {**BASE_CONFIG, "cache_dir": str(cache_dir)}
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value=loaded_config),
         )
         mock_run = Mock()
         monkeypatch.setattr("subprocess.run", mock_run)
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.cache_dir == cache_dir
         assert not cache_dir.exists()
         mock_run.assert_not_called()
 
 
-class TestPrepareSlfoRepoUrlValidation:
+class TestResolveProductContextUrlValidation:
     """Tests for the slfo_git_url format and SSRF checks done during context resolution."""
 
     @staticmethod
     def _patch_url(monkeypatch: pytest.MonkeyPatch, slfo_git_url: str) -> None:
         """Patch load_config to return BASE_CONFIG with the given slfo_git_url."""
         monkeypatch.setattr(
-            "bugownerctl.commands.repo_prep.load_config",
+            "bugownerctl.commands.product_context.load_config",
             Mock(return_value={**BASE_CONFIG, "slfo_git_url": slfo_git_url}),
         )
 
@@ -537,7 +538,7 @@ class TestPrepareSlfoRepoUrlValidation:
         self._patch_url(monkeypatch, invalid_url)
 
         with pytest.raises(ValueError, match="Invalid repository URL format"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     @pytest.mark.parametrize(
         "ssh_url",
@@ -552,7 +553,7 @@ class TestPrepareSlfoRepoUrlValidation:
         """A valid SCP-style SSH slfo_git_url is accepted and carried on the context."""
         self._patch_url(monkeypatch, ssh_url)
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.slfo_git_url == ssh_url
 
@@ -571,7 +572,7 @@ class TestPrepareSlfoRepoUrlValidation:
         self._patch_url(monkeypatch, ssh_url_with_port)
 
         with pytest.raises(ValueError, match="Invalid repository URL format"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     @pytest.mark.parametrize(
         "internal_url",
@@ -588,7 +589,7 @@ class TestPrepareSlfoRepoUrlValidation:
         self._patch_url(monkeypatch, internal_url)
 
         with pytest.raises(ValueError, match="internal network or metadata service"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     @pytest.mark.parametrize(
         "metadata_url",
@@ -604,7 +605,7 @@ class TestPrepareSlfoRepoUrlValidation:
         self._patch_url(monkeypatch, metadata_url)
 
         with pytest.raises(ValueError, match="internal network or metadata service"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     @pytest.mark.parametrize(
         "private_url",
@@ -621,13 +622,13 @@ class TestPrepareSlfoRepoUrlValidation:
         self._patch_url(monkeypatch, private_url)
 
         with pytest.raises(ValueError, match="internal network or metadata service"):
-            prepare_slfo_repo(version="16.1", config_file=None)
+            resolve_product_context(version="16.1", config_file=None)
 
     def test_accepts_ssh_url_to_internal_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The SSRF check applies to HTTP(S) only; SSH to an internal git server is allowed."""
         self._patch_url(monkeypatch, "git@10.0.0.1:products/SLFO.git")
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.slfo_git_url == "git@10.0.0.1:products/SLFO.git"
 
@@ -635,12 +636,12 @@ class TestPrepareSlfoRepoUrlValidation:
         """A well-formed HTTPS slfo_git_url on a public host is accepted."""
         self._patch_url(monkeypatch, "https://src.example.test/products/SLFO.git")
 
-        ctx = prepare_slfo_repo(version="16.1", config_file=None)
+        ctx = resolve_product_context(version="16.1", config_file=None)
 
         assert ctx.slfo_git_url == "https://src.example.test/products/SLFO.git"
 
 
-class TestPrepareSlfoRepoMissingConfig:
+class TestResolveProductContextMissingConfig:
     """Tests that verify ConfigError is raised when the config file is missing."""
 
     def test_missing_config_file_raises_config_error(self) -> None:
@@ -648,4 +649,4 @@ class TestPrepareSlfoRepoMissingConfig:
         nonexistent = Path("/nonexistent/path/that/cannot/exist/config.yaml")
 
         with pytest.raises(ConfigError):
-            prepare_slfo_repo(version="16.1", config_file=nonexistent)
+            resolve_product_context(version="16.1", config_file=nonexistent)

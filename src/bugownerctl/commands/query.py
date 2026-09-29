@@ -6,7 +6,7 @@ Executes query subcommands for package and maintainer information.
 import argparse
 import logging
 
-from bugownerctl.commands.repo_prep import prepare_slfo_repo
+from bugownerctl.commands.product_context import resolve_product_context
 from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.repositories.remote_archive_repository import (
@@ -40,21 +40,23 @@ def run_package(
             the query runs without one.
     """
     logger.info("querying package %r...", args.package_name)
-    slfo_context = prepare_slfo_repo(args.release, args.config)
+    product_context = resolve_product_context(args.release, args.config)
 
-    maintainership_file_name = slfo_context.config.get(
+    maintainership_file_name = product_context.config.get(
         "maintainership_file", "_maintainership.json"
     )
-    whitelist_file_name = slfo_context.config.get("whitelist_file", "whitelist_maintainership.json")
+    whitelist_file_name = product_context.config.get(
+        "whitelist_file", "whitelist_maintainership.json"
+    )
     repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
 
     maintainership_content = repo.fetch_file(
-        slfo_context.slfo_git_url, slfo_context.ref, maintainership_file_name
+        product_context.slfo_git_url, product_context.ref, maintainership_file_name
     )
     whitelist_content: bytes | None
     try:
         whitelist_content = repo.fetch_file(
-            slfo_context.slfo_git_url, slfo_context.ref, whitelist_file_name
+            product_context.slfo_git_url, product_context.ref, whitelist_file_name
         )
     except FileNotFoundAtRefError:
         whitelist_content = None
@@ -99,15 +101,15 @@ def run_maintainer(
             is absent at the product ref.
     """
     logger.info("querying maintainer %r...", args.maintainer_name)
-    slfo_context = prepare_slfo_repo(args.release, args.config)
+    product_context = resolve_product_context(args.release, args.config)
 
-    maintainership_file_name = slfo_context.config.get(
+    maintainership_file_name = product_context.config.get(
         "maintainership_file", "_maintainership.json"
     )
     repo = archive_repo if archive_repo is not None else RemoteArchiveRepositoryImpl()
 
     maintainership_content = repo.fetch_file(
-        slfo_context.slfo_git_url, slfo_context.ref, maintainership_file_name
+        product_context.slfo_git_url, product_context.ref, maintainership_file_name
     )
 
     maintainership_repo = MaintainershipRepositoryImpl()
