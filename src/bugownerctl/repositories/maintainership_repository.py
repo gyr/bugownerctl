@@ -6,6 +6,24 @@ from typing import Protocol
 from ..domain.maintainer import MaintainershipData
 
 
+def _names_or_empty(entry: dict[str, list[str] | None], key: str) -> list[str]:
+    """Return the name list stored under ``key``, or an empty list.
+
+    Args:
+        entry: One package object from the "packages" mapping
+        key: Name-list key to read, "users" or "groups"
+
+    Returns:
+        The stored name list, or an empty list if the key is absent or null.
+    """
+    # Real SLFO branches such as slfo-1.2 write JSON null where an empty list
+    # is meant, so null and an absent key normalize alike.
+    value = entry.get(key)
+    if value is None:
+        return []
+    return value
+
+
 class MaintainershipRepository(Protocol):
     """Interface for maintainership data access."""
 
@@ -105,8 +123,8 @@ class MaintainershipRepositoryImpl:
         packages_normalized = {}
 
         for package_name, maintainers in packages_raw.items():
-            users = maintainers.get("users", [])
-            groups = maintainers.get("groups", [])
+            users = _names_or_empty(maintainers, "users")
+            groups = _names_or_empty(maintainers, "groups")
             packages_normalized[package_name] = users + groups
 
         return MaintainershipData(packages=packages_normalized)
@@ -166,4 +184,4 @@ class MaintainershipRepositoryImpl:
             KeyError: If missing required 'packages' key
         """
         data = json.loads(content)
-        return {pkg: pkg_obj.get("users", []) for pkg, pkg_obj in data["packages"].items()}
+        return {pkg: _names_or_empty(pkg_obj, "users") for pkg, pkg_obj in data["packages"].items()}
