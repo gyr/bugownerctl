@@ -37,6 +37,12 @@ bugownerctl query package apache2 -r 16.1
 # List packages maintained by user
 bugownerctl query maintainer user1 -r 16.1
 
+# Find the source package a binary package is built from
+bugownerctl query binpkg-source cpp16 -r 16.1
+
+# List the binary packages built from a source package
+bugownerctl query srcpkg-binaries gcc16 -r 16.1
+
 # Compare maintainership between two SLFO git refs
 bugownerctl diff maintainership slfo-main slfo-1.3
 ```
@@ -488,6 +494,110 @@ Packages (5):
 
 ---
 
+### `bugownerctl query binpkg-source`
+
+Print the source package a binary package is built from.
+
+**Usage:**
+```bash
+bugownerctl query binpkg-source <binary_name> -r <version> [-c <config>]
+```
+
+**Examples:**
+```bash
+# Which source package builds cpp16?
+bugownerctl query binpkg-source cpp16 -r 16.1
+
+# With explicit config
+bugownerctl query binpkg-source cpp16 -r 16.1 --config /path/to/config.yaml
+```
+
+**Exit codes:**
+- `0` - Query completed, whether or not the binary package was found
+- `1` - Metadata download failed, or the metadata holds a DOCTYPE or maps no binary packages
+- `64` - Bad version (no matching product in config) or invalid config
+- `124` - Metadata download timed out (30 s)
+
+**Output:**
+
+The source package names, sorted, one per line on stdout:
+```
+gcc16
+```
+
+A binary package can come from more than one source package. All of them are printed:
+```
+openblas_openmp
+openblas_pthreads
+```
+
+A binary package that is not in the metadata is a valid result, not an error: stdout stays empty,
+the exit code is `0`, and a message goes to stderr (not silenced by `-q/--quiet`):
+```
+Binary package 'cpp61' not found in release 16.1 repository metadata
+```
+
+See [Package metadata](#package-metadata-for-binpkg-source-and-srcpkg-binaries) for what a source
+package name is and where the data comes from.
+
+---
+
+### `bugownerctl query srcpkg-binaries`
+
+Print the binary packages built from a source package.
+
+**Usage:**
+```bash
+bugownerctl query srcpkg-binaries <source_name> -r <version> [-c <config>]
+```
+
+**Examples:**
+```bash
+# Which binary packages does gcc16 build?
+bugownerctl query srcpkg-binaries gcc16 -r 16.1
+
+# Count them
+bugownerctl query srcpkg-binaries gcc16 -r 16.1 | wc -l
+```
+
+**Exit codes:**
+- `0` - Query completed, whether or not the source package was found
+- `1` - Metadata download failed, or the metadata holds a DOCTYPE or maps no binary packages
+- `64` - Bad version (no matching product in config) or invalid config
+- `124` - Metadata download timed out (30 s)
+
+**Output:**
+
+The binary package names, sorted, one per line on stdout:
+```
+cpp16
+cpp16-debuginfo
+gcc16
+gcc16-PIE
+...
+```
+
+A source package that is not in the metadata is a valid result, not an error: stdout stays empty,
+the exit code is `0`, and a message goes to stderr (not silenced by `-q/--quiet`):
+```
+Source package 'openblas' not found in release 16.1 repository metadata
+```
+
+#### Package metadata for `binpkg-source` and `srcpkg-binaries`
+
+Both commands read the product's repository metadata (`primary.xml.gz`), downloaded from the
+product's `base_url` (see [Config File Format](#config-file-format)). They read no SLFO files.
+
+A **source package name** is the name of the `.src.rpm` recorded for each binary package, with the
+version and release dropped. It is not always the name you might expect: on 16.1, `openblas` is
+not found, but `openblas_openmp` and `openblas_pthreads` are.
+
+Every run scans the whole `primary.xml.gz`, which takes about 19 seconds. The file itself is
+cached under `{cache_dir}/repodata/{version}/` and downloaded again only when its checksum in
+`repomd.xml` changes; `repomd.xml` is fetched on every run, so network access is always needed.
+
+---
+
 ### `bugownerctl diff maintainership`
 
 Report how package maintainership differs between two SLFO git refs, as CSV.
@@ -718,8 +828,8 @@ and `query` do not use it, but still reject a non-string or blank value.
 
 ### SLFO file access
 
-`check` and `query` read `maintainership_file` and `whitelist_file` (and `diff` reads
-`maintainership_file`) straight from
+`check`, `query package` and `query maintainer` read `maintainership_file` and `whitelist_file`
+(and `diff` reads `maintainership_file`) straight from
 `slfo_git_url` with `git archive --remote`, in memory: nothing is cloned and nothing SLFO-related is
 written under `cache_dir`, so every run sees the current state of the branch. Each fetch takes about
 a second and needs network access plus working credentials for the remote — an SSH key for the
