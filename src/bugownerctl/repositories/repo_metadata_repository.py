@@ -16,6 +16,18 @@ from ..exceptions import NetworkTimeoutError
 logger = logging.getLogger(__name__)
 
 
+def _source_name_from_sourcerpm(sourcerpm: str) -> str:
+    """Derive the source package name from an RPM sourcerpm file name.
+
+    Args:
+        sourcerpm: Source RPM file name, e.g. "python-foo-bar-1.2-3.1.src.rpm"
+
+    Returns:
+        Source package name with version and release dropped, e.g. "python-foo-bar"
+    """
+    return sourcerpm.rsplit("-", 2)[0]
+
+
 class RepoMetadataRepository(Protocol):
     """Interface for repository metadata operations."""
 
@@ -53,6 +65,26 @@ class RepoMetadataRepository(Protocol):
         Raises:
             FileNotFoundError: If primary_xml_path doesn't exist
             RuntimeError: If no source packages are found
+        """
+        ...
+
+    def parse_source_binaries(self, primary_xml_path: Path) -> dict[str, set[str]]:
+        """Parse primary XML to map source package names to their binary package names.
+
+        Parses gzipped primary XML file using iterparse for memory efficiency.
+        Each binary package is attributed to the source named by its sourcerpm;
+        packages with architecture 'src' or 'nosrc', and binaries without a
+        sourcerpm, are skipped.
+
+        Args:
+            primary_xml_path: Path to primary.xml.gz file
+
+        Returns:
+            Mapping of source package name to the set of its binary package names
+
+        Raises:
+            FileNotFoundError: If primary_xml_path doesn't exist
+            RuntimeError: If the XML contains a DOCTYPE or no binaries are mapped
         """
         ...
 
@@ -287,3 +319,72 @@ class RepoMetadataRepositoryImpl:
             )
 
         return source_packages
+
+    def parse_source_binaries(self, primary_xml_path: Path) -> dict[str, set[str]]:
+        """Parse primary XML to map source package names to their binary package names.
+
+        Parses gzipped primary XML file using iterparse for memory efficiency.
+        Each binary package is attributed to the source named by its sourcerpm;
+        packages with architecture 'src' or 'nosrc', and binaries without a
+        sourcerpm, are skipped.
+
+        Args:
+            primary_xml_path: Path to primary.xml.gz file
+
+        Returns:
+            Mapping of source package name to the set of its binary package names
+
+        Raises:
+            FileNotFoundError: If primary_xml_path doesn't exist
+            RuntimeError: If the XML contains a DOCTYPE or no binaries are mapped
+        """
+        if not primary_xml_path.exists():
+            raise FileNotFoundError(f"Primary XML file not found: {primary_xml_path}")
+
+        source_binaries: dict[str, set[str]] = {}
+
+        with gzip.open(primary_xml_path, "rt", encoding="utf-8") as f:
+            try:
+                context = ET.iterparse(f, events=("end",), forbid_dtd=True)
+
+                current_package_name: str | None = None
+                current_arch: str | None = None
+                current_sourcerpm: str | None = None
+
+                for _event, elem in context:
+                    tag = elem.tag.replace("{http://linux.duke.edu/metadata/common}", "")
+
+                    if tag == "name" and elem.text:
+                        current_package_name = elem.text
+                    elif tag == "arch" and elem.text:
+                        current_arch = elem.text
+                    elif tag == "{http://linux.duke.edu/metadata/rpm}sourcerpm" and elem.text:
+                        current_sourcerpm = elem.text
+                    elif tag == "package":
+                        if (
+                            current_package_name
+                            and current_arch not in ("src", "nosrc")
+                            and current_sourcerpm
+                        ):
+                            source_name = _source_name_from_sourcerpm(current_sourcerpm)
+                            source_binaries.setdefault(source_name, set()).add(current_package_name)
+
+                        current_package_name = None
+                        current_arch = None
+                        current_sourcerpm = None
+
+                        elem.clear()
+
+            except DefusedXmlException as exc:
+                raise RuntimeError(
+                    "Primary XML contains a DOCTYPE declaration; refusing to parse "
+                    "(prevents entity-expansion attacks)."
+                ) from exc
+
+        if not source_binaries:
+            raise RuntimeError(
+                f"No binary packages with a source found in {primary_xml_path}; check "
+                "'base_url' in your config, or the repository metadata format may have changed"
+            )
+
+        return source_binaries
