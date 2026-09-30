@@ -917,6 +917,170 @@ class TestParseSourcePackagesDefusedxml:
             repo.parse_source_packages(gz_file)
 
 
+def _write_primary_xml(tmp_path: Path, packages_xml: str) -> Path:
+    """Write gzipped primary XML wrapping packages_xml in the common/rpm namespaces."""
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<metadata xmlns="http://linux.duke.edu/metadata/common"'
+        ' xmlns:rpm="http://linux.duke.edu/metadata/rpm">\n'
+        f"{packages_xml}\n"
+        "</metadata>"
+    )
+    xml_file = tmp_path / "primary.xml.gz"
+    with gzip.open(xml_file, "wt", encoding="utf-8") as f:
+        f.write(content)
+    return xml_file
+
+
+def _package_xml(name: str, arch: str, sourcerpm: str | None = None) -> str:
+    """Build one <package> element; sourcerpm None omits the rpm:sourcerpm element."""
+    sourcerpm_xml = "" if sourcerpm is None else f"<rpm:sourcerpm>{sourcerpm}</rpm:sourcerpm>"
+    return (
+        f'  <package type="rpm"><name>{name}</name><arch>{arch}</arch>'
+        f"<format>{sourcerpm_xml}</format></package>"
+    )
+
+
+class TestParseSourceBinaries:
+    """Test suite for parse_source_binaries method."""
+
+    def test_parse_source_binaries_maps_source_to_its_binaries(self, tmp_path: Path) -> None:
+        """Should map a source package name to the set of its binary package names."""
+        xml_file = _write_primary_xml(
+            tmp_path,
+            _package_xml("gcc16", "x86_64", "gcc16-16.1.0-1.1.src.rpm")
+            + _package_xml("gcc16-c++", "x86_64", "gcc16-16.1.0-1.1.src.rpm"),
+        )
+
+        result = RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert result == {"gcc16": {"gcc16", "gcc16-c++"}}
+
+    def test_parse_source_binaries_dedupes_binary_across_arches(self, tmp_path: Path) -> None:
+        """Should list a binary built on several arches only once under its source."""
+        xml_file = _write_primary_xml(
+            tmp_path,
+            _package_xml("libfoo1", "x86_64", "foo-1.0-1.1.src.rpm")
+            + _package_xml("libfoo1", "aarch64", "foo-1.0-1.1.src.rpm"),
+        )
+
+        result = RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert result == {"foo": {"libfoo1"}}
+
+    def test_parse_source_binaries_skips_src_and_nosrc_packages(self, tmp_path: Path) -> None:
+        """Should not treat src/nosrc packages as binaries, even if they carry a sourcerpm."""
+        xml_file = _write_primary_xml(
+            tmp_path,
+            _package_xml("foo", "src", "srconly-1.0-1.1.src.rpm")
+            + _package_xml("bar", "nosrc", "nosrconly-1.0-1.1.nosrc.rpm")
+            + _package_xml("libfoo1", "x86_64", "foo-1.0-1.1.src.rpm"),
+        )
+
+        result = RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert result == {"foo": {"libfoo1"}}
+
+    def test_parse_source_binaries_resolves_nosrc_sourcerpm(self, tmp_path: Path) -> None:
+        """Should resolve a .nosrc.rpm sourcerpm to the bare source name."""
+        xml_file = _write_primary_xml(
+            tmp_path,
+            _package_xml("firmware-blob", "noarch", "firmware-20260901-1.1.nosrc.rpm"),
+        )
+
+        result = RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert result == {"firmware": {"firmware-blob"}}
+
+    def test_parse_source_binaries_resolves_dashed_source_name(self, tmp_path: Path) -> None:
+        """Should keep all dashes of the source name, dropping only version and release."""
+        xml_file = _write_primary_xml(
+            tmp_path,
+            _package_xml("python313-foo-bar", "noarch", "python-foo-bar-1.2-3.1.src.rpm"),
+        )
+
+        result = RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert result == {"python-foo-bar": {"python313-foo-bar"}}
+
+    def test_parse_source_binaries_lists_binary_under_each_source(self, tmp_path: Path) -> None:
+        """Should list a binary name built by two different sources under both keys."""
+        xml_file = _write_primary_xml(
+            tmp_path,
+            _package_xml("kernel-default", "x86_64", "kernel-source-6.12-1.1.src.rpm")
+            + _package_xml("kernel-default", "aarch64", "kernel-64kb-6.12-1.1.src.rpm"),
+        )
+
+        result = RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert result == {
+            "kernel-source": {"kernel-default"},
+            "kernel-64kb": {"kernel-default"},
+        }
+
+    def test_parse_source_binaries_skips_binary_without_sourcerpm(self, tmp_path: Path) -> None:
+        """Should skip binaries whose sourcerpm element is missing or empty."""
+        xml_file = _write_primary_xml(
+            tmp_path,
+            _package_xml("libfoo1", "x86_64", "foo-1.0-1.1.src.rpm")
+            + _package_xml("orphan-missing", "x86_64")
+            + _package_xml("orphan-empty", "x86_64", ""),
+        )
+
+        result = RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert result == {"foo": {"libfoo1"}}
+
+    def test_parse_source_binaries_raises_on_empty_result(self, tmp_path: Path) -> None:
+        """Should raise RuntimeError naming the file when no binary maps to a source."""
+        xml_file = _write_primary_xml(tmp_path, _package_xml("foo", "src", ""))
+
+        with pytest.raises(RuntimeError) as exc_info:
+            RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+        assert "No binary packages with a source found" in str(exc_info.value)
+        assert str(xml_file) in str(exc_info.value)
+
+    def test_parse_source_binaries_raises_on_unknown_namespace(self, tmp_path: Path) -> None:
+        """Should raise RuntimeError when packages use an unrecognised namespace."""
+        primary_xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<metadata xmlns="http://example.invalid/metadata/common"
+          xmlns:rpm="http://example.invalid/metadata/rpm">
+  <package type="rpm">
+    <name>libfoo1</name>
+    <arch>x86_64</arch>
+    <format><rpm:sourcerpm>foo-1.0-1.1.src.rpm</rpm:sourcerpm></format>
+  </package>
+</metadata>"""
+        xml_file = tmp_path / "primary.xml.gz"
+        with gzip.open(xml_file, "wt", encoding="utf-8") as f:
+            f.write(primary_xml_content)
+
+        with pytest.raises(RuntimeError, match="No binary packages with a source found"):
+            RepoMetadataRepositoryImpl().parse_source_binaries(xml_file)
+
+    def test_parse_source_binaries_rejects_doctype(self, tmp_path: Path) -> None:
+        """A bare DOCTYPE in a gzipped primary XML must raise RuntimeError containing 'DOCTYPE'."""
+        evil = (
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b"<!DOCTYPE foo []>"
+            b'<metadata xmlns="http://linux.duke.edu/metadata/common"/>'
+        )
+        gz_file = tmp_path / "evil_primary.xml.gz"
+        with gzip.open(gz_file, "wb") as f:
+            f.write(evil)
+
+        with pytest.raises(RuntimeError, match="DOCTYPE"):
+            RepoMetadataRepositoryImpl().parse_source_binaries(gz_file)
+
+    def test_parse_source_binaries_raises_on_missing_file(self, tmp_path: Path) -> None:
+        """Should raise FileNotFoundError naming the path when the XML file doesn't exist."""
+        missing_file = tmp_path / "nonexistent.xml.gz"
+
+        with pytest.raises(FileNotFoundError, match="Primary XML file not found"):
+            RepoMetadataRepositoryImpl().parse_source_binaries(missing_file)
+
+
 class TestDownloadPrimaryMetadataDefusedxml:
     """Defusedxml hardening tests for download_primary_metadata (repomd path)."""
 

@@ -217,6 +217,32 @@ def _resolve_base_url(product_config: dict[str, Any], version: str) -> str | Non
     return base_url
 
 
+def resolve_verify(config: dict[str, Any]) -> bool | str:
+    """Read and validate the TLS `verify` setting from config.
+
+    Args:
+        config: Loaded configuration dictionary.
+
+    Returns:
+        The verify setting: True/False, or a path to a CA bundle.
+
+    Raises:
+        ConfigError: If `verify` is present but not a bool or str, or if
+            it is an empty or whitespace-only string.
+    """
+    verify = config.get("verify", True)
+    if not isinstance(verify, (bool, str)):
+        raise ConfigError(
+            f"Invalid 'verify' config: expected bool or path string, got {type(verify).__name__}"
+        )
+    if isinstance(verify, str) and not verify.strip():
+        raise ConfigError(
+            "Invalid 'verify' config: empty or whitespace-only string not allowed "
+            "(would disable TLS verification)"
+        )
+    return verify
+
+
 def resolve_product_context(version: str, config_file: Path | None) -> ProductContext:
     """Load config, resolve product ref, validate the SLFO URL, return context.
 

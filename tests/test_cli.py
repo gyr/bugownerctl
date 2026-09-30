@@ -165,6 +165,68 @@ class TestCreateParser:
         args = parser.parse_args(["query", "maintainer", "foo", "-r", "16.1"])
         assert args.config is None
 
+    def test_parser_has_query_binpkg_source_subcommand(self) -> None:
+        """Parser should have 'query binpkg-source' subcommand with a binary_name positional."""
+        parser = create_parser()
+        args = parser.parse_args(["query", "binpkg-source", "-r", "16.1", "cpp16"])
+        assert args.command == "query"
+        assert args.query_command == "binpkg-source"
+        assert args.binary_name == "cpp16"
+        assert args.release == "16.1"
+        assert args.config is None
+
+    def test_query_binpkg_source_wires_correct_handler(self) -> None:
+        """Query binpkg-source should wire query.run_binpkg_source as handler."""
+        from bugownerctl.commands import query
+
+        parser = create_parser()
+        args = parser.parse_args(["query", "binpkg-source", "-r", "16.1", "cpp16"])
+        assert args.func == query.run_binpkg_source
+
+    def test_query_binpkg_source_requires_release_flag(self) -> None:
+        """Query binpkg-source should require -r/--release flag."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "binpkg-source", "cpp16"])
+
+    def test_query_binpkg_source_accepts_config_flag(self) -> None:
+        """Query binpkg-source should accept -c/--config flag."""
+        parser = create_parser()
+        args = parser.parse_args(["query", "binpkg-source", "-r", "16.1", "-c", "/x.yaml", "cpp16"])
+        assert args.config == Path("/x.yaml")
+
+    def test_parser_has_query_srcpkg_binaries_subcommand(self) -> None:
+        """Parser should have 'query srcpkg-binaries' subcommand with a source_name positional."""
+        parser = create_parser()
+        args = parser.parse_args(["query", "srcpkg-binaries", "-r", "16.1", "gcc16"])
+        assert args.command == "query"
+        assert args.query_command == "srcpkg-binaries"
+        assert args.source_name == "gcc16"
+        assert args.release == "16.1"
+        assert args.config is None
+
+    def test_query_srcpkg_binaries_wires_correct_handler(self) -> None:
+        """Query srcpkg-binaries should wire query.run_srcpkg_binaries as handler."""
+        from bugownerctl.commands import query
+
+        parser = create_parser()
+        args = parser.parse_args(["query", "srcpkg-binaries", "-r", "16.1", "gcc16"])
+        assert args.func == query.run_srcpkg_binaries
+
+    def test_query_srcpkg_binaries_requires_release_flag(self) -> None:
+        """Query srcpkg-binaries should require -r/--release flag."""
+        parser = create_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["query", "srcpkg-binaries", "gcc16"])
+
+    def test_query_srcpkg_binaries_accepts_config_flag(self) -> None:
+        """Query srcpkg-binaries should accept -c/--config flag."""
+        parser = create_parser()
+        args = parser.parse_args(
+            ["query", "srcpkg-binaries", "-r", "16.1", "-c", "/x.yaml", "gcc16"]
+        )
+        assert args.config == Path("/x.yaml")
+
     def test_check_maintainership_accepts_config_flag(self) -> None:
         """check maintainership should accept --config flag."""
         parser = create_parser()

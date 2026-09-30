@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] - 2026-09-30
+
+### Added
+
+- `query binpkg-source <binary> -r <version>` prints the source package(s) a binary package is
+  built from, and `query srcpkg-binaries <source> -r <version>` prints the binary packages built
+  from a source package, sorted, one per line. Both read the product's repository metadata
+  (`primary.xml.gz`); a source package name is the `.src.rpm` name without version and release.
+  A name that is not in the metadata is a valid result: stdout stays empty, a message goes to
+  stderr, and the exit code is `0`.
+
 ## [0.8.2] - 2026-09-29
 
 ### Fixed

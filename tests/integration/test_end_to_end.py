@@ -4,6 +4,7 @@ Tests complete workflows from CLI entry through to results,
 using real fixtures and minimal mocking.
 """
 
+import gzip
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -168,7 +169,7 @@ class TestQueryPackageWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "test-package", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -198,7 +199,7 @@ class TestQueryPackageWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch(
                 "sys.argv",
                 ["bugownerctl", "query", "package", "whitelisted-package", "-r", "16.1"],
@@ -229,7 +230,7 @@ class TestQueryPackageWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -266,7 +267,7 @@ class TestQueryMaintainerWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -298,7 +299,7 @@ class TestQueryMaintainerWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -324,8 +325,141 @@ class TestQueryMaintainerWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user", "-r", "16.1"]),
         ):
             exit_code = main()
             assert exit_code == 0, "Should succeed but show empty list"
+
+
+# Binaries and their src.rpm: cpp16/gcc16 come from gcc16 (on two arches); the
+# shared -devel binary is built by both openblas flavours; the src entry is not a binary.
+_PRIMARY_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<metadata xmlns="http://linux.duke.edu/metadata/common"
+          xmlns:rpm="http://linux.duke.edu/metadata/rpm">
+  <package type="rpm"><name>gcc16</name><arch>x86_64</arch>
+    <format><rpm:sourcerpm>gcc16-16.1.0-1.1.src.rpm</rpm:sourcerpm></format></package>
+  <package type="rpm"><name>cpp16</name><arch>x86_64</arch>
+    <format><rpm:sourcerpm>gcc16-16.1.0-1.1.src.rpm</rpm:sourcerpm></format></package>
+  <package type="rpm"><name>cpp16</name><arch>aarch64</arch>
+    <format><rpm:sourcerpm>gcc16-16.1.0-1.1.src.rpm</rpm:sourcerpm></format></package>
+  <package type="rpm"><name>openblas-common-devel</name><arch>x86_64</arch>
+    <format><rpm:sourcerpm>openblas_pthreads-0.3.30-1.1.src.rpm</rpm:sourcerpm></format></package>
+  <package type="rpm"><name>openblas-common-devel</name><arch>x86_64</arch>
+    <format><rpm:sourcerpm>openblas_openmp-0.3.30-1.1.src.rpm</rpm:sourcerpm></format></package>
+  <package type="rpm"><name>gcc16</name><arch>src</arch>
+    <format><rpm:sourcerpm>gcc16-16.1.0-1.1.src.rpm</rpm:sourcerpm></format></package>
+</metadata>
+"""
+
+
+def _run_binpkg_source(tmp_path, binary_name):
+    """Run 'query binpkg-source' through main() with only the metadata download faked.
+
+    The download returns an inline gzipped primary.xml, so the real parser runs.
+    Returns the exit code.
+    """
+    primary_xml = tmp_path / "primary.xml.gz"
+    with gzip.open(primary_xml, "wt", encoding="utf-8") as f:
+        f.write(_PRIMARY_XML)
+
+    config_data = {
+        "cache_dir": str(tmp_path / "cache"),
+        "slfo_git_url": "git@example.com:test/repo.git",
+        "products": [{"version": "16.1", "branch": "main"}],
+    }
+
+    with (
+        patch(
+            "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata",
+            return_value=primary_xml,
+        ),
+        patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
+        patch("sys.argv", ["bugownerctl", "query", "binpkg-source", "-r", "16.1", binary_name]),
+    ):
+        return main()
+
+
+class TestQueryBinpkgSourceWorkflow:
+    """Integration tests for 'bugownerctl query binpkg-source' workflow."""
+
+    def test_query_binpkg_source_prints_source_of_binary(self, tmp_path, capsys):
+        """Should print the source package a binary is built from, once across arches."""
+        exit_code = _run_binpkg_source(tmp_path, "cpp16")
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert captured.out == "gcc16\n"
+
+    def test_query_binpkg_source_prints_all_sources_of_multi_source_binary(self, tmp_path, capsys):
+        """Should print every source that builds the binary, sorted, one per line."""
+        exit_code = _run_binpkg_source(tmp_path, "openblas-common-devel")
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert captured.out == "openblas_openmp\nopenblas_pthreads\n"
+
+    def test_query_binpkg_source_not_found_reports_on_stderr_with_exit_zero(self, tmp_path, capsys):
+        """An unknown binary leaves stdout empty, explains on stderr, and exits 0."""
+        exit_code = _run_binpkg_source(tmp_path, "cpp61")
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert captured.out == ""
+        assert (
+            "Binary package 'cpp61' not found in release 16.1 repository metadata" in captured.err
+        )
+
+
+def _run_srcpkg_binaries(tmp_path, source_name):
+    """Run 'query srcpkg-binaries' through main() with only the metadata download faked.
+
+    The download returns an inline gzipped primary.xml, so the real parser runs.
+    Returns the exit code.
+    """
+    primary_xml = tmp_path / "primary.xml.gz"
+    with gzip.open(primary_xml, "wt", encoding="utf-8") as f:
+        f.write(_PRIMARY_XML)
+
+    config_data = {
+        "cache_dir": str(tmp_path / "cache"),
+        "slfo_git_url": "git@example.com:test/repo.git",
+        "products": [{"version": "16.1", "branch": "main"}],
+    }
+
+    with (
+        patch(
+            "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata",
+            return_value=primary_xml,
+        ),
+        patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
+        patch("sys.argv", ["bugownerctl", "query", "srcpkg-binaries", "-r", "16.1", source_name]),
+    ):
+        return main()
+
+
+class TestQuerySrcpkgBinariesWorkflow:
+    """Integration tests for 'bugownerctl query srcpkg-binaries' workflow."""
+
+    def test_query_srcpkg_binaries_prints_binaries_sorted_once_across_arches(
+        self, tmp_path, capsys
+    ):
+        """Should print every binary built from the source, sorted, once across arches."""
+        exit_code = _run_srcpkg_binaries(tmp_path, "gcc16")
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert captured.out == "cpp16\ngcc16\n"
+
+    def test_query_srcpkg_binaries_not_found_reports_on_stderr_with_exit_zero(
+        self, tmp_path, capsys
+    ):
+        """An unknown source leaves stdout empty, explains on stderr, and exits 0."""
+        exit_code = _run_srcpkg_binaries(tmp_path, "gcc61")
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert captured.out == ""
+        assert (
+            "Source package 'gcc61' not found in release 16.1 repository metadata" in captured.err
+        )

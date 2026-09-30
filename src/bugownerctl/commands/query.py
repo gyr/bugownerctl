@@ -5,8 +5,9 @@ Executes query subcommands for package and maintainer information.
 
 import argparse
 import logging
+import sys
 
-from bugownerctl.commands.product_context import resolve_product_context
+from bugownerctl.commands.product_context import resolve_product_context, resolve_verify
 from bugownerctl.exit_codes import ExitCode
 from bugownerctl.repositories.maintainership_repository import MaintainershipRepositoryImpl
 from bugownerctl.repositories.remote_archive_repository import (
@@ -14,6 +15,7 @@ from bugownerctl.repositories.remote_archive_repository import (
     RemoteArchiveRepository,
     RemoteArchiveRepositoryImpl,
 )
+from bugownerctl.repositories.repo_metadata_repository import RepoMetadataRepositoryImpl
 from bugownerctl.services.query_service import PackageStatus, QueryService
 
 logger = logging.getLogger(__name__)
@@ -124,5 +126,92 @@ def run_maintainer(
             print(f"  - {pkg}")
     else:
         print("No packages found")
+
+    return ExitCode.OK
+
+
+def run_binpkg_source(args: argparse.Namespace) -> int:
+    """Execute query binpkg-source subcommand.
+
+    Prints the source package(s) building the binary, sorted, one per line.
+    A binary absent from the repository metadata is a valid result: stdout
+    stays empty and a message goes to stderr.
+
+    Args:
+        args: Parsed command-line arguments with binary_name, release, config
+
+    Returns:
+        Exit code (0 = success, whether or not the binary was found)
+
+    Raises:
+        ConfigError: From verify resolution, if the configured `verify` is invalid.
+        ValueError: From the metadata download, if the release format is invalid.
+        RuntimeError: From the metadata download or parse, if the download fails,
+            the XML contains a DOCTYPE, or no binaries are mapped.
+    """
+    logger.info("querying binary package %r...", args.binary_name)
+    product_context = resolve_product_context(args.release, args.config)
+    verify = resolve_verify(product_context.config)
+    metadata_repo = RepoMetadataRepositoryImpl(base_url=product_context.base_url, verify=verify)
+    primary_xml_path = metadata_repo.download_primary_metadata(
+        args.release, product_context.cache_dir
+    )
+    source_binaries = metadata_repo.parse_source_binaries(primary_xml_path)
+
+    source_names = sorted(
+        source_name
+        for source_name, binary_names in source_binaries.items()
+        if args.binary_name in binary_names
+    )
+    if not source_names:
+        print(
+            f"Binary package '{args.binary_name}' not found in release {args.release} "
+            "repository metadata",
+            file=sys.stderr,
+        )
+    for source_name in source_names:
+        print(source_name)
+
+    return ExitCode.OK
+
+
+def run_srcpkg_binaries(args: argparse.Namespace) -> int:
+    """Execute query srcpkg-binaries subcommand.
+
+    Prints the binary packages built from the source, sorted, one per line.
+    A source absent from the repository metadata is a valid result: stdout
+    stays empty and a message goes to stderr.
+
+    Args:
+        args: Parsed command-line arguments with source_name, release, config
+
+    Returns:
+        Exit code (0 = success, whether or not the source was found)
+
+    Raises:
+        ConfigError: From verify resolution, if the configured `verify` is invalid.
+        ValueError: From the metadata download, if the release format is invalid.
+        RuntimeError: From the metadata download or parse, if the download fails,
+            the XML contains a DOCTYPE, or no binaries are mapped.
+    """
+    logger.info("querying source package %r...", args.source_name)
+    product_context = resolve_product_context(args.release, args.config)
+    verify = resolve_verify(product_context.config)
+    metadata_repo = RepoMetadataRepositoryImpl(base_url=product_context.base_url, verify=verify)
+    primary_xml_path = metadata_repo.download_primary_metadata(
+        args.release, product_context.cache_dir
+    )
+    source_binaries = metadata_repo.parse_source_binaries(primary_xml_path)
+
+    binary_names = source_binaries.get(args.source_name)
+    if binary_names is None:
+        print(
+            f"Source package '{args.source_name}' not found in release {args.release} "
+            "repository metadata",
+            file=sys.stderr,
+        )
+        return ExitCode.OK
+    for binary_name in sorted(binary_names):
+        print(binary_name)
 
     return ExitCode.OK
