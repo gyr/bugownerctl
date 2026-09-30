@@ -169,7 +169,7 @@ class TestQueryPackageWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "test-package", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -199,7 +199,7 @@ class TestQueryPackageWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch(
                 "sys.argv",
                 ["bugownerctl", "query", "package", "whitelisted-package", "-r", "16.1"],
@@ -230,7 +230,7 @@ class TestQueryPackageWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "package", "unknown-package", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -267,7 +267,7 @@ class TestQueryMaintainerWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "user1", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -299,7 +299,7 @@ class TestQueryMaintainerWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "team1", "-r", "16.1"]),
         ):
             exit_code = main()
@@ -325,7 +325,7 @@ class TestQueryMaintainerWorkflow:
                     }
                 ),
             ),
-            patch("bugownerctl.utils.config.load_config", return_value=config_data),
+            patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
             patch("sys.argv", ["bugownerctl", "query", "maintainer", "unknown-user", "-r", "16.1"]),
         ):
             exit_code = main()
