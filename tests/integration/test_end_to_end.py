@@ -409,3 +409,57 @@ class TestQueryBinpkgSourceWorkflow:
         assert (
             "Binary package 'cpp61' not found in release 16.1 repository metadata" in captured.err
         )
+
+
+def _run_srcpkg_binaries(tmp_path, source_name):
+    """Run 'query srcpkg-binaries' through main() with only the metadata download faked.
+
+    The download returns an inline gzipped primary.xml, so the real parser runs.
+    Returns the exit code.
+    """
+    primary_xml = tmp_path / "primary.xml.gz"
+    with gzip.open(primary_xml, "wt", encoding="utf-8") as f:
+        f.write(_PRIMARY_XML)
+
+    config_data = {
+        "cache_dir": str(tmp_path / "cache"),
+        "slfo_git_url": "git@example.com:test/repo.git",
+        "products": [{"version": "16.1", "branch": "main"}],
+    }
+
+    with (
+        patch(
+            "bugownerctl.repositories.repo_metadata_repository.RepoMetadataRepositoryImpl.download_primary_metadata",
+            return_value=primary_xml,
+        ),
+        patch("bugownerctl.commands.product_context.load_config", return_value=config_data),
+        patch("sys.argv", ["bugownerctl", "query", "srcpkg-binaries", "-r", "16.1", source_name]),
+    ):
+        return main()
+
+
+class TestQuerySrcpkgBinariesWorkflow:
+    """Integration tests for 'bugownerctl query srcpkg-binaries' workflow."""
+
+    def test_query_srcpkg_binaries_prints_binaries_sorted_once_across_arches(
+        self, tmp_path, capsys
+    ):
+        """Should print every binary built from the source, sorted, once across arches."""
+        exit_code = _run_srcpkg_binaries(tmp_path, "gcc16")
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert captured.out == "cpp16\ngcc16\n"
+
+    def test_query_srcpkg_binaries_not_found_reports_on_stderr_with_exit_zero(
+        self, tmp_path, capsys
+    ):
+        """An unknown source leaves stdout empty, explains on stderr, and exits 0."""
+        exit_code = _run_srcpkg_binaries(tmp_path, "gcc61")
+
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert captured.out == ""
+        assert (
+            "Source package 'gcc61' not found in release 16.1 repository metadata" in captured.err
+        )

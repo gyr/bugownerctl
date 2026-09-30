@@ -10,7 +10,12 @@ from unittest.mock import Mock, call
 import pytest
 
 from bugownerctl.commands.product_context import ProductContext
-from bugownerctl.commands.query import run_binpkg_source, run_maintainer, run_package
+from bugownerctl.commands.query import (
+    run_binpkg_source,
+    run_maintainer,
+    run_package,
+    run_srcpkg_binaries,
+)
 from bugownerctl.repositories.remote_archive_repository import FileNotFoundAtRefError
 from bugownerctl.services.query_service import (
     PackageMaintainershipResult,
@@ -701,6 +706,68 @@ class TestRunBinpkgSource:
 
         args = argparse.Namespace(binary_name="cpp16", release="16.1", config=Path("/x.yaml"))
         run_binpkg_source(args)
+
+        mock_resolve.assert_called_once_with("16.1", Path("/x.yaml"))
+        metadata_cls.assert_called_once_with(base_url=url, verify="/etc/ssl/ca-bundle.pem")
+        metadata_cls.return_value.download_primary_metadata.assert_called_once_with(
+            "16.1", fake_product_context.cache_dir
+        )
+        metadata_cls.return_value.parse_source_binaries.assert_called_once_with(
+            Path("/tmp/p.xml.gz")
+        )
+
+
+class TestRunSrcpkgBinaries:
+    """Tests for run_srcpkg_binaries command handler."""
+
+    def test_run_srcpkg_binaries_prints_binaries_sorted(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Should print every binary built from the source, sorted, one per line, and return 0."""
+        _patch_product_context(monkeypatch)
+        _patch_metadata_repo(
+            monkeypatch, {"gcc16": {"gcc16", "cpp16", "libgcc_s1"}, "foo": {"libfoo1"}}
+        )
+
+        args = argparse.Namespace(source_name="gcc16", release="16.1", config=None)
+        result = run_srcpkg_binaries(args)
+
+        captured = capsys.readouterr()
+        assert captured.out == "cpp16\ngcc16\nlibgcc_s1\n"
+        assert captured.err == ""
+        assert result == 0
+
+    def test_run_srcpkg_binaries_reports_not_found_on_stderr_and_returns_zero(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """An unknown source leaves stdout empty, explains on stderr, and still returns 0."""
+        _patch_product_context(monkeypatch)
+        _patch_metadata_repo(monkeypatch, {"gcc16": {"gcc16", "cpp16"}})
+
+        args = argparse.Namespace(source_name="gcc61", release="16.1", config=None)
+        result = run_srcpkg_binaries(args)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "Source package 'gcc61' not found in release 16.1 repository metadata\n"
+        )
+        assert result == 0
+
+    def test_run_srcpkg_binaries_wires_context_verify_and_downloaded_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Context, base_url, verify, cache_dir and the downloaded path reach the repository."""
+        url = "https://mirror.example.com/{version}/"
+        config = {**_BASE_CONFIG, "verify": "/etc/ssl/ca-bundle.pem"}
+        mock_resolve, fake_product_context = _patch_product_context(monkeypatch, config=config)
+        fake_product_context = replace(fake_product_context, base_url=url)
+        mock_resolve.return_value = fake_product_context
+        metadata_cls = _patch_metadata_repo(monkeypatch, {"gcc16": {"cpp16"}})
+        metadata_cls.return_value.download_primary_metadata.return_value = Path("/tmp/p.xml.gz")
+
+        args = argparse.Namespace(source_name="gcc16", release="16.1", config=Path("/x.yaml"))
+        run_srcpkg_binaries(args)
 
         mock_resolve.assert_called_once_with("16.1", Path("/x.yaml"))
         metadata_cls.assert_called_once_with(base_url=url, verify="/etc/ssl/ca-bundle.pem")

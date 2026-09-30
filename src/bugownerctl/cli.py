@@ -66,7 +66,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # Shared parents.  config_only carries -c/--config, which every config-consuming leaf
-    # needs; context adds the required -r/--release on top of it, for the six data-leaf
+    # needs; context adds the required -r/--release on top of it, for the seven data-leaf
     # subcommands that resolve a product version.  `diff` uses config_only, since it reads
     # two git refs directly and has no release to resolve.  Applying these as parents avoids
     # duplicating the flags per leaf; add_help=False prevents a conflicting -h on the parents.
@@ -179,6 +179,15 @@ def create_parser() -> argparse.ArgumentParser:
     )
     binpkg_source_parser.add_argument("binary_name", help="Binary package name")
     binpkg_source_parser.set_defaults(func=query.run_binpkg_source)
+
+    srcpkg_binaries_parser = query_subparsers.add_parser(
+        "srcpkg-binaries",
+        parents=[context],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Print the binary packages built from a source package",
+    )
+    srcpkg_binaries_parser.add_argument("source_name", help="Source package name")
+    srcpkg_binaries_parser.set_defaults(func=query.run_srcpkg_binaries)
 
     # bugownerctl diff  (parents=[config_only], not [context]: there is no release to resolve)
     diff_parser = subparsers.add_parser(
